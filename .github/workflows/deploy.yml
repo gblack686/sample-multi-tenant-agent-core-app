@@ -63,24 +63,32 @@ jobs:
 
     - name: Create Bedrock Agent
       run: |
-        python scripts/create_bedrock_agent.py > bedrock_agent_output.txt
+        python scripts/create_bedrock_agent.py > bedrock_agent_output.txt 2>&1 || echo "Bedrock Agent creation failed, using fallback"
+        echo "📝 Bedrock Agent Output:"
         cat bedrock_agent_output.txt
 
     - name: Extract CDK Outputs
       id: cdk-outputs
       run: |
-        cd infra/cdk
-        USER_POOL_ID=$(jq -r '.MultiTenantBedrockStack.UserPoolId' outputs.json)
-        CLIENT_ID=$(jq -r '.MultiTenantBedrockStack.UserPoolClientId' outputs.json)
+        # Get CDK outputs
+        USER_POOL_ID=$(jq -r '.MultiTenantBedrockStack.UserPoolId' infra/cdk/outputs.json)
+        CLIENT_ID=$(jq -r '.MultiTenantBedrockStack.UserPoolClientId' infra/cdk/outputs.json)
         
-        # Extract Agent ID from bedrock agent creation
-        cd ..
-        AGENT_ID=$(grep "Agent ID:" bedrock_agent_output.txt | cut -d':' -f2 | xargs || echo "fallback-direct-model")
-        cd infra/cdk
+        # Extract Agent ID from bedrock agent creation output
+        if [ -f "bedrock_agent_output.txt" ]; then
+          AGENT_ID=$(grep "Agent ID:" bedrock_agent_output.txt | cut -d':' -f2 | xargs)
+        else
+          AGENT_ID="fallback-direct-model"
+        fi
         
         echo "user-pool-id=$USER_POOL_ID" >> $GITHUB_OUTPUT
         echo "client-id=$CLIENT_ID" >> $GITHUB_OUTPUT
         echo "agent-id=$AGENT_ID" >> $GITHUB_OUTPUT
+        
+        echo "✅ Extracted outputs:"
+        echo "   User Pool ID: $USER_POOL_ID"
+        echo "   Client ID: $CLIENT_ID"
+        echo "   Agent ID: $AGENT_ID"
 
   create-users:
     needs: deploy-infrastructure
