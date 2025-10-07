@@ -40,6 +40,7 @@ class MultiTenantBedrockStack(Stack):
             user_pool_name="multi-tenant-chat-users",
             sign_in_aliases=cognito.SignInAliases(email=True),
             auto_verify=cognito.AutoVerifiedAttrs(email=True),
+            self_sign_up_enabled=True,
             standard_attributes=cognito.StandardAttributes(
                 email=cognito.StandardAttribute(required=True, mutable=True),
                 given_name=cognito.StandardAttribute(required=True, mutable=True),
