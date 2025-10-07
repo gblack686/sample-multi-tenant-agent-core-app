@@ -47,53 +47,54 @@ class MCPAgentCoreIntegration:
             }
         )
         
-        # Check if message requires MCP tool execution
-        mcp_tool_request = self._parse_mcp_tool_request(message, available_tools)
-        
-        if mcp_tool_request:
-            # Execute MCP tool directly
+        # Always check for subscription queries and inject MCP data
+        if self._is_subscription_query(message) and available_tools:
+            # Execute MCP tool to get subscription data
             mcp_result = await self.mcp_client.execute_mcp_tool(
-                mcp_tool_request["tool_name"],
-                mcp_tool_request["arguments"],
+                "get_tier_info",
+                {"tier": subscription_tier.value},
                 subscription_tier
             )
             
-            # Enhance message with MCP result for Agent Core processing
-            enhanced_message = self._build_enhanced_message(message, mcp_result, mcp_tool_request)
+            # Inject MCP data directly into the message
+            if "result" in mcp_result and "tier_info" in mcp_result["result"]:
+                tier_info = mcp_result["result"]["tier_info"]
+                enhanced_message = f"""
+User Question: {message}
+
+Subscription Information Available:
+- Plan: {tier_info['name']} ({tier_info['price']})
+- Daily Messages: {tier_info['daily_messages']}
+- Monthly Messages: {tier_info['monthly_messages']}
+- Features: {', '.join(tier_info['features'])}
+- Current Tier: {subscription_tier.value.upper()}
+
+Please provide a helpful response about the user's subscription details using this information."""
+            else:
+                enhanced_message = f"""
+User Question: {message}
+
+Subscription Information: User is on {subscription_tier.value.upper()} tier.
+
+Please provide a helpful response about their subscription."""
             
-            # Invoke Agent Core with MCP result context
+            # Invoke Agent Core with enhanced message
             agent_result = self.agentic_service.invoke_agent_with_planning(
                 enhanced_message, tenant_context
             )
             
-            # Merge MCP and Agent Core results
-            return self._merge_mcp_agent_results(agent_result, mcp_result, mcp_tool_request)
+            # Add MCP integration info
+            agent_result["mcp_integration"] = {
+                "tool_used": "get_tier_info",
+                "tool_result": mcp_result,
+                "integration_success": True
+            }
+            
+            return agent_result
         
         else:
-            # Check if this is a subscription-related query that should use MCP
-            if self._is_subscription_query(message) and available_tools:
-                # Force MCP tool execution for subscription queries
-                mcp_result = await self.mcp_client.execute_mcp_tool(
-                    "get_tier_info",
-                    {"tier": subscription_tier.value},
-                    subscription_tier
-                )
-                
-                # Create a direct response with subscription info
-                return {
-                    "response": self._format_subscription_response(mcp_result, subscription_tier),
-                    "session_id": tenant_context.session_id,
-                    "tenant_id": tenant_context.tenant_id,
-                    "mcp_integration": {
-                        "tool_used": "get_tier_info",
-                        "tool_result": mcp_result,
-                        "integration_success": True
-                    },
-                    "usage_metrics": {"mcp_subscription_query": True}
-                }
-            else:
-                # Standard Agent Core invocation with MCP context available
-                return self.agentic_service.invoke_agent_with_planning(message, tenant_context)
+            # Standard Agent Core invocation
+            return self.agentic_service.invoke_agent_with_planning(message, tenant_context)
     
     def _parse_mcp_tool_request(self, message: str, available_tools: List[str]) -> Optional[Dict[str, Any]]:
         """Parse message to detect MCP tool requests"""
@@ -200,7 +201,8 @@ class MCPAgentCoreIntegration:
         """Check if message is asking about subscription details"""
         subscription_keywords = [
             "subscription", "plan", "tier", "billing", "account", 
-            "limits", "usage", "features", "pricing"
+            "limits", "usage", "features", "pricing", "details",
+            "what is my", "my plan", "current plan", "subscription details"
         ]
         message_lower = message.lower()
         return any(keyword in message_lower for keyword in subscription_keywords)
