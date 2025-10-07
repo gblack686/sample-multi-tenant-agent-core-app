@@ -46,7 +46,8 @@ class MultiTenantBedrockStack(Stack):
                 family_name=cognito.StandardAttribute(required=True, mutable=True)
             ),
             custom_attributes={
-                "tenant_id": cognito.StringAttribute(min_len=1, max_len=50, mutable=True)
+                "tenant_id": cognito.StringAttribute(min_len=1, max_len=50, mutable=True),
+                "subscription_tier": cognito.StringAttribute(min_len=1, max_len=20, mutable=True)
             },
             removal_policy=RemovalPolicy.DESTROY
         )

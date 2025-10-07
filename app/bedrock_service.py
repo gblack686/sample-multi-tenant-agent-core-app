@@ -11,8 +11,8 @@ class BedrockAgentService:
         self.bedrock_runtime = boto3.client('bedrock-runtime')
         self.agent_id = agent_id
         self.agent_alias_id = agent_alias_id
-        # Use the latest Claude 3.5 Sonnet model
-        self.model_id = "anthropic.claude-3-5-sonnet-20241022-v2:0"  # Latest available
+        # Use Claude 3 Haiku for on-demand throughput support
+        self.model_id = "anthropic.claude-3-haiku-20240307-v1:0"
         
     def invoke_agent(self, message: str, tenant_context: TenantContext) -> Dict[str, Any]:
         """Invoke Bedrock Agent with proper runtime context following AWS patterns"""
@@ -37,13 +37,17 @@ class BedrockAgentService:
         try:
             if self.agent_id and self.agent_id != "your-agent-id":
                 # Use Bedrock Agent Core Runtime with proper context
+                session_state = {
+                    "sessionAttributes": session_attributes,
+                    "promptSessionAttributes": prompt_session_attributes
+                }
+                
                 response = self.bedrock_agent_runtime.invoke_agent(
                     agentId=self.agent_id,
                     agentAliasId=self.agent_alias_id,
                     sessionId=session_id,
                     inputText=message,
-                    sessionAttributes=session_attributes,
-                    promptSessionAttributes=prompt_session_attributes,
+                    sessionState=session_state,
                     enableTrace=True  # Enable for usage tracking
                 )
                 return self._process_agent_response(response, session_id, tenant_context.tenant_id)

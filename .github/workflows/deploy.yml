@@ -1,4 +1,4 @@
-name: Deploy Multi-Tenant Bedrock Chat
+name: Deploy MCP-Agent Core Multi-Tenant System
 
 on:
   push:
@@ -111,6 +111,8 @@ jobs:
         echo "✅ Frontend configured with:"
         echo "   User Pool ID: $USER_POOL_ID"
         echo "   Client ID: $CLIENT_ID"
+        echo "🌐 Frontend ready at: http://localhost:8000"
+        echo "📝 Manual user registration available with subscription tier selection"
 
   test:
     needs: [deploy-infrastructure, setup-frontend]
@@ -129,20 +131,43 @@ jobs:
     - name: Install dependencies
       run: pip install -r requirements.txt
 
-    - name: Test Bedrock Agent Chatbot
+    - name: Validate MCP-Agent Core System
       env:
         COGNITO_USER_POOL_ID: ${{ needs.deploy-infrastructure.outputs.user-pool-id }}
         COGNITO_CLIENT_ID: ${{ needs.deploy-infrastructure.outputs.client-id }}
         BEDROCK_AGENT_ID: ${{ needs.deploy-infrastructure.outputs.agent-id }}
         AWS_REGION: ${{ env.AWS_REGION }}
       run: |
-        echo "🤖 Testing Bedrock Agent Core Chatbot Application"
+        echo "🔍 Validating MCP-Agent Core System"
         
-        # Test runtime context patterns
-        python examples/runtime_context_demo.py
+        # Test subscription tier configuration
+        python -c "
+        from app.models import SubscriptionTier
+        from app.subscription_service import SubscriptionService
+        from app.dynamodb_store import DynamoDBStore
         
-        # Test multi-tenant chatbot functionality (skip if server not running)
-        echo "Note: test_client.py requires running server, skipping in CI"
-        # python test_client.py
+        store = DynamoDBStore()
+        service = SubscriptionService(store)
         
-        echo "✅ Bedrock Agent chatbot tests completed"
+        print('Subscription Tiers Configured:')
+        for tier in [SubscriptionTier.BASIC, SubscriptionTier.ADVANCED, SubscriptionTier.PREMIUM]:
+            limits = service.get_tier_limits(tier)
+            print(f'  {tier.value}: {limits.daily_messages} daily, MCP: {limits.mcp_server_access}')
+        "
+        
+        # Test MCP service initialization
+        python -c "
+        from app.mcp_service import MCPClient
+        from app.models import SubscriptionTier
+        import asyncio
+        
+        async def test_mcp():
+            client = MCPClient()
+            for tier in [SubscriptionTier.BASIC, SubscriptionTier.ADVANCED, SubscriptionTier.PREMIUM]:
+                tools = await client.get_available_tools(tier)
+                print(f'{tier.value} tier MCP tools: {len(tools)} available')
+        
+        asyncio.run(test_mcp())
+        "
+        
+        echo "✅ System validation completed - Ready for manual testing"

@@ -40,13 +40,18 @@ class AgenticService:
         )
         
         try:
+            # Use sessionState for modern Bedrock Agent API
+            session_state = {
+                "sessionAttributes": session_attributes,
+                "promptSessionAttributes": prompt_attributes
+            }
+            
             response = self.bedrock_agent_runtime.invoke_agent(
                 agentId=self.agent_id,
                 agentAliasId=self.agent_alias_id,
                 sessionId=session_id,
                 inputText=message,
-                sessionAttributes=session_attributes,
-                promptSessionAttributes=prompt_attributes,
+                sessionState=session_state,
                 enableTrace=True
             )
             
@@ -57,7 +62,8 @@ class AgenticService:
                 "response": f"Agent Error: {str(e)}",
                 "session_id": session_id,
                 "agentic_trace": {"error": True},
-                "tenant_id": tenant_context.tenant_id
+                "tenant_id": tenant_context.tenant_id,
+                "usage_metrics": {"error": True}
             }
     
     def _process_agentic_response(self, response, session_id: str, tenant_id: str) -> Dict[str, Any]:
@@ -118,7 +124,8 @@ class AgenticService:
             "session_id": session_id,
             "tenant_id": tenant_id,
             "agentic_trace": agentic_trace,
-            "capabilities_used": self._analyze_capabilities(agentic_trace)
+            "capabilities_used": self._analyze_capabilities(agentic_trace),
+            "usage_metrics": {"agentic_processing": True}
         }
     
     def _analyze_capabilities(self, trace: Dict) -> Dict[str, bool]:

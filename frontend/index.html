@@ -12,7 +12,21 @@
         .login-form.active, .chat-interface.active { display: block; }
         .form-group { margin: 15px 0; }
         label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input, select, button { padding: 10px; border: 1px solid #ddd; border-radius: 4px; width: 100%; box-sizing: border-box; }
+        input, select, button { padding: 15px; border: 1px solid #ddd; border-radius: 4px; width: 100%; box-sizing: border-box; font-size: 16px; }
+        #messageInput { 
+            padding: 25px; 
+            font-size: 20px; 
+            min-height: 80px; 
+            background-color: #ffffff; 
+            color: #333333; 
+            border: 2px solid #007bff; 
+            line-height: 1.5;
+        }
+        #messageInput:focus {
+            outline: none;
+            border-color: #0056b3;
+            box-shadow: 0 0 5px rgba(0, 123, 255, 0.3);
+        }
         button { background-color: #007bff; color: white; cursor: pointer; margin-top: 10px; }
         button:hover { background-color: #0056b3; }
         .chat-box { border: 1px solid #ddd; height: 400px; overflow-y: scroll; padding: 15px; margin: 15px 0; background-color: #fafafa; }
@@ -48,6 +62,14 @@
             <hr style="margin: 30px 0;">
             <h3>New User Registration</h3>
             <div class="form-group">
+                <label for="regFirstName">First Name:</label>
+                <input type="text" id="regFirstName" placeholder="John" required>
+            </div>
+            <div class="form-group">
+                <label for="regLastName">Last Name:</label>
+                <input type="text" id="regLastName" placeholder="Doe" required>
+            </div>
+            <div class="form-group">
                 <label for="regEmail">Email:</label>
                 <input type="email" id="regEmail" placeholder="user@company.com" required>
             </div>
@@ -61,6 +83,14 @@
                     <option value="acme-corp">Acme Corporation</option>
                     <option value="beta-inc">Beta Industries</option>
                     <option value="gamma-llc">Gamma LLC</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="regTier">Subscription Tier:</label>
+                <select id="regTier">
+                    <option value="basic">Basic (Free) - 50 daily messages</option>
+                    <option value="advanced">Advanced ($29/month) - 200 daily messages + MCP tools</option>
+                    <option value="premium">Premium ($99/month) - 1000 daily messages + Full MCP access</option>
                 </select>
             </div>
             <button onclick="register()">Register</button>
@@ -79,14 +109,15 @@
             <div id="chatBox" class="chat-box"></div>
             
             <div class="input-group">
-                <input type="text" id="messageInput" placeholder="Type your message..." style="flex: 1;">
-                <button onclick="sendMessage()">Send</button>
+                <textarea id="messageInput" placeholder="Type your message here..." style="flex: 1; padding: 25px; font-size: 20px; min-height: 100px; background-color: #ffffff; color: #333333; border: 2px solid #007bff; resize: vertical; font-family: Arial, sans-serif;"></textarea>
+                <button onclick="sendMessage()" style="padding: 25px 35px; font-size: 20px; min-height: 100px; margin-left: 10px;">Send</button>
             </div>
             
             <div class="input-group">
                 <button onclick="getUsage()">View Usage</button>
                 <button onclick="getSessions()">View Sessions</button>
-                <button onclick="getAgenticCapabilities()">Agentic Features</button>
+                <button onclick="getSubscriptionInfo()">Subscription Info</button>
+                <button onclick="getMCPTools()">MCP Tools</button>
             </div>
             
             <div id="usageInfo"></div>
@@ -96,8 +127,8 @@
     <script>
         // Configuration - Update these with your deployed values
         const CONFIG = {
-            userPoolId: 'UPDATE_FROM_DEPLOYMENT',
-            clientId: 'UPDATE_FROM_DEPLOYMENT', 
+            userPoolId: 'us-east-1_1UZVUhKiZ',
+            clientId: '1jjpsqmi3qhngfmh871tgns4p2', 
             region: 'us-east-1',
             apiUrl: 'http://localhost:8000'
         };
@@ -114,6 +145,8 @@
         const userPool = new AmazonCognitoIdentity.CognitoUserPool(poolData);
 
         async function register() {
+            const firstName = document.getElementById('regFirstName').value;
+            const lastName = document.getElementById('regLastName').value;
             const email = document.getElementById('regEmail').value;
             const password = document.getElementById('regPassword').value;
             const tenantId = document.getElementById('regTenant').value;
@@ -124,8 +157,20 @@
                     Value: email
                 }),
                 new AmazonCognitoIdentity.CognitoUserAttribute({
+                    Name: 'given_name',
+                    Value: firstName
+                }),
+                new AmazonCognitoIdentity.CognitoUserAttribute({
+                    Name: 'family_name',
+                    Value: lastName
+                }),
+                new AmazonCognitoIdentity.CognitoUserAttribute({
                     Name: 'custom:tenant_id',
                     Value: tenantId
+                }),
+                new AmazonCognitoIdentity.CognitoUserAttribute({
+                    Name: 'custom:subscription_tier',
+                    Value: document.getElementById('regTier').value
                 })
             ];
 
@@ -134,8 +179,12 @@
                     document.getElementById('registerError').textContent = err.message;
                     return;
                 }
-                document.getElementById('registerSuccess').textContent = 
-                    'Registration successful! Please check your email for verification.';
+                
+                // Show verification code input
+                document.getElementById('registerSuccess').innerHTML = 
+                    `Registration successful! Please check your email for verification code.<br>
+                     <input type="text" id="verificationCode" placeholder="Enter verification code" style="margin: 10px 0; padding: 8px;">
+                     <button onclick="confirmSignUp('${email}')">Verify</button>`;
                 document.getElementById('registerError').textContent = '';
             });
         }
@@ -166,6 +215,7 @@
                     currentUser = {
                         email: payload.email,
                         tenant_id: payload['custom:tenant_id'],
+                        subscription_tier: payload['custom:subscription_tier'] || 'basic',
                         user_id: payload.sub,
                         token: idToken
                     };
@@ -185,6 +235,7 @@
             document.getElementById('userInfo').innerHTML = 
                 `<strong>User:</strong> ${currentUser.email}<br>
                  <strong>Organization:</strong> ${currentUser.tenant_id}<br>
+                 <strong>Subscription:</strong> ${currentUser.subscription_tier.toUpperCase()}<br>
                  <strong>User ID:</strong> ${currentUser.user_id}`;
             
             createSession();
@@ -300,15 +351,113 @@
             }
         }
 
-        function getAgenticCapabilities() {
-            document.getElementById('usageInfo').innerHTML = 
-                `<h3>🤖 Agentic Framework Capabilities</h3>
-                 <p><strong>🧠 Planning:</strong> Multi-step reasoning and task decomposition</p>
-                 <p><strong>🔧 Tool Calling:</strong> Action groups for tenant-specific operations</p>
-                 <p><strong>📚 Knowledge Retrieval:</strong> RAG with tenant-scoped knowledge bases</p>
-                 <p><strong>🔄 Orchestration:</strong> Complex workflow management</p>
-                 <p><strong>📊 Trace Analysis:</strong> Detailed agentic behavior tracking</p>
-                 <p><strong>🏢 Multi-Tenant:</strong> Complete tenant isolation and context propagation</p>`;
+        async function getSubscriptionInfo() {
+            if (!currentUser) return;
+            
+            try {
+                const response = await fetch(`${CONFIG.apiUrl}/api/tenants/${currentUser.tenant_id}/subscription`, {
+                    headers: { 'Authorization': `Bearer ${currentUser.token}` }
+                });
+                
+                if (response.ok) {
+                    const info = await response.json();
+                    document.getElementById('usageInfo').innerHTML = 
+                        `<h3>🏷️ Subscription: ${info.subscription_tier.toUpperCase()}</h3>
+                         <h4>Limits:</h4>
+                         <p>Daily Messages: ${info.limits.daily_messages}</p>
+                         <p>Monthly Messages: ${info.limits.monthly_messages}</p>
+                         <p>Session Duration: ${info.limits.max_session_duration} minutes</p>
+                         <p>Concurrent Sessions: ${info.limits.concurrent_sessions}</p>
+                         <p>MCP Access: ${info.limits.mcp_server_access ? '✅' : '❌'}</p>
+                         <h4>Current Usage:</h4>
+                         <p>Daily: ${info.current_usage.daily_usage}/${info.limits.daily_messages}</p>
+                         <p>Monthly: ${info.current_usage.monthly_usage}/${info.limits.monthly_messages}</p>
+                         <p>Active Sessions: ${info.current_usage.active_sessions}/${info.limits.concurrent_sessions}</p>`;
+                }
+            } catch (error) {
+                console.error('Error getting subscription info:', error);
+            }
+        }
+
+        async function getMCPTools() {
+            if (!currentUser) return;
+            
+            try {
+                const response = await fetch(`${CONFIG.apiUrl}/api/mcp/tools`, {
+                    headers: { 'Authorization': `Bearer ${currentUser.token}` }
+                });
+                
+                if (response.ok) {
+                    const tools = await response.json();
+                    let toolsHtml = `<h3>🔧 MCP Tools (${tools.subscription_tier.toUpperCase()})</h3>`;
+                    
+                    if (tools.available_tools.length === 0) {
+                        toolsHtml += '<p>❌ No MCP tools available for your subscription tier</p>';
+                    } else {
+                        toolsHtml += '<p>Available tools:</p><ul>';
+                        tools.available_tools.forEach(tool => {
+                            toolsHtml += `<li><button onclick="testMCPTool('${tool}')">${tool}</button></li>`;
+                        });
+                        toolsHtml += '</ul>';
+                    }
+                    
+                    document.getElementById('usageInfo').innerHTML = toolsHtml;
+                }
+            } catch (error) {
+                console.error('Error getting MCP tools:', error);
+            }
+        }
+
+        async function testMCPTool(toolName) {
+            if (!currentUser) return;
+            
+            const testArgs = {
+                'get_tier_info': { tier: currentUser.subscription_tier },
+                'upgrade_tier': { tenant_id: currentUser.tenant_id, new_tier: 'premium' },
+                'get_usage_analytics': { tenant_id: currentUser.tenant_id },
+                'manage_limits': { action: 'increase', tenant_id: currentUser.tenant_id, limit_type: 'daily' }
+            };
+            
+            try {
+                const response = await fetch(`${CONFIG.apiUrl}/api/mcp/tools/${toolName}`, {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${currentUser.token}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(testArgs[toolName] || {})
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    addMessageToChat('system', `MCP Tool ${toolName}: ${JSON.stringify(result.result, null, 2)}`);
+                } else {
+                    addMessageToChat('system', `MCP Tool ${toolName} failed`);
+                }
+            } catch (error) {
+                addMessageToChat('system', `Error executing MCP tool: ${error.message}`);
+            }
+        }
+
+        function confirmSignUp(email) {
+            const verificationCode = document.getElementById('verificationCode').value;
+            
+            const userData = {
+                Username: email,
+                Pool: userPool
+            };
+            
+            const cognitoUser = new AmazonCognitoIdentity.CognitoUser(userData);
+            
+            cognitoUser.confirmRegistration(verificationCode, true, (err, result) => {
+                if (err) {
+                    document.getElementById('registerError').textContent = err.message;
+                    return;
+                }
+                document.getElementById('registerSuccess').textContent = 
+                    'Email verified successfully! You can now login.';
+                document.getElementById('registerError').textContent = '';
+            });
         }
 
         function logout() {

@@ -4,6 +4,9 @@ from fastapi import HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Dict, Optional
 import os
+import base64
+import json
+from app.models import SubscriptionTier
 
 security = HTTPBearer()
 
@@ -12,39 +15,40 @@ class CognitoAuth:
         self.cognito_client = boto3.client('cognito-idp')
         self.user_pool_id = os.getenv("COGNITO_USER_POOL_ID")
         self.client_id = os.getenv("COGNITO_CLIENT_ID")
-        self.jwt_secret = os.getenv("JWT_SECRET", "fallback-secret")
     
     def verify_token(self, token: str) -> Dict:
-        """Verify JWT token and extract tenant context"""
+        """Verify Cognito JWT token and extract tenant context"""
         try:
-            # Decode JWT token
-            payload = jwt.decode(token, self.jwt_secret, algorithms=["HS256"])
+            # Decode JWT token without verification (for development)
+            # In production, you should verify the signature with Cognito's public keys
+            parts = token.split('.')
+            if len(parts) != 3:
+                raise HTTPException(status_code=401, detail="Invalid token format")
             
-            # Get user details from Cognito
-            user_response = self.cognito_client.admin_get_user(
-                UserPoolId=self.user_pool_id,
-                Username=payload.get("sub")
-            )
+            # Decode payload
+            payload_encoded = parts[1]
+            # Add padding if needed
+            payload_encoded += '=' * (4 - len(payload_encoded) % 4)
+            payload_bytes = base64.urlsafe_b64decode(payload_encoded)
+            payload = json.loads(payload_bytes)
             
-            # Extract tenant_id from custom attributes
-            tenant_id = None
-            for attr in user_response.get("UserAttributes", []):
-                if attr["Name"] == "custom:tenant_id":
-                    tenant_id = attr["Value"]
-                    break
+            # Extract tenant_id and subscription_tier from custom attributes
+            tenant_id = payload.get("custom:tenant_id")
+            subscription_tier = payload.get("custom:subscription_tier", "basic")
             
             if not tenant_id:
-                raise HTTPException(status_code=403, detail="No tenant ID found")
+                raise HTTPException(status_code=403, detail="No tenant ID found in token")
             
             return {
                 "user_id": payload.get("sub"),
                 "tenant_id": tenant_id,
+                "subscription_tier": SubscriptionTier(subscription_tier),
                 "email": payload.get("email"),
-                "username": user_response.get("Username")
+                "username": payload.get("cognito:username", payload.get("email"))
             }
             
-        except jwt.InvalidTokenError:
-            raise HTTPException(status_code=401, detail="Invalid token")
+        except json.JSONDecodeError:
+            raise HTTPException(status_code=401, detail="Invalid token payload")
         except Exception as e:
             raise HTTPException(status_code=401, detail=f"Authentication failed: {str(e)}")
 

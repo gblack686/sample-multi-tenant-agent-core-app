@@ -2,7 +2,7 @@ import boto3
 import uuid
 from datetime import datetime
 from typing import Dict, Optional, List
-from .models import TenantSession, UsageMetric
+from .models import TenantSession, UsageMetric, SubscriptionTier
 import os
 
 class DynamoDBStore:
@@ -11,27 +11,29 @@ class DynamoDBStore:
         self.sessions_table = self.dynamodb.Table(os.getenv("SESSIONS_TABLE", "tenant-sessions"))
         self.usage_table = self.dynamodb.Table(os.getenv("USAGE_TABLE", "tenant-usage"))
     
-    def create_session(self, tenant_id: str, user_id: str) -> str:
-        """Create session in DynamoDB"""
+    def create_session(self, tenant_id: str, user_id: str, subscription_tier: SubscriptionTier) -> str:
+        """Create tier-based session in DynamoDB"""
         session_id = str(uuid.uuid4())
-        session_key = f"{tenant_id}-{user_id}-{session_id}"
+        session_key = f"{tenant_id}-{subscription_tier.value}-{user_id}-{session_id}"
         
         session_item = {
             "session_key": session_key,
             "tenant_id": tenant_id,
             "user_id": user_id,
             "session_id": session_id,
+            "subscription_tier": subscription_tier.value,
             "created_at": datetime.utcnow().isoformat(),
             "last_activity": datetime.utcnow().isoformat(),
-            "message_count": 0
+            "message_count": 0,
+            "tier_usage_count": 0
         }
         
         self.sessions_table.put_item(Item=session_item)
         return session_id
     
-    def get_session(self, tenant_id: str, user_id: str, session_id: str) -> Optional[Dict]:
-        """Get session from DynamoDB"""
-        session_key = f"{tenant_id}-{user_id}-{session_id}"
+    def get_session(self, tenant_id: str, user_id: str, session_id: str, subscription_tier: SubscriptionTier) -> Optional[Dict]:
+        """Get tier-based session from DynamoDB"""
+        session_key = f"{tenant_id}-{subscription_tier.value}-{user_id}-{session_id}"
         
         try:
             response = self.sessions_table.get_item(Key={"session_key": session_key})
@@ -39,13 +41,13 @@ class DynamoDBStore:
         except Exception:
             return None
     
-    def update_session_activity(self, tenant_id: str, user_id: str, session_id: str):
-        """Update session activity in DynamoDB"""
-        session_key = f"{tenant_id}-{user_id}-{session_id}"
+    def update_session_activity(self, tenant_id: str, user_id: str, session_id: str, subscription_tier: SubscriptionTier):
+        """Update tier-based session activity in DynamoDB"""
+        session_key = f"{tenant_id}-{subscription_tier.value}-{user_id}-{session_id}"
         
         self.sessions_table.update_item(
             Key={"session_key": session_key},
-            UpdateExpression="SET last_activity = :la, message_count = message_count + :inc",
+            UpdateExpression="SET last_activity = :la, message_count = message_count + :inc, tier_usage_count = tier_usage_count + :inc",
             ExpressionAttributeValues={
                 ":la": datetime.utcnow().isoformat(),
                 ":inc": 1
