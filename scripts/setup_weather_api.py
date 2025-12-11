@@ -13,6 +13,7 @@ def test_weather_api(api_key: str) -> bool:
     try:
         url = f"https://api.openweathermap.org/data/2.5/weather?q=London&appid={api_key}"
         response = requests.get(url, timeout=10)
+        response.raise_for_status()
         return response.status_code == 200
     except Exception:
         return False

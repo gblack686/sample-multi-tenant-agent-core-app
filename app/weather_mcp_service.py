@@ -33,6 +33,7 @@ class WeatherMCPServer:
         try:
             geo_url = f"http://api.openweathermap.org/geo/1.0/direct?q={location}&limit=1&appid={self.api_key}"
             response = requests.get(geo_url, timeout=10)
+            response.raise_for_status()
             
             if response.status_code == 200:
                 data = response.json()
@@ -55,6 +56,7 @@ class WeatherMCPServer:
             # Call OpenWeatherMap current weather API
             weather_url = f"{self.base_url}/weather?lat={coords['lat']}&lon={coords['lon']}&appid={self.api_key}&units=metric"
             response = requests.get(weather_url, timeout=10)
+            response.raise_for_status()
             
             if response.status_code == 200:
                 data = response.json()
@@ -89,6 +91,7 @@ class WeatherMCPServer:
             # Call OpenWeatherMap 5-day forecast API
             forecast_url = f"{self.base_url}/forecast?lat={coords['lat']}&lon={coords['lon']}&appid={self.api_key}&units=metric"
             response = requests.get(forecast_url, timeout=10)
+            response.raise_for_status()
             
             if response.status_code == 200:
                 data = response.json()
@@ -142,6 +145,7 @@ class WeatherMCPServer:
             # Call OpenWeatherMap One Call API for alerts (requires subscription)
             alerts_url = f"https://api.openweathermap.org/data/3.0/onecall?lat={coords['lat']}&lon={coords['lon']}&appid={self.api_key}"
             response = requests.get(alerts_url, timeout=10)
+            response.raise_for_status()
             
             if response.status_code == 200:
                 data = response.json()
