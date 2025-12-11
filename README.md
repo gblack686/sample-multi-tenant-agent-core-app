@@ -36,7 +36,17 @@ User Login → JWT with tenant_id → Session Attributes → Agent Core Runtime
 - Load testing and performance optimization
 - Monitoring, alerting, and incident response procedures
 
-**Responsible AI**: This system includes automated AWS operations capabilities. Users are responsible for ensuring appropriate safeguards, monitoring, and human oversight when deploying AI-driven infrastructure management tools.
+**Responsible AI**: This system includes automated AWS operations capabilities. Users are responsible for ensuring appropriate safeguards, monitoring, and human oversight when deploying AI-driven infrastructure management tools. Learn more about [AWS Responsible AI practices](https://docs.aws.amazon.com/wellarchitected/latest/generative-ai-lens/responsible-ai.html).
+
+**Guardrails for Foundation Models**: When deploying this application in production, implement [Amazon Bedrock Guardrails](https://docs.aws.amazon.com/bedrock/latest/userguide/guardrails.html) to:
+- **Content Filtering**: Block harmful, inappropriate, or sensitive content based on your use case
+- **Denied Topics**: Prevent the model from generating responses on specific topics
+- **Word Filters**: Filter profanity, custom words, or phrases
+- **PII Redaction**: Automatically detect and redact personally identifiable information
+- **Contextual Grounding**: Reduce hallucinations by grounding responses in source documents
+- **Safety Thresholds**: Configure hate, insults, sexual, violence, and misconduct filters
+
+Guardrails can be applied at the model invocation level or integrated with Agent Core Runtime for comprehensive protection across all tenant interactions.
 
 **Use Case**: This sample code demonstrates patterns for building multi-tenant SaaS AI applications where:
 - Multiple organizations share the same Agent Core Runtime infrastructure
