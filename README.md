@@ -176,6 +176,21 @@ AWS_REGION=us-east-1
 EOF
 ```
 
+#### 3.4 Configure Frontend
+Update `frontend/index.html` with your Cognito credentials:
+
+```javascript
+// Find the CONFIG object around line 529 and update:
+const CONFIG = {
+    userPoolId: 'YOUR_USER_POOL_ID',      // Replace with output from Terraform
+    clientId: 'YOUR_CLIENT_ID',            // Replace with output from Terraform
+    region: 'us-east-1',
+    apiUrl: 'http://localhost:8000'
+};
+```
+
+**Important**: Replace `YOUR_USER_POOL_ID` and `YOUR_CLIENT_ID` with the actual values from Terraform output.
+
 ### Step 4: Run Application
 ```bash
 python run.py
