@@ -927,7 +927,7 @@
                     
                     infoPanel.textContent = '';
                     const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = toolsHtml;
+                    tempDiv.textContent = toolsHtml;
                     while (tempDiv.firstChild) {
                         infoPanel.appendChild(tempDiv.firstChild);
                     }
@@ -969,19 +969,49 @@
                     
                     const limitsDiv = document.createElement('div');
                     limitsDiv.style.cssText = 'background: var(--aws-bg); padding: 20px; border-radius: 8px; margin: 15px 0;';
-                    limitsDiv.innerHTML = `<h4 style="margin-bottom: 15px; color: var(--aws-dark);">Plan Limits</h4>
-                        <p>• Daily Messages: <strong>${info.limits.daily_messages}</strong></p>
-                        <p>• Monthly Messages: <strong>${info.limits.monthly_messages}</strong></p>
-                        <p>• Session Duration: <strong>${info.limits.max_session_duration} minutes</strong></p>
-                        <p>• Concurrent Sessions: <strong>${info.limits.concurrent_sessions}</strong></p>
-                        <p>• MCP Access: ${info.limits.mcp_server_access ? '<strong style="color: #037F0C;">✅ Enabled</strong>' : '<strong style="color: #D13212;">❌ Disabled</strong>'}</p>`;
+                    const limitsH4 = document.createElement('h4');
+                    limitsH4.style.cssText = 'margin-bottom: 15px; color: var(--aws-dark);';
+                    limitsH4.textContent = 'Plan Limits';
+                    limitsDiv.appendChild(limitsH4);
+                    
+                    const dailyP = document.createElement('p');
+                    dailyP.textContent = `• Daily Messages: ${info.limits.daily_messages}`;
+                    const monthlyP = document.createElement('p');
+                    monthlyP.textContent = `• Monthly Messages: ${info.limits.monthly_messages}`;
+                    const durationP = document.createElement('p');
+                    durationP.textContent = `• Session Duration: ${info.limits.max_session_duration} minutes`;
+                    const concurrentP = document.createElement('p');
+                    concurrentP.textContent = `• Concurrent Sessions: ${info.limits.concurrent_sessions}`;
+                    const mcpP = document.createElement('p');
+                    mcpP.textContent = '• MCP Access: ';
+                    const mcpStatus = document.createElement('strong');
+                    mcpStatus.style.color = info.limits.mcp_server_access ? '#037F0C' : '#D13212';
+                    mcpStatus.textContent = info.limits.mcp_server_access ? '✅ Enabled' : '❌ Disabled';
+                    mcpP.appendChild(mcpStatus);
+                    
+                    limitsDiv.appendChild(dailyP);
+                    limitsDiv.appendChild(monthlyP);
+                    limitsDiv.appendChild(durationP);
+                    limitsDiv.appendChild(concurrentP);
+                    limitsDiv.appendChild(mcpP);
                     
                     const usageDiv = document.createElement('div');
                     usageDiv.style.cssText = 'background: linear-gradient(135deg, #E9F7EF 0%, #D4EDDA 100%); padding: 20px; border-radius: 8px;';
-                    usageDiv.innerHTML = `<h4 style="margin-bottom: 15px; color: var(--aws-dark);">Current Usage</h4>
-                        <p>• Daily: <strong>${info.current_usage.daily_usage}/${info.limits.daily_messages}</strong> (${((info.current_usage.daily_usage/info.limits.daily_messages)*100).toFixed(1)}%)</p>
-                        <p>• Monthly: <strong>${info.current_usage.monthly_usage}/${info.limits.monthly_messages}</strong> (${((info.current_usage.monthly_usage/info.limits.monthly_messages)*100).toFixed(1)}%)</p>
-                        <p>• Active Sessions: <strong>${info.current_usage.active_sessions}/${info.limits.concurrent_sessions}</strong></p>`;
+                    const usageH4 = document.createElement('h4');
+                    usageH4.style.cssText = 'margin-bottom: 15px; color: var(--aws-dark);';
+                    usageH4.textContent = 'Current Usage';
+                    usageDiv.appendChild(usageH4);
+                    
+                    const dailyUsageP = document.createElement('p');
+                    dailyUsageP.textContent = `• Daily: ${info.current_usage.daily_usage}/${info.limits.daily_messages} (${((info.current_usage.daily_usage/info.limits.daily_messages)*100).toFixed(1)}%)`;
+                    const monthlyUsageP = document.createElement('p');
+                    monthlyUsageP.textContent = `• Monthly: ${info.current_usage.monthly_usage}/${info.limits.monthly_messages} (${((info.current_usage.monthly_usage/info.limits.monthly_messages)*100).toFixed(1)}%)`;
+                    const activeSessionsP = document.createElement('p');
+                    activeSessionsP.textContent = `• Active Sessions: ${info.current_usage.active_sessions}/${info.limits.concurrent_sessions}`;
+                    
+                    usageDiv.appendChild(dailyUsageP);
+                    usageDiv.appendChild(monthlyUsageP);
+                    usageDiv.appendChild(activeSessionsP);
                     
                     infoPanel.appendChild(title);
                     infoPanel.appendChild(tierP);
@@ -1108,7 +1138,7 @@
                     `;
                     infoPanel.textContent = '';
                     const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = costHtml;
+                    tempDiv.textContent = costHtml;
                     while (tempDiv.firstChild) {
                         infoPanel.appendChild(tempDiv.firstChild);
                     }
@@ -1154,7 +1184,7 @@
                     `;
                     infoPanel.textContent = '';
                     const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = userCostHtml;
+                    tempDiv.textContent = userCostHtml;
                     while (tempDiv.firstChild) {
                         infoPanel.appendChild(tempDiv.firstChild);
                     }
@@ -1199,7 +1229,7 @@
                     `;
                     infoPanel.textContent = '';
                     const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = adminHtml;
+                    tempDiv.textContent = adminHtml;
                     while (tempDiv.firstChild) {
                         infoPanel.appendChild(tempDiv.firstChild);
                     }
@@ -1253,7 +1283,7 @@
                     
                     const div = document.createElement('div');
                     div.style.cssText = 'max-height: 300px; overflow-y: auto;';
-                    div.innerHTML = userList;
+                    div.textContent = userList;
                     
                     usageInfo.appendChild(title);
                     usageInfo.appendChild(div);
@@ -1292,7 +1322,7 @@
                     
                     const div = document.createElement('div');
                     div.style.cssText = 'max-height: 300px; overflow-y: auto;';
-                    div.innerHTML = serviceList;
+                    div.textContent = serviceList;
                     
                     usageInfo.appendChild(title);
                     usageInfo.appendChild(div);
@@ -1333,7 +1363,7 @@
                     const usageInfo = document.getElementById('usageInfo');
                     usageInfo.textContent = '';
                     const tempDiv = document.createElement('div');
-                    tempDiv.innerHTML = reportHtml;
+                    tempDiv.textContent = reportHtml;
                     while (tempDiv.firstChild) {
                         usageInfo.appendChild(tempDiv.firstChild);
                     }
