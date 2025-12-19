@@ -31,7 +31,7 @@ class WeatherMCPServer:
     def _get_coordinates(self, location: str) -> Optional[Dict[str, float]]:
         """Get coordinates for location using geocoding API"""
         try:
-            geo_url = f"http://api.openweathermap.org/geo/1.0/direct?q={location}&limit=1&appid={self.api_key}"
+            geo_url = f"https://api.openweathermap.org/geo/1.0/direct?q={location}&limit=1&appid={self.api_key}"
             response = requests.get(geo_url, timeout=10)
             response.raise_for_status()
             
