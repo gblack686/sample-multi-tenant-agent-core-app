@@ -480,7 +480,7 @@ POST /api/admin/add-to-group
 ### Supported Bedrock Models
 
 This application supports all AWS Bedrock foundation models including:
-- **Anthropic Claude Models**: Claude 3 Haiku, Claude 3 Sonnet, Claude 3.5 Sonnet, Claude 3 Opus
+- **Anthropic Claude Models**: Claude 3 Haiku, Claude 3 Sonnet, Claude 3.5 Sonnet, Claude 3 Opus, Claude Sonnet 4, Claude Sonnet 4.5
 - **Amazon Titan Models**: Titan Text Express, Titan Text Lite, Titan Embeddings
 - **AI21 Labs Models**: Jurassic-2 Ultra, Jurassic-2 Mid
 - **Cohere Models**: Command, Command Light
@@ -543,6 +543,19 @@ Configure the model ID in your application based on your use case and cost requi
 - **Scalable Design**: Add new tenants without infrastructure changes
 - **Admin Segregation**: Tenant-specific administrative access
 - **Usage Analytics**: Per-tenant usage patterns and optimization opportunities
+
+## 🎥 Demo Video
+
+Watch the application in action:
+
+https://github.com/user-attachments/assets/demo.mp4
+
+The demo showcases:
+- User registration and authentication with Cognito
+- Multi-tenant chat interface with Agent Core Runtime
+- Real-time weather queries using MCP tools
+- Subscription tier management and usage tracking
+- Admin cost attribution and analytics dashboards
 
 ## 🧹 Cleanup
 
