@@ -722,26 +722,50 @@ async def test_6_tier_gated_tools():
 # Test 7: Skill loading via system_prompt
 # ============================================================
 
-OA_INTAKE_SKILL_PATH = os.path.join(
+NCI_OA_AGENT_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)),
-    "..", "nci-oa-agent", ".claude", "skills", "oa-intake", "SKILL.md"
+    "..", "nci-oa-agent"
 )
 
-# Also check the absolute path the user specified
-OA_INTAKE_SKILL_PATHS = [
-    OA_INTAKE_SKILL_PATH,
-    "C:/Users/gblac/OneDrive/Desktop/afs/nci-oa-agent/.claude/skills/oa-intake/SKILL.md",
-]
+NCI_OA_AGENT_DIR_ABS = "C:/Users/gblac/OneDrive/Desktop/afs/nci-oa-agent"
 
 
-def load_skill_file() -> str:
-    """Load the OA Intake skill markdown as a system prompt."""
-    for path in OA_INTAKE_SKILL_PATHS:
+def load_skill_or_prompt(skill_name: str = None, prompt_file: str = None) -> tuple:
+    """Load a skill SKILL.md or legacy agent prompt as system_prompt content.
+
+    Args:
+        skill_name: Name of skill directory under .claude/skills/ (e.g., "oa-intake")
+        prompt_file: Name of legacy prompt file under data/legacy-agent-prompts/ (e.g., "02-legal.txt")
+
+    Returns:
+        (content, path) tuple, or (None, None) if not found
+    """
+    paths = []
+
+    if skill_name:
+        paths.extend([
+            os.path.join(NCI_OA_AGENT_DIR, ".claude", "skills", skill_name, "SKILL.md"),
+            os.path.join(NCI_OA_AGENT_DIR_ABS, ".claude", "skills", skill_name, "SKILL.md"),
+        ])
+
+    if prompt_file:
+        paths.extend([
+            os.path.join(NCI_OA_AGENT_DIR, "data", "legacy-agent-prompts", prompt_file),
+            os.path.join(NCI_OA_AGENT_DIR_ABS, "data", "legacy-agent-prompts", prompt_file),
+        ])
+
+    for path in paths:
         if os.path.exists(path):
             with open(path, "r", encoding="utf-8") as f:
                 content = f.read()
             return content, path
+
     return None, None
+
+
+def load_skill_file() -> tuple:
+    """Load the OA Intake skill markdown as a system prompt (backward compat)."""
+    return load_skill_or_prompt(skill_name="oa-intake")
 
 
 async def test_7_skill_loading():
@@ -1105,6 +1129,567 @@ async def test_9_oa_intake_workflow():
 
 
 # ============================================================
+# Test 10: Legal Counsel Skill (Sole Source J&A Review)
+# ============================================================
+
+async def test_10_legal_counsel_skill():
+    """Test Legal Counsel skill loaded from legacy prompt 02-legal.txt.
+    Validates protest risk assessment, FAR citation, and case law references.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 10: Legal Counsel Skill (Sole Source J&A Review)")
+    print("=" * 70)
+
+    skill_content, skill_path = load_skill_or_prompt(prompt_file="02-legal.txt")
+    if not skill_content:
+        print(f"  SKIP - Legal prompt not found")
+        return None
+
+    print(f"  Skill loaded: {skill_path}")
+    print(f"  Scenario: Sole source $985K Illumina sequencer")
+    print()
+
+    tenant_context = (
+        "Tenant: nci-oa | User: co-johnson-001 | Tier: premium\n"
+        "You are the Legal Counsel skill for the EAGLE Supervisor Agent.\n\n"
+    )
+
+    options = ClaudeAgentOptions(
+        model="haiku",
+        system_prompt=tenant_context + skill_content,
+        allowed_tools=[],
+        permission_mode="bypassPermissions",
+        max_turns=3,
+        max_budget_usd=0.15,
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        env={
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_REGION": "us-east-1",
+        },
+    )
+
+    collector = TraceCollector()
+
+    async for message in query(
+        prompt=(
+            "I need to sole source a $985K Illumina NovaSeq X Plus genome sequencer. "
+            "Only Illumina makes this instrument. Assess the protest risk and "
+            "tell me what FAR authority applies. What case precedents support this?"
+        ),
+        options=options,
+    ):
+        collector.process(message, indent=2)
+
+    print()
+    summary = collector.summary()
+    print(f"  --- Results ---")
+    print(f"  Messages: {summary['total_messages']}")
+    print(f"  Tokens: {summary['total_input_tokens']} in / {summary['total_output_tokens']} out")
+    print(f"  Cost: ${summary['total_cost_usd']:.6f}")
+
+    all_text = " ".join(collector.text_blocks).lower()
+    for msg_entry in collector.messages:
+        msg = msg_entry["message"]
+        if hasattr(msg, "result") and msg.result:
+            all_text += " " + msg.result.lower()
+
+    indicators = {
+        "far_citation": any(w in all_text for w in ["far 6.302", "6.302-1", "one responsible source"]),
+        "protest_risk": any(w in all_text for w in ["protest", "risk", "gao", "vulnerability"]),
+        "case_law": any(w in all_text for w in ["b-4", "decision", "precedent", "sustained", "denied"]),
+        "proprietary": any(w in all_text for w in ["proprietary", "sole source", "only one", "sole vendor"]),
+        "recommendation": any(w in all_text for w in ["recommend", "document", "justif", "market research"]),
+    }
+
+    print(f"  Skill indicators:")
+    for indicator, found in indicators.items():
+        print(f"    {indicator}: {found}")
+
+    indicators_found = sum(1 for v in indicators.values() if v)
+    passed = indicators_found >= 3 and summary["total_messages"] > 0
+    print(f"\n  Skill indicators: {indicators_found}/5")
+    print(f"  {'PASS' if passed else 'FAIL'} - Legal Counsel skill applied")
+    return passed
+
+
+# ============================================================
+# Test 11: Market Intelligence Skill (Vendor Research)
+# ============================================================
+
+async def test_11_market_intelligence_skill():
+    """Test Market Intelligence skill loaded from legacy prompt 04-market.txt.
+    Validates vendor analysis, GSA pricing, and small business advocacy.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 11: Market Intelligence Skill (Vendor Research)")
+    print("=" * 70)
+
+    skill_content, skill_path = load_skill_or_prompt(prompt_file="04-market.txt")
+    if not skill_content:
+        print(f"  SKIP - Market prompt not found")
+        return None
+
+    print(f"  Skill loaded: {skill_path}")
+    print(f"  Scenario: IT services $500K market research")
+    print()
+
+    tenant_context = (
+        "Tenant: nci-oa | User: market-analyst-001 | Tier: premium\n"
+        "You are the Market Intelligence skill for the EAGLE Supervisor Agent.\n\n"
+    )
+
+    options = ClaudeAgentOptions(
+        model="haiku",
+        system_prompt=tenant_context + skill_content,
+        allowed_tools=[],
+        permission_mode="bypassPermissions",
+        max_turns=3,
+        max_budget_usd=0.15,
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        env={
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_REGION": "us-east-1",
+        },
+    )
+
+    collector = TraceCollector()
+
+    async for message in query(
+        prompt=(
+            "We need IT modernization services for approximately $500K over 3 years. "
+            "Cloud migration and agile development. What does the market look like? "
+            "Any small business set-aside opportunities? What about GSA vehicles?"
+        ),
+        options=options,
+    ):
+        collector.process(message, indent=2)
+
+    print()
+    summary = collector.summary()
+    print(f"  --- Results ---")
+    print(f"  Messages: {summary['total_messages']}")
+    print(f"  Tokens: {summary['total_input_tokens']} in / {summary['total_output_tokens']} out")
+    print(f"  Cost: ${summary['total_cost_usd']:.6f}")
+
+    all_text = " ".join(collector.text_blocks).lower()
+    for msg_entry in collector.messages:
+        msg = msg_entry["message"]
+        if hasattr(msg, "result") and msg.result:
+            all_text += " " + msg.result.lower()
+
+    indicators = {
+        "small_business": any(w in all_text for w in ["small business", "8(a)", "hubzone", "wosb", "sdvosb", "set-aside"]),
+        "gsa_vehicles": any(w in all_text for w in ["gsa", "schedule", "gwac", "alliant", "cio-sp", "it schedule"]),
+        "pricing": any(w in all_text for w in ["rate", "pricing", "cost", "benchmark", "$", "labor"]),
+        "vendor_analysis": any(w in all_text for w in ["vendor", "contractor", "provider", "firm", "company"]),
+        "competition": any(w in all_text for w in ["competit", "market", "availab", "capabil"]),
+    }
+
+    print(f"  Skill indicators:")
+    for indicator, found in indicators.items():
+        print(f"    {indicator}: {found}")
+
+    indicators_found = sum(1 for v in indicators.values() if v)
+    passed = indicators_found >= 3 and summary["total_messages"] > 0
+    print(f"\n  Skill indicators: {indicators_found}/5")
+    print(f"  {'PASS' if passed else 'FAIL'} - Market Intelligence skill applied")
+    return passed
+
+
+# ============================================================
+# Test 12: Tech Review Skill (SOW Requirements Translation)
+# ============================================================
+
+async def test_12_tech_review_skill():
+    """Test Tech Review skill loaded from legacy prompt 03-tech.txt.
+    Validates technical-to-contract language translation and eval criteria.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 12: Tech Review Skill (SOW Requirements Translation)")
+    print("=" * 70)
+
+    skill_content, skill_path = load_skill_or_prompt(prompt_file="03-tech.txt")
+    if not skill_content:
+        print(f"  SKIP - Tech prompt not found")
+        return None
+
+    print(f"  Skill loaded: {skill_path}")
+    print(f"  Scenario: Agile development SOW requirements")
+    print()
+
+    tenant_context = (
+        "Tenant: nci-oa | User: cor-williams-001 | Tier: premium\n"
+        "You are the Tech Review skill for the EAGLE Supervisor Agent.\n\n"
+    )
+
+    options = ClaudeAgentOptions(
+        model="haiku",
+        system_prompt=tenant_context + skill_content,
+        allowed_tools=[],
+        permission_mode="bypassPermissions",
+        max_turns=3,
+        max_budget_usd=0.15,
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        env={
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_REGION": "us-east-1",
+        },
+    )
+
+    collector = TraceCollector()
+
+    async for message in query(
+        prompt=(
+            "I need to write SOW requirements for an agile cloud migration project. "
+            "The team will use 2-week sprints, AWS GovCloud, and need FedRAMP compliance. "
+            "How should I express these technical requirements in contract language? "
+            "What evaluation criteria would you recommend?"
+        ),
+        options=options,
+    ):
+        collector.process(message, indent=2)
+
+    print()
+    summary = collector.summary()
+    print(f"  --- Results ---")
+    print(f"  Messages: {summary['total_messages']}")
+    print(f"  Tokens: {summary['total_input_tokens']} in / {summary['total_output_tokens']} out")
+    print(f"  Cost: ${summary['total_cost_usd']:.6f}")
+
+    all_text = " ".join(collector.text_blocks).lower()
+    for msg_entry in collector.messages:
+        msg = msg_entry["message"]
+        if hasattr(msg, "result") and msg.result:
+            all_text += " " + msg.result.lower()
+
+    indicators = {
+        "sow_language": any(w in all_text for w in ["sow", "statement of work", "deliverable", "performance"]),
+        "agile_terms": any(w in all_text for w in ["sprint", "agile", "iteration", "scrum", "backlog"]),
+        "evaluation": any(w in all_text for w in ["evaluat", "criteria", "factor", "technical approach", "past performance"]),
+        "compliance": any(w in all_text for w in ["fedramp", "508", "security", "compliance", "govcloud"]),
+        "measurable": any(w in all_text for w in ["measur", "accept", "milestone", "definition of done", "metric"]),
+    }
+
+    print(f"  Skill indicators:")
+    for indicator, found in indicators.items():
+        print(f"    {indicator}: {found}")
+
+    indicators_found = sum(1 for v in indicators.values() if v)
+    passed = indicators_found >= 3 and summary["total_messages"] > 0
+    print(f"\n  Skill indicators: {indicators_found}/5")
+    print(f"  {'PASS' if passed else 'FAIL'} - Tech Review skill applied")
+    return passed
+
+
+# ============================================================
+# Test 13: Public Interest Skill (Fairness & Transparency)
+# ============================================================
+
+async def test_13_public_interest_skill():
+    """Test Public Interest skill loaded from legacy prompt 05-public.txt.
+    Validates fairness assessment, transparency check, and protest prevention.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 13: Public Interest Skill (Fairness & Transparency)")
+    print("=" * 70)
+
+    skill_content, skill_path = load_skill_or_prompt(prompt_file="05-public.txt")
+    if not skill_content:
+        print(f"  SKIP - Public Interest prompt not found")
+        return None
+
+    print(f"  Skill loaded: {skill_path}")
+    print(f"  Scenario: $2.1M sole source IT services review")
+    print()
+
+    tenant_context = (
+        "Tenant: nci-oa | User: co-davis-001 | Tier: premium\n"
+        "You are the Public Interest skill for the EAGLE Supervisor Agent.\n\n"
+    )
+
+    options = ClaudeAgentOptions(
+        model="haiku",
+        system_prompt=tenant_context + skill_content,
+        allowed_tools=[],
+        permission_mode="bypassPermissions",
+        max_turns=3,
+        max_budget_usd=0.15,
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        env={
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_REGION": "us-east-1",
+        },
+    )
+
+    collector = TraceCollector()
+
+    async for message in query(
+        prompt=(
+            "Review this for public interest concerns: We're doing a sole source "
+            "award for $2.1M in IT services to the same vendor who had the previous "
+            "contract. No sources sought was posted on SAM.gov. Only 2 vendors were "
+            "contacted during market research. This is a congressional interest area."
+        ),
+        options=options,
+    ):
+        collector.process(message, indent=2)
+
+    print()
+    summary = collector.summary()
+    print(f"  --- Results ---")
+    print(f"  Messages: {summary['total_messages']}")
+    print(f"  Tokens: {summary['total_input_tokens']} in / {summary['total_output_tokens']} out")
+    print(f"  Cost: ${summary['total_cost_usd']:.6f}")
+
+    all_text = " ".join(collector.text_blocks).lower()
+    for msg_entry in collector.messages:
+        msg = msg_entry["message"]
+        if hasattr(msg, "result") and msg.result:
+            all_text += " " + msg.result.lower()
+
+    indicators = {
+        "fairness": any(w in all_text for w in ["fair", "equit", "appearance", "vendor lock", "incumbent"]),
+        "transparency": any(w in all_text for w in ["transparen", "sam.gov", "sources sought", "public", "notice"]),
+        "protest_risk": any(w in all_text for w in ["protest", "risk", "vulnerab", "challenge", "gao"]),
+        "congressional": any(w in all_text for w in ["congress", "oversight", "media", "scrutin", "political"]),
+        "recommendation": any(w in all_text for w in ["recommend", "mitigat", "broader", "expand", "post"]),
+    }
+
+    print(f"  Skill indicators:")
+    for indicator, found in indicators.items():
+        print(f"    {indicator}: {found}")
+
+    indicators_found = sum(1 for v in indicators.values() if v)
+    passed = indicators_found >= 3 and summary["total_messages"] > 0
+    print(f"\n  Skill indicators: {indicators_found}/5")
+    print(f"  {'PASS' if passed else 'FAIL'} - Public Interest skill applied")
+    return passed
+
+
+# ============================================================
+# Test 14: Document Generator Skill (AP Generation)
+# ============================================================
+
+async def test_14_document_generator_skill():
+    """Test Document Generator skill loaded from SKILL.md.
+    Validates AP structure, FAR references, and signature blocks.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 14: Document Generator Skill (Acquisition Plan)")
+    print("=" * 70)
+
+    skill_content, skill_path = load_skill_or_prompt(skill_name="document-generator")
+    if not skill_content:
+        print(f"  SKIP - Document Generator skill not found")
+        return None
+
+    print(f"  Skill loaded: {skill_path}")
+    print(f"  Scenario: Generate AP for $300K lab equipment")
+    print()
+
+    tenant_context = (
+        "Tenant: nci-oa | User: co-martinez-001 | Tier: premium\n"
+        "You are the Document Generator skill for the EAGLE Supervisor Agent.\n\n"
+    )
+
+    options = ClaudeAgentOptions(
+        model="haiku",
+        system_prompt=tenant_context + skill_content,
+        allowed_tools=[],
+        permission_mode="bypassPermissions",
+        max_turns=3,
+        max_budget_usd=0.15,
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        env={
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_REGION": "us-east-1",
+        },
+    )
+
+    collector = TraceCollector()
+
+    async for message in query(
+        prompt=(
+            "Generate an Acquisition Plan (AP) for the following: "
+            "$300K laboratory centrifuge equipment purchase, new, competitive, "
+            "simplified acquisition procedures (FAR Part 13), small business set-aside, "
+            "delivery within 90 days, FY2026 funding. Include all required sections."
+        ),
+        options=options,
+    ):
+        collector.process(message, indent=2)
+
+    print()
+    summary = collector.summary()
+    print(f"  --- Results ---")
+    print(f"  Messages: {summary['total_messages']}")
+    print(f"  Tokens: {summary['total_input_tokens']} in / {summary['total_output_tokens']} out")
+    print(f"  Cost: ${summary['total_cost_usd']:.6f}")
+
+    all_text = " ".join(collector.text_blocks).lower()
+    for msg_entry in collector.messages:
+        msg = msg_entry["message"]
+        if hasattr(msg, "result") and msg.result:
+            all_text += " " + msg.result.lower()
+
+    indicators = {
+        "ap_sections": any(w in all_text for w in ["section 1", "statement of need", "background", "objective"]),
+        "far_reference": any(w in all_text for w in ["far", "part 13", "simplified", "52."]),
+        "cost_info": any(w in all_text for w in ["$300", "fy2026", "funding", "cost"]),
+        "competition": any(w in all_text for w in ["competit", "set-aside", "small business", "source selection"]),
+        "signature": any(w in all_text for w in ["signature", "approv", "contracting officer", "program"]),
+    }
+
+    print(f"  Skill indicators:")
+    for indicator, found in indicators.items():
+        print(f"    {indicator}: {found}")
+
+    indicators_found = sum(1 for v in indicators.values() if v)
+    passed = indicators_found >= 3 and summary["total_messages"] > 0
+    print(f"\n  Skill indicators: {indicators_found}/5")
+    print(f"  {'PASS' if passed else 'FAIL'} - Document Generator skill applied")
+    return passed
+
+
+# ============================================================
+# Test 15: Supervisor Multi-Skill Chain (UC-01 End-to-End)
+# ============================================================
+
+async def test_15_supervisor_multi_skill_chain():
+    """Test the Supervisor Agent invoking multiple skills as subagents.
+    Simulates the UC-01 full skill chain: Intake -> Market -> Legal -> DocGen.
+    Each skill is a subagent with its own system_prompt from legacy prompts.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 15: Supervisor Multi-Skill Chain (UC-01 End-to-End)")
+    print("=" * 70)
+
+    # Load skill prompts for subagents
+    legal_content, _ = load_skill_or_prompt(prompt_file="02-legal.txt")
+    market_content, _ = load_skill_or_prompt(prompt_file="04-market.txt")
+    intake_content, _ = load_skill_or_prompt(skill_name="oa-intake")
+
+    missing = []
+    if not legal_content:
+        missing.append("02-legal.txt")
+    if not market_content:
+        missing.append("04-market.txt")
+    if not intake_content:
+        missing.append("oa-intake SKILL.md")
+
+    if missing:
+        print(f"  SKIP - Missing skill files: {missing}")
+        return None
+
+    print(f"  Skill chain: OA Intake -> Market Intelligence -> Legal Counsel")
+    print(f"  Scenario: $500K IT services, competitive, 3-year PoP")
+    print()
+
+    supervisor_prompt = (
+        "You are the EAGLE Supervisor Agent for NCI Office of Acquisitions.\n"
+        "You orchestrate acquisition workflows by delegating to specialized skill subagents.\n\n"
+        "Available subagents:\n"
+        "- oa-intake: Gathers initial requirements and determines acquisition type\n"
+        "- market-intelligence: Researches vendors, pricing, small business opportunities\n"
+        "- legal-counsel: Assesses legal risks, protest vulnerabilities, FAR compliance\n\n"
+        "For this request, invoke each subagent in sequence:\n"
+        "1. First use oa-intake to classify the acquisition\n"
+        "2. Then use market-intelligence to assess the market\n"
+        "3. Then use legal-counsel to check legal risks\n"
+        "4. Synthesize all findings into a brief summary\n\n"
+        "IMPORTANT: You MUST use the Task tool to delegate to subagents. Do not answer directly."
+    )
+
+    options = ClaudeAgentOptions(
+        model="haiku",
+        system_prompt=supervisor_prompt,
+        allowed_tools=["Task"],
+        permission_mode="bypassPermissions",
+        max_turns=15,
+        max_budget_usd=0.50,
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        env={
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_REGION": "us-east-1",
+        },
+        agents={
+            "oa-intake": AgentDefinition(
+                description="Gathers acquisition requirements and determines type/threshold. Use for initial intake.",
+                prompt=intake_content[:3000],  # Truncate to fit
+                tools=[],
+                model="haiku",
+            ),
+            "market-intelligence": AgentDefinition(
+                description="Researches market conditions, vendors, and pricing. Use for market research.",
+                prompt=market_content,
+                tools=[],
+                model="haiku",
+            ),
+            "legal-counsel": AgentDefinition(
+                description="Assesses legal risks, protest vulnerabilities, FAR compliance. Use for legal review.",
+                prompt=legal_content,
+                tools=[],
+                model="haiku",
+            ),
+        },
+    )
+
+    collector = TraceCollector()
+
+    async for message in query(
+        prompt=(
+            "New acquisition request: We need IT modernization services for $500K "
+            "over 3 years. Includes cloud migration and agile development. "
+            "Run the full skill chain to assess this acquisition."
+        ),
+        options=options,
+    ):
+        collector.process(message, indent=2)
+
+    print()
+    summary = collector.summary()
+    print(f"  --- Results ---")
+    print(f"  Messages: {summary['total_messages']}")
+    print(f"  Tool use blocks: {summary['tool_use_blocks']}")
+    print(f"  Tokens: {summary['total_input_tokens']} in / {summary['total_output_tokens']} out")
+    print(f"  Cost: ${summary['total_cost_usd']:.6f}")
+
+    # Check for subagent invocations
+    subagent_calls = [t for t in collector.tool_use_blocks if t["tool"] == "Task"]
+    subagent_types = [t["input"].get("subagent_type", t["input"].get("description", "?"))
+                      for t in subagent_calls]
+
+    print(f"  Subagent invocations: {len(subagent_calls)}")
+    for st in subagent_types:
+        print(f"    -> {st}")
+
+    # Check response content
+    all_text = " ".join(collector.text_blocks).lower()
+    for msg_entry in collector.messages:
+        msg = msg_entry["message"]
+        if hasattr(msg, "result") and msg.result:
+            all_text += " " + msg.result.lower()
+
+    indicators = {
+        "multiple_subagents": len(subagent_calls) >= 2,
+        "intake_invoked": any("intake" in st.lower() for st in subagent_types),
+        "market_invoked": any("market" in st.lower() for st in subagent_types),
+        "legal_invoked": any("legal" in st.lower() or "counsel" in st.lower() for st in subagent_types),
+        "synthesis": any(w in all_text for w in ["summary", "recommend", "finding", "assessment", "result"]),
+    }
+
+    print(f"  Skill chain indicators:")
+    for indicator, found in indicators.items():
+        print(f"    {indicator}: {found}")
+
+    indicators_found = sum(1 for v in indicators.values() if v)
+    passed = indicators_found >= 3 and summary["total_messages"] > 2
+    print(f"\n  Skill chain indicators: {indicators_found}/5")
+    print(f"  {'PASS' if passed else 'FAIL'} - Supervisor multi-skill chain")
+    return passed
+
+
+# ============================================================
 # Main
 # ============================================================
 
@@ -1253,6 +1838,72 @@ async def main():
         results["9_oa_intake_workflow"] = False
     capture.end_test()
 
+    # Test 10: Legal Counsel Skill
+    capture.start_test(10)
+    try:
+        results["10_legal_counsel_skill"] = await test_10_legal_counsel_skill()
+    except Exception as e:
+        print(f"  ERROR: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        results["10_legal_counsel_skill"] = False
+    capture.end_test()
+
+    # Test 11: Market Intelligence Skill
+    capture.start_test(11)
+    try:
+        results["11_market_intelligence_skill"] = await test_11_market_intelligence_skill()
+    except Exception as e:
+        print(f"  ERROR: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        results["11_market_intelligence_skill"] = False
+    capture.end_test()
+
+    # Test 12: Tech Review Skill
+    capture.start_test(12)
+    try:
+        results["12_tech_review_skill"] = await test_12_tech_review_skill()
+    except Exception as e:
+        print(f"  ERROR: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        results["12_tech_review_skill"] = False
+    capture.end_test()
+
+    # Test 13: Public Interest Skill
+    capture.start_test(13)
+    try:
+        results["13_public_interest_skill"] = await test_13_public_interest_skill()
+    except Exception as e:
+        print(f"  ERROR: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        results["13_public_interest_skill"] = False
+    capture.end_test()
+
+    # Test 14: Document Generator Skill
+    capture.start_test(14)
+    try:
+        results["14_document_generator_skill"] = await test_14_document_generator_skill()
+    except Exception as e:
+        print(f"  ERROR: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        results["14_document_generator_skill"] = False
+    capture.end_test()
+
+    # Test 15: Supervisor Multi-Skill Chain
+    capture.start_test(15)
+    try:
+        results["15_supervisor_multi_skill_chain"] = await test_15_supervisor_multi_skill_chain()
+    except Exception as e:
+        print(f"  ERROR: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        results["15_supervisor_multi_skill_chain"] = False
+    capture.end_test()
+
     # Summary
     print("\n" + "=" * 70)
     print("OPTION C VALIDATION SUMMARY")
@@ -1285,6 +1936,13 @@ async def main():
     print(f"    Skill loading (system_prompt): {'Ready' if results.get('7_skill_loading') else 'Needs work'}")
     print(f"    Subagent tool tracking: {'Ready' if results.get('8_subagent_tool_tracking') else 'Needs work'}")
     print(f"    OA Intake workflow: {'Ready' if results.get('9_oa_intake_workflow') else 'Needs work'}")
+    print(f"\n  EAGLE Skill Validation:")
+    print(f"    Legal Counsel skill: {'Ready' if results.get('10_legal_counsel_skill') else 'Needs work'}")
+    print(f"    Market Intelligence skill: {'Ready' if results.get('11_market_intelligence_skill') else 'Needs work'}")
+    print(f"    Tech Review skill: {'Ready' if results.get('12_tech_review_skill') else 'Needs work'}")
+    print(f"    Public Interest skill: {'Ready' if results.get('13_public_interest_skill') else 'Needs work'}")
+    print(f"    Document Generator skill: {'Ready' if results.get('14_document_generator_skill') else 'Needs work'}")
+    print(f"    Supervisor Multi-Skill Chain: {'Ready' if results.get('15_supervisor_multi_skill_chain') else 'Needs work'}")
 
     # Restore stdout
     sys.stdout = capture.original
@@ -1305,6 +1963,12 @@ async def main():
             7: "7_skill_loading",
             8: "8_subagent_tool_tracking",
             9: "9_oa_intake_workflow",
+            10: "10_legal_counsel_skill",
+            11: "11_market_intelligence_skill",
+            12: "12_tech_review_skill",
+            13: "13_public_interest_skill",
+            14: "14_document_generator_skill",
+            15: "15_supervisor_multi_skill_chain",
         }.get(test_id, str(test_id))
 
         result_val = results.get(result_key)
