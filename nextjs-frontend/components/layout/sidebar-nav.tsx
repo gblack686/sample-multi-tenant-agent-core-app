@@ -9,6 +9,9 @@ import {
   LogOut,
   MessageSquare,
   Loader2,
+  LayoutDashboard,
+  FlaskConical,
+  GitBranch,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useSession } from '@/contexts/session-context';
@@ -23,6 +26,12 @@ interface NavItem {
 const resourceNavItems: NavItem[] = [
   { href: '/workflows', label: 'Acquisition Packages', icon: <FolderKanban className="w-5 h-5" /> },
   { href: '/documents', label: 'Documents', icon: <FileText className="w-5 h-5" /> },
+];
+
+const toolNavItems: NavItem[] = [
+  { href: '/admin', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
+  { href: '/admin/tests', label: 'Test Results', icon: <FlaskConical className="w-5 h-5" /> },
+  { href: '/admin/viewer', label: 'Workflow Viewer', icon: <GitBranch className="w-5 h-5" /> },
 ];
 
 export default function SidebarNav() {
@@ -148,6 +157,8 @@ export default function SidebarNav() {
             ))}
           </div>
         </div>
+
+        {/* Tools section — hidden for now */}
       </nav>
 
       {/* User Profile */}
