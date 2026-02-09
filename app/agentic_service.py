@@ -21,25 +21,95 @@ logger = logging.getLogger("eagle.agent")
 MODEL = "claude-sonnet-4-20250514"
 
 SYSTEM_PROMPT = (
-    "You are EAGLE, an NCI Office of Acquisitions intake assistant. "
-    "You help contracting officers create acquisition packages including "
-    "SOW, IGCE, market research, and FAR/DFAR compliance. Be professional, "
-    "knowledgeable about federal acquisition regulations, and guide users "
-    "through the intake process step by step.\n\n"
+    # ── 1. Identity & Mission ──────────────────────────────────────────
+    "You are EAGLE, the NCI Office of Acquisitions intelligent intake assistant. "
+    "You guide Contracting Officer Representatives (CORs), program staff, and "
+    "contracting officers through the federal acquisition lifecycle — from initial "
+    "need identification through document generation and package submission. "
+    "You are knowledgeable about FAR, DFARS, HHSAR, and NCI-specific acquisition "
+    "policies. Be professional, precise, and proactively helpful.\n\n"
+
+    # ── 2. Intake Philosophy ───────────────────────────────────────────
+    "INTAKE PHILOSOPHY: Act like 'Trish' — a senior contracting expert who "
+    "intuitively knows what to do with any package. Don't require users to "
+    "understand all the branching logic upfront. Instead: (1) Start minimal — "
+    "collect just enough to begin (what, estimated cost, timeline). (2) Ask "
+    "smart follow-ups — 2-3 questions at a time based on their answers. "
+    "(3) Determine the pathway — acquisition type, contract type, competition "
+    "strategy, and required documents. (4) Guide to completion — help generate "
+    "every required document in the package.\n\n"
+
+    # ── 3. Five-Phase Intake Workflow ──────────────────────────────────
+    "FIVE-PHASE INTAKE WORKFLOW:\n"
+    "  Phase 1 — Minimal Intake: Collect requirement description, estimated cost "
+    "range, and timeline.\n"
+    "  Phase 2 — Clarifying Questions: Product vs. service, vendor knowledge, "
+    "funding status, existing vehicles, urgency drivers.\n"
+    "  Phase 3 — Pathway Determination: Micro-purchase (<$15K), Simplified "
+    "($15K-$250K, FAR Part 13), or Negotiated (>$250K, FAR Part 15); contract "
+    "type (fixed-price, T&M, cost-reimbursement); set-aside evaluation.\n"
+    "  Phase 4 — Document Requirements: Identify required documents by "
+    "acquisition type and generate them.\n"
+    "  Phase 5 — Summary & Handoff: Produce acquisition summary with "
+    "determination table, document checklist, and next steps.\n\n"
+
+    # ── 4. Key Thresholds ─────────────────────────────────────────────
+    "KEY THRESHOLDS:\n"
+    "  Micro-Purchase Threshold (MPT): $15,000 — minimal documentation\n"
+    "  Simplified Acquisition Threshold (SAT): $250,000 — full competition above\n"
+    "  Cost/Pricing Data: $750,000 — certified cost data required above\n"
+    "  8(a) Sole Source: $4M (services/non-mfg), $7M (manufacturing)\n"
+    "  Davis-Bacon: $25,000 — wage requirements apply for services\n\n"
+
+    # ── 5. Specialist Lenses ──────────────────────────────────────────
+    "SPECIALIST PERSPECTIVES — Apply these lenses when reviewing acquisitions:\n\n"
+    "Legal Counsel Lens: Assess legal risks in acquisition strategies. Consider "
+    "GAO protest decisions, FAR compliance, fiscal law constraints, and "
+    "appropriations law. Identify protest vulnerabilities, cite specific "
+    "authorities (FAR 6.302-x), and flag litigation risks.\n\n"
+    "Technical Translator Lens: Bridge technical requirements with contract "
+    "language. Translate scientific/technical needs into specific, measurable, "
+    "achievable contract requirements. Develop clear evaluation criteria and "
+    "performance standards that CORs and contracting officers both understand.\n\n"
+    "Market Intelligence Lens: Analyze market conditions, vendor capabilities, "
+    "and pricing. Leverage GSA rates, FPDS data, and small business program "
+    "knowledge (8(a), HUBZone, WOSB, SDVOSB). Identify set-aside opportunities "
+    "and validate cost reasonableness.\n\n"
+    "Public Interest Lens: Ensure fair competition, transparency, and public "
+    "accountability. Evaluate taxpayer value, assess congressional/media "
+    "sensitivity, and protect acquisition integrity. Flag fairness issues and "
+    "appearance problems before they become protests.\n\n"
+
+    # ── 6. Document Types ─────────────────────────────────────────────
+    "DOCUMENT TYPES AVAILABLE VIA create_document TOOL:\n"
+    "  sow — Statement of Work\n"
+    "  igce — Independent Government Cost Estimate\n"
+    "  market_research — Market Research Report\n"
+    "  justification — Justification & Approval (sole source)\n"
+    "  acquisition_plan — Acquisition Plan (streamlined 5-section format)\n"
+    "  eval_criteria — Evaluation Criteria (technical factors & rating scale)\n"
+    "  security_checklist — IT Security Checklist (FISMA, FedRAMP, FAR/HHSAR)\n"
+    "  section_508 — Section 508 Compliance Statement (accessibility)\n"
+    "  cor_certification — COR Certification (nominee, FAC-COR level, duties)\n"
+    "  contract_type_justification — Contract Type Justification (D&F elements)\n\n"
+
+    # ── 7. Tool Usage ─────────────────────────────────────────────────
+    "TOOL USAGE GUIDANCE:\n"
     "You have access to real AWS-backed tools for document storage (S3), "
     "intake tracking (DynamoDB), log inspection (CloudWatch), FAR search, "
     "document generation, intake status, and a guided intake workflow.\n\n"
     "WORKFLOW: When a user wants to start a new acquisition intake, use the "
     "intake_workflow tool with action='start'. This creates a guided 4-stage "
     "process:\n"
-    "  1. Requirements Gathering - collect what, why, when, how much\n"
-    "  2. Compliance Check - search FAR, determine thresholds, competition\n"
-    "  3. Document Generation - create SOW, IGCE, market research\n"
-    "  4. Review & Submit - final review and package submission\n\n"
+    "  1. Requirements Gathering — collect what, why, when, how much\n"
+    "  2. Compliance Check — search FAR, determine thresholds, competition\n"
+    "  3. Document Generation — create all required documents\n"
+    "  4. Review & Submit — final review and package submission\n\n"
     "Use intake_workflow action='advance' to move between stages after completing "
     "each step. Show the progress bar and next actions to keep users informed.\n\n"
     "For simple queries (FAR search, single document), respond directly. "
-    "For full intake packages, use the workflow to ensure nothing is missed."
+    "For full intake packages, use the workflow to ensure nothing is missed. "
+    "Use get_intake_status to show which documents are complete vs. pending."
 )
 
 # ── AWS Clients (lazy singletons) ────────────────────────────────────
@@ -230,16 +300,22 @@ EAGLE_TOOLS = [
     {
         "name": "create_document",
         "description": (
-            "Generate acquisition documents including Statement of Work (SOW), "
-            "Independent Government Cost Estimate (IGCE), Market Research Report, "
-            "and Justification & Approval (J&A). Documents are saved to S3."
+            "Generate acquisition documents including SOW, IGCE, Market Research, "
+            "J&A, Acquisition Plan, Evaluation Criteria, Security Checklist, "
+            "Section 508 Statement, COR Certification, and Contract Type "
+            "Justification. Documents are saved to S3."
         ),
         "input_schema": {
             "type": "object",
             "properties": {
                 "doc_type": {
                     "type": "string",
-                    "enum": ["sow", "igce", "market_research", "justification"],
+                    "enum": [
+                        "sow", "igce", "market_research", "justification",
+                        "acquisition_plan", "eval_criteria", "security_checklist",
+                        "section_508", "cor_certification",
+                        "contract_type_justification"
+                    ],
                     "description": "Type of acquisition document to generate",
                 },
                 "title": {
@@ -962,8 +1038,20 @@ def _exec_create_document(params: dict, tenant_id: str, session_id: str = None) 
         content = _generate_market_research(title, data)
     elif doc_type == "justification":
         content = _generate_justification(title, data)
+    elif doc_type == "acquisition_plan":
+        content = _generate_acquisition_plan(title, data)
+    elif doc_type == "eval_criteria":
+        content = _generate_eval_criteria(title, data)
+    elif doc_type == "security_checklist":
+        content = _generate_security_checklist(title, data)
+    elif doc_type == "section_508":
+        content = _generate_section_508(title, data)
+    elif doc_type == "cor_certification":
+        content = _generate_cor_certification(title, data)
+    elif doc_type == "contract_type_justification":
+        content = _generate_contract_type_justification(title, data)
     else:
-        return {"error": f"Unknown document type: {doc_type}. Use sow, igce, market_research, or justification."}
+        return {"error": f"Unknown document type: {doc_type}. Supported: sow, igce, market_research, justification, acquisition_plan, eval_criteria, security_checklist, section_508, cor_certification, contract_type_justification."}
 
     # Save to S3 - per-user path
     user_id = _extract_user_id(session_id)
@@ -1288,6 +1376,453 @@ Government will be fair and reasonable based on:
 """
 
 
+def _generate_acquisition_plan(title: str, data: dict) -> str:
+    """Generate a streamlined Acquisition Plan (AP)."""
+    desc = data.get("description", "the required supplies/services")
+    value = data.get("estimated_value", "[TBD]")
+    pop = data.get("period_of_performance", "12 months from date of award")
+    competition = data.get("competition", "Full and Open Competition")
+    contract_type = data.get("contract_type", "Firm-Fixed-Price")
+    set_aside = data.get("set_aside", "To be determined based on market research")
+    funding_by_fy = data.get("funding_by_fy", [])
+
+    funding_table = ""
+    if funding_by_fy:
+        for entry in funding_by_fy:
+            fy = entry.get("fiscal_year", "FY20XX")
+            amt = entry.get("amount", "$0")
+            funding_table += f"| {fy} | {amt} |\n"
+    else:
+        funding_table = "| FY2026 | [TBD] |\n| FY2027 | [TBD] |\n"
+
+    return f"""# ACQUISITION PLAN (AP) — Streamlined Format
+## {title}
+### National Cancer Institute (NCI)
+
+**Date:** {time.strftime('%Y-%m-%d')}
+**Estimated Value:** {value}
+**Document Status:** DRAFT
+
+---
+
+## SECTION 1: ACQUISITION BACKGROUND AND OBJECTIVES
+
+### 1.1 Statement of Need
+
+{desc}
+
+### 1.2 Applicable Conditions
+
+- **Period of Performance:** {pop}
+- **Estimated Total Value:** {value}
+- **Funding by Fiscal Year:**
+
+| Fiscal Year | Amount |
+|-------------|--------|
+{funding_table}
+
+### 1.3 Cost
+
+The estimated cost is based on independent government cost estimates,
+market research, and historical pricing data for similar acquisitions.
+
+### 1.4 Capability and Performance
+
+The contractor must demonstrate capability to deliver the required
+services/supplies in accordance with the Statement of Work.
+
+### 1.5 Delivery and Schedule
+
+Delivery schedule will be defined in the SOW. Key milestones are
+tied to the period of performance: {pop}.
+
+## SECTION 2: PLAN OF ACTION
+
+### 2.1 Competitive Requirements
+
+**Competition Strategy:** {competition}
+
+### 2.2 Source Selection
+
+Evaluation factors will be established in accordance with FAR Part 15.
+Best value tradeoff or lowest price technically acceptable as appropriate.
+
+### 2.3 Acquisition Considerations
+
+- **Contract Type:** {contract_type}
+- **Set-Aside:** {set_aside}
+- **Applicable FAR/HHSAR Clauses:** To be determined
+
+## SECTION 3: MILESTONES
+
+| Milestone | Target Date |
+|-----------|-------------|
+| Acquisition Plan Approval | [TBD] |
+| Solicitation Issue | [TBD] |
+| Proposals Due | [TBD] |
+| Evaluation Complete | [TBD] |
+| Award | [TBD] |
+
+## SECTION 4: APPROVALS
+
+| Role | Name | Signature | Date |
+|------|------|-----------|------|
+| Program/Project Officer | | __________ | |
+| Contracting Officer | | __________ | |
+| Competition Advocate | | __________ | |
+
+---
+*This document was generated by EAGLE — NCI Acquisition Assistant*
+"""
+
+
+def _generate_eval_criteria(title: str, data: dict) -> str:
+    """Generate Evaluation Criteria document."""
+    factors = data.get("factors", [
+        {"name": "Technical Approach", "weight": "Most Important"},
+        {"name": "Past Performance", "weight": "Important"},
+        {"name": "Price", "weight": "Least Important"},
+    ])
+    method = data.get("evaluation_method", "Best Value Tradeoff")
+    rating_scale = data.get("rating_scale", [
+        ("Outstanding", "Exceeds requirements; very high probability of success"),
+        ("Good", "Meets requirements; high probability of success"),
+        ("Acceptable", "Meets minimum requirements; reasonable probability of success"),
+        ("Marginal", "Does not clearly meet some requirements; low probability of success"),
+        ("Unacceptable", "Fails to meet minimum requirements; no probability of success"),
+    ])
+
+    factors_text = ""
+    for i, f in enumerate(factors, 1):
+        name = f if isinstance(f, str) else f.get("name", f"Factor {i}")
+        weight = "" if isinstance(f, str) else f" ({f.get('weight', '')})"
+        factors_text += f"### Factor {i}: {name}{weight}\n\n[Detailed description of evaluation criteria]\n\n"
+
+    scale_text = ""
+    for rating, desc in rating_scale:
+        scale_text += f"| {rating} | {desc} |\n"
+
+    return f"""# EVALUATION CRITERIA
+## {title}
+### National Cancer Institute (NCI)
+
+**Date:** {time.strftime('%Y-%m-%d')}
+**Evaluation Method:** {method}
+**Document Status:** DRAFT
+
+---
+
+## 1. EVALUATION FACTORS
+
+Evaluation factors are listed in descending order of importance.
+
+{factors_text}
+
+## 2. RATING SCALE
+
+| Rating | Description |
+|--------|-------------|
+{scale_text}
+
+## 3. EVALUATION PROCESS
+
+- Technical proposals will be evaluated by a Technical Evaluation Panel (TEP)
+- Past performance will be assessed using CPARS and references
+- Price will be evaluated for reasonableness and realism
+- Evaluation will follow FAR 15.305 procedures
+
+## 4. BASIS FOR AWARD
+
+Award will be made to the offeror whose proposal represents the
+best value to the Government, considering technical merit and price.
+
+---
+*This document was generated by EAGLE — NCI Acquisition Assistant*
+"""
+
+
+def _generate_security_checklist(title: str, data: dict) -> str:
+    """Generate IT Security Checklist."""
+    it_systems = data.get("it_systems_involved", "[TBD]")
+    impact_level = data.get("impact_level", "Moderate")
+    cloud_services = data.get("cloud_services", False)
+
+    return f"""# IT SECURITY CHECKLIST
+## {title}
+### National Cancer Institute (NCI)
+
+**Date:** {time.strftime('%Y-%m-%d')}
+**Document Status:** DRAFT
+
+---
+
+## 1. SECURITY ASSESSMENT QUESTIONS
+
+| # | Question | Yes | No | N/A |
+|---|----------|-----|----|-----|
+| 1 | Will contractor access IT systems or networks? | | | |
+| 2 | Will contractor access the NIH network? | | | |
+| 3 | Will contractor handle Personally Identifiable Information (PII)? | | | |
+| 4 | Is FISMA compliance required? | | | |
+| 5 | Are security clearances required? | | | |
+| 6 | Will data leave NIH facilities or networks? | | | |
+| 7 | Are cloud services involved? | {'[x]' if cloud_services else '[ ]'} | {'[ ]' if cloud_services else '[x]'} | |
+| 8 | Is FedRAMP authorization required? | | | |
+| 9 | Will contractor develop or modify software? | | | |
+| 10 | Are there data encryption requirements? | | | |
+
+## 2. IMPACT LEVEL DETERMINATION
+
+**Selected Impact Level:** {impact_level}
+
+| Level | Description |
+|-------|-------------|
+| Low | Limited adverse effect on operations |
+| Moderate | Serious adverse effect on operations |
+| High | Severe or catastrophic adverse effect |
+
+## 3. REQUIRED FAR/HHSAR CLAUSES
+
+- [ ] FAR 52.239-1 — Privacy or Security Safeguards
+- [ ] HHSAR 352.239-73 — Electronic Information and Technology Accessibility
+- [ ] FAR 52.204-21 — Basic Safeguarding of Covered Contractor Information Systems
+- [ ] NIST SP 800-171 — Protecting Controlled Unclassified Information (if applicable)
+
+## 4. IT SYSTEMS INVOLVED
+
+{it_systems}
+
+## 5. ISSM/ISSO REVIEW
+
+| Role | Name | Signature | Date |
+|------|------|-----------|------|
+| ISSM | | __________ | |
+| ISSO | | __________ | |
+| COR | | __________ | |
+
+---
+*This document was generated by EAGLE — NCI Acquisition Assistant*
+"""
+
+
+def _generate_section_508(title: str, data: dict) -> str:
+    """Generate Section 508 Compliance Statement."""
+    product_types = data.get("product_types", [])
+    exception_claimed = data.get("exception_claimed", False)
+    vpat_status = data.get("vpat_status", "Not yet reviewed")
+
+    product_checklist = ""
+    all_types = [
+        "Software Applications", "Web-based Information",
+        "Telecommunications Products", "Video and Multimedia",
+        "Self-Contained Products", "Desktop and Portable Computers",
+        "Electronic Documents",
+    ]
+    for pt in all_types:
+        checked = "[x]" if pt in product_types else "[ ]"
+        product_checklist += f"- {checked} {pt}\n"
+
+    return f"""# SECTION 508 COMPLIANCE STATEMENT
+## {title}
+### National Cancer Institute (NCI)
+
+**Date:** {time.strftime('%Y-%m-%d')}
+**Document Status:** DRAFT
+
+---
+
+## 1. APPLICABILITY DETERMINATION
+
+Does this acquisition include Electronic and Information Technology (EIT)?
+
+- [ ] Yes — Section 508 applies
+- [ ] No — Section 508 does not apply (provide justification below)
+
+## 2. PRODUCT TYPE CHECKLIST
+
+{product_checklist}
+
+## 3. EXCEPTION DETERMINATION
+
+**Exception Claimed:** {'Yes' if exception_claimed else 'No'}
+
+| Exception Type | Applicable |
+|---------------|------------|
+| National Security | [ ] |
+| Acquired by contractor incidental to contract | [ ] |
+| Located in spaces frequented only by service personnel | [ ] |
+| Micro-purchase | [ ] |
+| Fundamental alteration | [ ] |
+| Undue burden | [ ] |
+
+## 4. VPAT/ACR STATUS
+
+**Status:** {vpat_status}
+
+- [ ] Vendor has provided VPAT/Accessibility Conformance Report
+- [ ] VPAT reviewed and acceptable
+- [ ] Remediation plan required
+- [ ] Not applicable
+
+## 5. CONTRACT LANGUAGE
+
+Include FAR 39.2 and Section 508 requirements in:
+- [ ] Statement of Work
+- [ ] Evaluation Criteria
+- [ ] Contract Clauses
+
+---
+*This document was generated by EAGLE — NCI Acquisition Assistant*
+"""
+
+
+def _generate_cor_certification(title: str, data: dict) -> str:
+    """Generate COR Certification document."""
+    nominee_name = data.get("nominee_name", "[Nominee Name]")
+    nominee_title = data.get("nominee_title", "[Title]")
+    nominee_org = data.get("nominee_org", "National Cancer Institute")
+    nominee_phone = data.get("nominee_phone", "[Phone]")
+    nominee_email = data.get("nominee_email", "[Email]")
+    fac_cor_level = data.get("fac_cor_level", "II")
+    contract_number = data.get("contract_number", "[TBD]")
+
+    return f"""# CONTRACTING OFFICER'S REPRESENTATIVE (COR) CERTIFICATION
+## {title}
+### National Cancer Institute (NCI)
+
+**Date:** {time.strftime('%Y-%m-%d')}
+**Contract Number:** {contract_number}
+**Document Status:** DRAFT
+
+---
+
+## 1. COR NOMINEE INFORMATION
+
+| Field | Value |
+|-------|-------|
+| Name | {nominee_name} |
+| Title | {nominee_title} |
+| Organization | {nominee_org} |
+| Phone | {nominee_phone} |
+| Email | {nominee_email} |
+| FAC-COR Level | Level {fac_cor_level} |
+
+## 2. FAC-COR CERTIFICATION
+
+| Level | Requirements | Applicable |
+|-------|-------------|------------|
+| I | 8 hours CLC training, low-risk contracts | {'[x]' if fac_cor_level == 'I' else '[ ]'} |
+| II | 40 hours CLC training, moderate-risk contracts | {'[x]' if fac_cor_level == 'II' else '[ ]'} |
+| III | 60 hours CLC training, high-risk contracts | {'[x]' if fac_cor_level == 'III' else '[ ]'} |
+
+## 3. DELEGATED DUTIES
+
+The COR is authorized to perform the following duties:
+
+- [x] Provide technical direction (within scope of contract)
+- [x] Review and approve invoices for payment
+- [x] Accept or reject deliverables
+- [x] Monitor contractor performance
+- [x] Maintain COR files and documentation
+- [x] Report issues to the Contracting Officer
+
+## 4. LIMITATIONS
+
+The COR may NOT:
+
+- Direct changes to the scope of work
+- Authorize additional costs or funding
+- Extend the period of performance
+- Make any contractual commitments or modifications
+- Direct the contractor to perform work outside the contract
+
+## 5. SIGNATURES
+
+| Role | Name | Signature | Date |
+|------|------|-----------|------|
+| COR Nominee | {nominee_name} | __________ | |
+| Contracting Officer | | __________ | |
+| Supervisor | | __________ | |
+
+---
+*This document was generated by EAGLE — NCI Acquisition Assistant*
+"""
+
+
+def _generate_contract_type_justification(title: str, data: dict) -> str:
+    """Generate Contract Type Justification (Determination & Findings)."""
+    contract_type = data.get("contract_type", "Firm-Fixed-Price")
+    rationale = data.get("rationale", "[Provide rationale for selected contract type]")
+    risk_to_govt = data.get("risk_to_government", "Low")
+    risk_to_contractor = data.get("risk_to_contractor", "Moderate")
+    value = data.get("estimated_value", "[TBD]")
+
+    return f"""# CONTRACT TYPE JUSTIFICATION
+## Determination and Findings (D&F)
+### {title}
+### National Cancer Institute (NCI)
+
+**Date:** {time.strftime('%Y-%m-%d')}
+**Estimated Value:** {value}
+**Recommended Contract Type:** {contract_type}
+**Document Status:** DRAFT
+
+---
+
+## 1. FINDINGS
+
+### 1.1 Description of Acquisition
+
+{title}
+
+### 1.2 Contract Type Analysis
+
+| Contract Type | Risk to Govt | Risk to Contractor | Recommended |
+|--------------|-------------|-------------------|-------------|
+| Firm-Fixed-Price (FFP) | Low | High | {'[x]' if 'fixed' in contract_type.lower() else '[ ]'} |
+| Time & Materials (T&M) | High | Low | {'[x]' if 't&m' in contract_type.lower() or 'time' in contract_type.lower() else '[ ]'} |
+| Cost-Reimbursement (CR) | High | Low | {'[x]' if 'cost' in contract_type.lower() else '[ ]'} |
+| Labor-Hour (LH) | Moderate | Moderate | {'[x]' if 'labor' in contract_type.lower() else '[ ]'} |
+
+### 1.3 Rationale for Contract Type Selection
+
+{rationale}
+
+### 1.4 Risk Assessment
+
+- **Risk to Government:** {risk_to_govt}
+- **Risk to Contractor:** {risk_to_contractor}
+
+### 1.5 Requirements Definition
+
+| Criteria | Assessment |
+|----------|-----------|
+| Requirements well-defined? | [Yes/No] |
+| Level of effort estimable? | [Yes/No] |
+| Adequate price competition expected? | [Yes/No] |
+| Historical pricing available? | [Yes/No] |
+
+## 2. DETERMINATION
+
+Based on the above findings, I determine that a {contract_type} contract
+is in the best interest of the Government for this acquisition because:
+
+1. {rationale}
+2. The risk allocation is appropriate for this type of requirement
+3. The contract type is consistent with FAR 16.1 guidance
+
+## 3. APPROVAL
+
+| Role | Name | Signature | Date |
+|------|------|-----------|------|
+| Contracting Officer | | __________ | |
+| [Head of Contracting Activity — if required] | | __________ | |
+
+---
+*This document was generated by EAGLE — NCI Acquisition Assistant*
+"""
+
+
 def _exec_get_intake_status(params: dict, tenant_id: str, session_id: str = None) -> dict:
     """Check intake status — queries DynamoDB and S3 for completeness."""
     intake_id = params.get("intake_id", "")
@@ -1313,7 +1848,9 @@ def _exec_get_intake_status(params: dict, tenant_id: str, session_id: str = None
                 "last_modified": obj["LastModified"].isoformat(),
             })
             # Detect document types
-            for dt in ("sow", "igce", "market_research", "justification"):
+            for dt in ("sow", "igce", "market_research", "justification",
+                        "acquisition_plan", "eval_criteria", "security_checklist",
+                        "section_508", "cor_certification", "contract_type_justification"):
                 if dt in name.lower():
                     doc_types_found.add(dt)
     except (ClientError, BotoCoreError) as e:
@@ -1338,6 +1875,18 @@ def _exec_get_intake_status(params: dict, tenant_id: str, session_id: str = None
         "igce": "Independent Government Cost Estimate",
         "market_research": "Market Research Report",
         "justification": "Justification & Approval (if sole source)",
+        "acquisition_plan": "Acquisition Plan",
+        "eval_criteria": "Evaluation Criteria",
+        "security_checklist": "IT Security Checklist",
+        "section_508": "Section 508 Compliance Statement",
+        "cor_certification": "COR Certification",
+        "contract_type_justification": "Contract Type Justification",
+    }
+
+    # These doc types are conditional — only required in certain situations
+    conditional_docs = {
+        "justification", "eval_criteria", "security_checklist",
+        "section_508", "contract_type_justification",
     }
 
     completed = []
@@ -1345,13 +1894,13 @@ def _exec_get_intake_status(params: dict, tenant_id: str, session_id: str = None
     for doc_key, doc_name in required_docs.items():
         if doc_key in doc_types_found:
             completed.append({"document": doc_name, "type": doc_key, "status": "✅ Complete"})
-        elif doc_key == "justification":
+        elif doc_key in conditional_docs:
             pending.append({"document": doc_name, "type": doc_key, "status": "🔲 Conditional", "priority": "Conditional"})
         else:
             pending.append({"document": doc_name, "type": doc_key, "status": "🔲 Not Started", "priority": "High"})
 
-    total = len(required_docs) - 1  # Exclude conditional J&A
-    done = len([c for c in completed if c["type"] != "justification"])
+    total = len(required_docs) - len(conditional_docs)  # Exclude conditional docs
+    done = len([c for c in completed if c["type"] not in conditional_docs])
     pct = int((done / total) * 100) if total > 0 else 0
 
     return {

@@ -722,44 +722,22 @@ async def test_6_tier_gated_tools():
 # Test 7: Skill loading via system_prompt
 # ============================================================
 
-NCI_OA_AGENT_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..", "nci-oa-agent"
-)
-
-NCI_OA_AGENT_DIR_ABS = "C:/Users/gblac/OneDrive/Desktop/afs/nci-oa-agent"
+from test_skill_constants import SKILL_CONSTANTS, OA_INTAKE_SKILL
 
 
 def load_skill_or_prompt(skill_name: str = None, prompt_file: str = None) -> tuple:
-    """Load a skill SKILL.md or legacy agent prompt as system_prompt content.
+    """Load a skill or legacy agent prompt from embedded constants.
 
     Args:
-        skill_name: Name of skill directory under .claude/skills/ (e.g., "oa-intake")
-        prompt_file: Name of legacy prompt file under data/legacy-agent-prompts/ (e.g., "02-legal.txt")
+        skill_name: Name of skill (e.g., "oa-intake", "document-generator")
+        prompt_file: Name of legacy prompt file (e.g., "02-legal.txt")
 
     Returns:
-        (content, path) tuple, or (None, None) if not found
+        (content, source_key) tuple, or (None, None) if not found
     """
-    paths = []
-
-    if skill_name:
-        paths.extend([
-            os.path.join(NCI_OA_AGENT_DIR, ".claude", "skills", skill_name, "SKILL.md"),
-            os.path.join(NCI_OA_AGENT_DIR_ABS, ".claude", "skills", skill_name, "SKILL.md"),
-        ])
-
-    if prompt_file:
-        paths.extend([
-            os.path.join(NCI_OA_AGENT_DIR, "data", "legacy-agent-prompts", prompt_file),
-            os.path.join(NCI_OA_AGENT_DIR_ABS, "data", "legacy-agent-prompts", prompt_file),
-        ])
-
-    for path in paths:
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
-            return content, path
-
+    key = skill_name or prompt_file
+    if key and key in SKILL_CONSTANTS:
+        return SKILL_CONSTANTS[key], f"test_skill_constants[{key}]"
     return None, None
 
 
@@ -776,9 +754,7 @@ async def test_7_skill_loading():
 
     skill_content, skill_path = load_skill_file()
     if not skill_content:
-        print(f"  SKIP - Skill file not found at any of:")
-        for p in OA_INTAKE_SKILL_PATHS:
-            print(f"    {p}")
+        print(f"  SKIP - Skill constant not found")
         return None
 
     print(f"  Skill loaded: {skill_path}")
