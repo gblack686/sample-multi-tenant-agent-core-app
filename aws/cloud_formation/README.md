@@ -1,0 +1,50 @@
+# Create the AWS Stack
+
+**Objective**: Create (or destroy) AWS resources such as:
+ - Common resources, ECR, IAM policies
+ - S3 
+ - ECS Cluster, Task Definition...
+ - Target Groups
+ - ELB Forwarding Rules
+ - And other related artifacts
+
+## Pre-conditions
+ - AWS CLI must be installed and configured correctly
+    - AWS CLI Reference: https://aws.amazon.com/cli/
+    - Authentication reference: **aws configure sso**
+        - Create profile named eagle
+ - Basic Networking, including ALB, VPCS, CA Certs, URLs, CloudFront, F5 config, etc.
+    - Reach to AWS Cloud Team via ServiceNow as needed
+
+## Set environment
+```
+export APP_NAME=eagle
+export AWS_PROFILE=${APP_NAME}
+export AWS_ENV= dev|qa 
+```
+
+## Create AWS Common Stack
+This stack creates common resources that are not environment specific (dev,qa) uch as ECR, access policy, etc.
+```
+aws cloudformation create-stack --stack-name ${APP_NAME}-common \
+  --template-body "$(<common.yml)" \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --parameters "$(<params/common.json)" \
+  --profile ${AWS_PROFILE}
+```
+
+
+## For each environment (dev, qa..), create APP STACK
+```
+# create S3
+aws cloudformation create-stack --stack-name ${APP_NAME}-s3-${AWS_ENV} \
+  --template-body "$(<s3.yml)" \
+  --parameters "$(<params/${AWS_ENV}/s3.json)" \
+  --profile ${AWS_PROFILE}
+```
+
+## Cleanup 
+```
+aws cloudformation delete-stack --stack-name ${APP_NAME}-s3-${AWS_ENV} --profile ${AWS_PROFILE}
+aws cloudformation delete-stack --stack-name ${APP_NAME}-common --profile ${AWS_PROFILE}
+```
