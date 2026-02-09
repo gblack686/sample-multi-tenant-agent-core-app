@@ -60,7 +60,7 @@ Resources:
   s3Bucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub '${appName}-${environment}-data-${AWS::AccountId}'
+      BucketName: !Sub '${appName}-s3-${environment}'
       PublicAccessBlockConfiguration:
         BlockPublicAcls: true
         BlockPublicPolicy: true

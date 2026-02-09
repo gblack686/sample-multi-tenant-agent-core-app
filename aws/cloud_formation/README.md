@@ -20,7 +20,7 @@
 ```
 export APP_NAME=eagle
 export AWS_PROFILE=${APP_NAME}
-export AWS_ENV= dev|qa 
+export AWS_ENV=dev|qa 
 ```
 
 ## Create AWS Common Stack
