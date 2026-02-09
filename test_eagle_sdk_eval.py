@@ -1,7 +1,7 @@
 """
-Option C Validation: Claude SDK as Multi-Tenant Orchestration Layer
+EAGLE SDK Evaluation Suite
 
-Tests the core patterns for Option C architecture:
+Tests the core patterns for the EAGLE multi-tenant architecture:
 1. Session creation via query() - capture session_id from init SystemMessage
 2. Session resume via query(resume=session_id) - stateless multi-turn
 3. Multi-tenant context injection via system_prompt
@@ -13,6 +13,7 @@ SDK: claude-agent-sdk >= 0.1.29
 Backend: AWS Bedrock (CLAUDE_CODE_USE_BEDROCK=1)
 """
 
+import argparse
 import asyncio
 import json
 import os
@@ -28,6 +29,29 @@ from claude_agent_sdk import (
     tool,
     create_sdk_mcp_server,
 )
+
+# ============================================================
+# CLI flags
+# ============================================================
+
+_parser = argparse.ArgumentParser(description="EAGLE SDK Evaluation Suite")
+_parser.add_argument(
+    "--model", default="haiku",
+    help="Override model for ALL test invocations (default: haiku). "
+         "Use 'haiku' to keep costs low.",
+)
+_parser.add_argument(
+    "--async", dest="run_async", action="store_true",
+    help="Run independent tests concurrently (tests 3-15 in parallel).",
+)
+_parser.add_argument(
+    "--tests", default=None,
+    help="Comma-separated test numbers to run (e.g. '1,2,7'). Default: all.",
+)
+_args = _parser.parse_args()
+
+# Global model override — every test reads from here
+MODEL: str = _args.model
 
 
 # ============================================================
@@ -232,7 +256,7 @@ async def test_1_session_creation():
     )
 
     options = ClaudeAgentOptions(
-        model="haiku",
+        model=MODEL,
         system_prompt=system_prompt,
         allowed_tools=TIER_TOOLS[subscription_tier],
         permission_mode="bypassPermissions",
@@ -316,7 +340,7 @@ async def test_2_session_resume(session_id: str):
     subscription_tier = "premium"
 
     options = ClaudeAgentOptions(
-        model="haiku",
+        model=MODEL,
         resume=session_id,
         system_prompt=(
             f"You are an AI assistant for tenant '{tenant_id}'. "
@@ -398,7 +422,7 @@ async def test_3_trace_observation():
     print("=" * 70)
 
     options = ClaudeAgentOptions(
-        model="haiku",
+        model=MODEL,
         system_prompt=(
             "You are a file analysis assistant. "
             "When asked about files, use the Glob tool to find them "
@@ -481,7 +505,7 @@ async def test_4_subagent_orchestration():
     subscription_tier = "premium"
 
     options = ClaudeAgentOptions(
-        model="haiku",
+        model=MODEL,
         system_prompt=(
             f"You are an AI assistant for tenant '{tenant_id}' "
             f"(tier: {subscription_tier}). "
@@ -504,7 +528,7 @@ async def test_4_subagent_orchestration():
                     "and report counts and patterns. Be concise."
                 ),
                 tools=["Glob"],
-                model="haiku",
+                model=MODEL,
             ),
             "code-reader": AgentDefinition(
                 description="Reads and summarizes code files. Use for understanding code.",
@@ -513,7 +537,7 @@ async def test_4_subagent_orchestration():
                     "Focus on purpose, key functions, and dependencies."
                 ),
                 tools=["Read"],
-                model="haiku",
+                model=MODEL,
             ),
         },
     )
@@ -603,7 +627,7 @@ async def test_5_cost_tracking():
         print(f"  --- Query {i} ---")
 
         options = ClaudeAgentOptions(
-            model="haiku",
+            model=MODEL,
             system_prompt=f"You are a concise assistant for tenant '{tenant_id}'. One-line answers only.",
             allowed_tools=TIER_TOOLS[subscription_tier],
             permission_mode="bypassPermissions",
@@ -663,7 +687,7 @@ async def test_6_tier_gated_tools():
 
     # Premium tier gets MCP tools
     options = ClaudeAgentOptions(
-        model="haiku",
+        model=MODEL,
         system_prompt=(
             "You are an inventory assistant for a premium-tier tenant. "
             "Use lookup_product to find products. Be concise."
@@ -722,44 +746,22 @@ async def test_6_tier_gated_tools():
 # Test 7: Skill loading via system_prompt
 # ============================================================
 
-NCI_OA_AGENT_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
-    "..", "nci-oa-agent"
-)
-
-NCI_OA_AGENT_DIR_ABS = "C:/Users/gblac/OneDrive/Desktop/afs/nci-oa-agent"
+from eagle_skill_constants import SKILL_CONSTANTS, OA_INTAKE_SKILL
 
 
 def load_skill_or_prompt(skill_name: str = None, prompt_file: str = None) -> tuple:
-    """Load a skill SKILL.md or legacy agent prompt as system_prompt content.
+    """Load a skill or legacy agent prompt from embedded constants.
 
     Args:
-        skill_name: Name of skill directory under .claude/skills/ (e.g., "oa-intake")
-        prompt_file: Name of legacy prompt file under data/legacy-agent-prompts/ (e.g., "02-legal.txt")
+        skill_name: Name of skill (e.g., "oa-intake", "document-generator")
+        prompt_file: Name of legacy prompt file (e.g., "02-legal.txt")
 
     Returns:
-        (content, path) tuple, or (None, None) if not found
+        (content, source_key) tuple, or (None, None) if not found
     """
-    paths = []
-
-    if skill_name:
-        paths.extend([
-            os.path.join(NCI_OA_AGENT_DIR, ".claude", "skills", skill_name, "SKILL.md"),
-            os.path.join(NCI_OA_AGENT_DIR_ABS, ".claude", "skills", skill_name, "SKILL.md"),
-        ])
-
-    if prompt_file:
-        paths.extend([
-            os.path.join(NCI_OA_AGENT_DIR, "data", "legacy-agent-prompts", prompt_file),
-            os.path.join(NCI_OA_AGENT_DIR_ABS, "data", "legacy-agent-prompts", prompt_file),
-        ])
-
-    for path in paths:
-        if os.path.exists(path):
-            with open(path, "r", encoding="utf-8") as f:
-                content = f.read()
-            return content, path
-
+    key = skill_name or prompt_file
+    if key and key in SKILL_CONSTANTS:
+        return SKILL_CONSTANTS[key], f"test_skill_constants[{key}]"
     return None, None
 
 
@@ -776,9 +778,7 @@ async def test_7_skill_loading():
 
     skill_content, skill_path = load_skill_file()
     if not skill_content:
-        print(f"  SKIP - Skill file not found at any of:")
-        for p in OA_INTAKE_SKILL_PATHS:
-            print(f"    {p}")
+        print(f"  SKIP - Skill constant not found")
         return None
 
     print(f"  Skill loaded: {skill_path}")
@@ -791,7 +791,7 @@ async def test_7_skill_loading():
     )
 
     options = ClaudeAgentOptions(
-        model="haiku",
+        model=MODEL,
         system_prompt=tenant_context + skill_content,
         allowed_tools=[],
         permission_mode="bypassPermissions",
@@ -863,7 +863,7 @@ async def test_8_subagent_tool_tracking():
     print("=" * 70)
 
     options = ClaudeAgentOptions(
-        model="haiku",
+        model=MODEL,
         system_prompt=(
             "You are a code analysis assistant with specialized subagents. "
             "ALWAYS delegate file tasks to the appropriate subagent."
@@ -885,7 +885,7 @@ async def test_8_subagent_tool_tracking():
                     "Return filenames and count. Be concise."
                 ),
                 tools=["Glob"],
-                model="haiku",
+                model=MODEL,
             ),
             "code-inspector": AgentDefinition(
                 description="Reads and inspects code files. Use for understanding code content.",
@@ -894,7 +894,7 @@ async def test_8_subagent_tool_tracking():
                     "Report what you find concisely."
                 ),
                 tools=["Read", "Grep"],
-                model="haiku",
+                model=MODEL,
             ),
         },
     )
@@ -1030,7 +1030,7 @@ async def test_9_oa_intake_workflow():
     )
 
     options_base = dict(
-        model="haiku",
+        model=MODEL,
         system_prompt=tenant_context + skill_content,
         allowed_tools=["Read"],
         permission_mode="bypassPermissions",
@@ -1155,7 +1155,7 @@ async def test_10_legal_counsel_skill():
     )
 
     options = ClaudeAgentOptions(
-        model="haiku",
+        model=MODEL,
         system_prompt=tenant_context + skill_content,
         allowed_tools=[],
         permission_mode="bypassPermissions",
@@ -1239,7 +1239,7 @@ async def test_11_market_intelligence_skill():
     )
 
     options = ClaudeAgentOptions(
-        model="haiku",
+        model=MODEL,
         system_prompt=tenant_context + skill_content,
         allowed_tools=[],
         permission_mode="bypassPermissions",
@@ -1323,7 +1323,7 @@ async def test_12_tech_review_skill():
     )
 
     options = ClaudeAgentOptions(
-        model="haiku",
+        model=MODEL,
         system_prompt=tenant_context + skill_content,
         allowed_tools=[],
         permission_mode="bypassPermissions",
@@ -1408,7 +1408,7 @@ async def test_13_public_interest_skill():
     )
 
     options = ClaudeAgentOptions(
-        model="haiku",
+        model=MODEL,
         system_prompt=tenant_context + skill_content,
         allowed_tools=[],
         permission_mode="bypassPermissions",
@@ -1493,7 +1493,7 @@ async def test_14_document_generator_skill():
     )
 
     options = ClaudeAgentOptions(
-        model="haiku",
+        model=MODEL,
         system_prompt=tenant_context + skill_content,
         allowed_tools=[],
         permission_mode="bypassPermissions",
@@ -1601,7 +1601,7 @@ async def test_15_supervisor_multi_skill_chain():
     )
 
     options = ClaudeAgentOptions(
-        model="haiku",
+        model=MODEL,
         system_prompt=supervisor_prompt,
         allowed_tools=["Task"],
         permission_mode="bypassPermissions",
@@ -1617,19 +1617,19 @@ async def test_15_supervisor_multi_skill_chain():
                 description="Gathers acquisition requirements and determines type/threshold. Use for initial intake.",
                 prompt=intake_content[:3000],  # Truncate to fit
                 tools=[],
-                model="haiku",
+                model=MODEL,
             ),
             "market-intelligence": AgentDefinition(
                 description="Researches market conditions, vendors, and pricing. Use for market research.",
                 prompt=market_content,
                 tools=[],
-                model="haiku",
+                model=MODEL,
             ),
             "legal-counsel": AgentDefinition(
                 description="Assesses legal risks, protest vulnerabilities, FAR compliance. Use for legal review.",
                 prompt=legal_content,
                 tools=[],
-                model="haiku",
+                model=MODEL,
             ),
         },
     )
@@ -1721,192 +1721,201 @@ class CapturingStream:
         self._current_test = None
 
 
+# ============================================================
+# CloudWatch Telemetry Emission
+# ============================================================
+
+LOG_GROUP = "/eagle/test-runs"
+
+def emit_to_cloudwatch(trace_output: dict, results: dict):
+    """Emit structured test results to CloudWatch Logs.
+
+    Non-fatal: catches all exceptions so local trace_logs.json is always the fallback.
+    Uses /eagle/test-runs log group with a per-run log stream.
+    """
+    try:
+        import boto3
+        client = boto3.client("logs", region_name=os.environ.get("AWS_REGION", "us-east-1"))
+
+        # Ensure log group exists
+        try:
+            client.create_log_group(logGroupName=LOG_GROUP)
+        except client.exceptions.ResourceAlreadyExistsException:
+            pass
+
+        # Create a per-run log stream: run-<timestamp>
+        run_ts = trace_output.get("timestamp", datetime.now(timezone.utc).isoformat())
+        stream_name = f"run-{run_ts.replace(':', '-').replace('+', 'Z')}"
+        try:
+            client.create_log_stream(logGroupName=LOG_GROUP, logStreamName=stream_name)
+        except client.exceptions.ResourceAlreadyExistsException:
+            pass
+
+        # Build log events: one per test + one summary
+        now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
+        events = []
+
+        test_names = {
+            1: "1_session_creation", 2: "2_session_resume",
+            3: "3_trace_observation", 4: "4_subagent_orchestration",
+            5: "5_cost_tracking", 6: "6_tier_gated_tools",
+            7: "7_skill_loading", 8: "8_subagent_tool_tracking",
+            9: "9_oa_intake_workflow", 10: "10_legal_counsel_skill",
+            11: "11_market_intelligence_skill", 12: "12_tech_review_skill",
+            13: "13_public_interest_skill", 14: "14_document_generator_skill",
+            15: "15_supervisor_multi_skill_chain",
+        }
+
+        for test_id_str, test_data in trace_output.get("results", {}).items():
+            test_id = int(test_id_str)
+            event = {
+                "type": "test_result",
+                "test_id": test_id,
+                "test_name": test_names.get(test_id, f"test_{test_id}"),
+                "status": test_data.get("status", "unknown"),
+                "log_lines": len(test_data.get("logs", [])),
+                "run_timestamp": run_ts,
+            }
+            events.append({
+                "timestamp": now_ms + test_id,
+                "message": json.dumps(event),
+            })
+
+        # Summary event
+        passed = sum(1 for r in results.values() if r is True)
+        skipped = sum(1 for r in results.values() if r is None)
+        failed = sum(1 for r in results.values() if r is not True and r is not None)
+
+        summary = {
+            "type": "run_summary",
+            "run_timestamp": run_ts,
+            "total_tests": len(results),
+            "passed": passed,
+            "skipped": skipped,
+            "failed": failed,
+            "pass_rate": round(passed / max(len(results), 1) * 100, 1),
+        }
+        events.append({
+            "timestamp": now_ms + 100,
+            "message": json.dumps(summary),
+        })
+
+        # Sort events by timestamp (required by CloudWatch)
+        events.sort(key=lambda e: e["timestamp"])
+
+        client.put_log_events(
+            logGroupName=LOG_GROUP,
+            logStreamName=stream_name,
+            logEvents=events,
+        )
+        print(f"CloudWatch: emitted {len(events)} events to {LOG_GROUP}/{stream_name}")
+
+    except Exception as e:
+        print(f"CloudWatch: emission failed (non-fatal): {type(e).__name__}: {e}")
+
+
+async def _run_test(test_id: int, capture: "CapturingStream", session_id: str = None):
+    """Run a single test by ID, with capture and error handling.
+
+    Returns (result_key, result_value, session_id_or_None).
+    """
+    TEST_REGISTRY = {
+        1: ("1_session_creation", test_1_session_creation),
+        2: ("2_session_resume", None),  # special: needs session_id
+        3: ("3_trace_observation", test_3_trace_observation),
+        4: ("4_subagent_orchestration", test_4_subagent_orchestration),
+        5: ("5_cost_tracking", test_5_cost_tracking),
+        6: ("6_tier_gated_tools", test_6_tier_gated_tools),
+        7: ("7_skill_loading", test_7_skill_loading),
+        8: ("8_subagent_tool_tracking", test_8_subagent_tool_tracking),
+        9: ("9_oa_intake_workflow", test_9_oa_intake_workflow),
+        10: ("10_legal_counsel_skill", test_10_legal_counsel_skill),
+        11: ("11_market_intelligence_skill", test_11_market_intelligence_skill),
+        12: ("12_tech_review_skill", test_12_tech_review_skill),
+        13: ("13_public_interest_skill", test_13_public_interest_skill),
+        14: ("14_document_generator_skill", test_14_document_generator_skill),
+        15: ("15_supervisor_multi_skill_chain", test_15_supervisor_multi_skill_chain),
+    }
+
+    result_key, test_fn = TEST_REGISTRY[test_id]
+    capture.start_test(test_id)
+    new_session_id = None
+
+    try:
+        if test_id == 1:
+            passed, new_session_id = await test_fn()
+            result_val = passed
+        elif test_id == 2:
+            result_val = await test_2_session_resume(session_id)
+        else:
+            result_val = await test_fn()
+    except Exception as e:
+        print(f"  ERROR: {type(e).__name__}: {e}")
+        import traceback
+        traceback.print_exc()
+        result_val = False
+
+    capture.end_test()
+    return result_key, result_val, new_session_id
+
+
 async def main():
+    # Parse which tests to run
+    if _args.tests:
+        selected_tests = sorted(set(int(t.strip()) for t in _args.tests.split(",")))
+    else:
+        selected_tests = list(range(1, 16))
+
     # Set up capturing stream
     capture = CapturingStream(sys.stdout)
     sys.stdout = capture
 
     print("=" * 70)
-    print("Option C Validation: Claude SDK Multi-Tenant Orchestrator")
+    print("EAGLE SDK Evaluation: Multi-Tenant Orchestrator")
     print(f"Time: {datetime.now(timezone.utc).isoformat()}")
+    print(f"Model: {MODEL}   {'(--async)' if _args.run_async else '(sequential)'}")
+    print(f"Tests: {','.join(str(t) for t in selected_tests)}")
     print(f"Backend: AWS Bedrock (CLAUDE_CODE_USE_BEDROCK=1)")
     print(f"SDK: claude-agent-sdk >= 0.1.29")
     print("=" * 70)
 
     results = {}
-    trace_data = {}  # Per-test trace data for dashboard
     session_id = None
 
-    # Test 1: Session creation
-    capture.start_test(1)
-    try:
-        passed, session_id = await test_1_session_creation()
-        results["1_session_creation"] = passed
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["1_session_creation"] = False
-    capture.end_test()
+    # --- Phase A: sequential tests (1, 2 depend on each other) ---
+    sequential_tests = [t for t in selected_tests if t <= 2]
+    parallel_tests = [t for t in selected_tests if t > 2]
 
-    # Test 2: Session resume (depends on test 1)
-    capture.start_test(2)
-    try:
-        result = await test_2_session_resume(session_id)
-        results["2_session_resume"] = result
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["2_session_resume"] = False
-    capture.end_test()
+    for tid in sequential_tests:
+        key, val, sid = await _run_test(tid, capture, session_id=session_id)
+        results[key] = val
+        if sid:
+            session_id = sid
 
-    # Test 3: Trace observation
-    capture.start_test(3)
-    try:
-        results["3_trace_observation"] = await test_3_trace_observation()
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["3_trace_observation"] = False
-    capture.end_test()
+    # --- Phase B: independent tests (3-15) ---
+    if _args.run_async and len(parallel_tests) > 1:
+        print(f"\n  Running {len(parallel_tests)} tests concurrently (--async)...")
 
-    # Test 4: Subagent orchestration
-    capture.start_test(4)
-    try:
-        results["4_subagent_orchestration"] = await test_4_subagent_orchestration()
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["4_subagent_orchestration"] = False
-    capture.end_test()
+        async def _wrapped(tid):
+            return await _run_test(tid, capture, session_id=session_id)
 
-    # Test 5: Cost tracking
-    capture.start_test(5)
-    try:
-        results["5_cost_tracking"] = await test_5_cost_tracking()
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["5_cost_tracking"] = False
-    capture.end_test()
+        tasks = [asyncio.create_task(_wrapped(tid)) for tid in parallel_tests]
+        completed = await asyncio.gather(*tasks, return_exceptions=True)
 
-    # Test 6: Tier-gated MCP tools
-    capture.start_test(6)
-    try:
-        results["6_tier_gated_tools"] = await test_6_tier_gated_tools()
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["6_tier_gated_tools"] = False
-    capture.end_test()
-
-    # Test 7: Skill loading
-    capture.start_test(7)
-    try:
-        results["7_skill_loading"] = await test_7_skill_loading()
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["7_skill_loading"] = False
-    capture.end_test()
-
-    # Test 8: Subagent tool tracking
-    capture.start_test(8)
-    try:
-        results["8_subagent_tool_tracking"] = await test_8_subagent_tool_tracking()
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["8_subagent_tool_tracking"] = False
-    capture.end_test()
-
-    # Test 9: OA Intake workflow
-    capture.start_test(9)
-    try:
-        results["9_oa_intake_workflow"] = await test_9_oa_intake_workflow()
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["9_oa_intake_workflow"] = False
-    capture.end_test()
-
-    # Test 10: Legal Counsel Skill
-    capture.start_test(10)
-    try:
-        results["10_legal_counsel_skill"] = await test_10_legal_counsel_skill()
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["10_legal_counsel_skill"] = False
-    capture.end_test()
-
-    # Test 11: Market Intelligence Skill
-    capture.start_test(11)
-    try:
-        results["11_market_intelligence_skill"] = await test_11_market_intelligence_skill()
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["11_market_intelligence_skill"] = False
-    capture.end_test()
-
-    # Test 12: Tech Review Skill
-    capture.start_test(12)
-    try:
-        results["12_tech_review_skill"] = await test_12_tech_review_skill()
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["12_tech_review_skill"] = False
-    capture.end_test()
-
-    # Test 13: Public Interest Skill
-    capture.start_test(13)
-    try:
-        results["13_public_interest_skill"] = await test_13_public_interest_skill()
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["13_public_interest_skill"] = False
-    capture.end_test()
-
-    # Test 14: Document Generator Skill
-    capture.start_test(14)
-    try:
-        results["14_document_generator_skill"] = await test_14_document_generator_skill()
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["14_document_generator_skill"] = False
-    capture.end_test()
-
-    # Test 15: Supervisor Multi-Skill Chain
-    capture.start_test(15)
-    try:
-        results["15_supervisor_multi_skill_chain"] = await test_15_supervisor_multi_skill_chain()
-    except Exception as e:
-        print(f"  ERROR: {type(e).__name__}: {e}")
-        import traceback
-        traceback.print_exc()
-        results["15_supervisor_multi_skill_chain"] = False
-    capture.end_test()
+        for item in completed:
+            if isinstance(item, Exception):
+                print(f"  ASYNC ERROR: {type(item).__name__}: {item}")
+            else:
+                key, val, _ = item
+                results[key] = val
+    else:
+        for tid in parallel_tests:
+            key, val, _ = await _run_test(tid, capture, session_id=session_id)
+            results[key] = val
 
     # Summary
     print("\n" + "=" * 70)
-    print("OPTION C VALIDATION SUMMARY")
+    print("EAGLE SDK EVALUATION SUMMARY")
     print("=" * 70)
 
     print("\n  Architecture: Claude SDK → Bedrock Layer 1 (stateless multi-turn)")
@@ -1948,8 +1957,14 @@ async def main():
     sys.stdout = capture.original
 
     # Write per-test trace logs to JSON for the dashboard
+    run_ts = datetime.now(timezone.utc).isoformat()
     trace_output = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": run_ts,
+        "run_id": f"run-{run_ts.replace(':', '-').replace('+', 'Z')}",
+        "total_tests": len(results),
+        "passed": passed,
+        "failed": failed,
+        "skipped": skipped,
         "results": {},
     }
     for test_id, log_lines in capture.per_test_logs.items():
@@ -1963,6 +1978,12 @@ async def main():
             7: "7_skill_loading",
             8: "8_subagent_tool_tracking",
             9: "9_oa_intake_workflow",
+            10: "10_legal_counsel_skill",
+            11: "11_market_intelligence_skill",
+            12: "12_tech_review_skill",
+            13: "13_public_interest_skill",
+            14: "14_document_generator_skill",
+            15: "15_supervisor_multi_skill_chain",
         }.get(test_id, str(test_id))
 
         result_val = results.get(result_key)
@@ -1977,6 +1998,9 @@ async def main():
     with open(trace_file, "w", encoding="utf-8") as f:
         json.dump(trace_output, f, indent=2)
     print(f"\nTrace logs written to: {trace_file}")
+
+    # Emit to CloudWatch (non-fatal)
+    emit_to_cloudwatch(trace_output, results)
 
     if failed > 0:
         sys.exit(1)
