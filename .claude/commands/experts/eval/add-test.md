@@ -190,7 +190,7 @@ print(f"  Test N  {'PASS' if results.get('N_snake_name') else 'FAIL':6s}  Title"
 'N': 'Title',
 ```
 
-**4d. `client/app/admin/viewer/page.tsx` — `SKILL_TEST_MAP`** (~line 446):
+**4d. `client/app/admin/eval/page.tsx` — `SKILL_TEST_MAP`** (~line 446):
 Only if the test maps to a tool/skill key:
 ```typescript
 tool_key: [N],
@@ -207,7 +207,7 @@ Run these commands in sequence:
 
 2. **Verify registrations** — grep for the new test ID in all 4 files:
    ```bash
-   grep -n "N_snake_name\|id: N\|'N':" server/tests/test_eagle_sdk_eval.py test_results_dashboard.html client/app/admin/tests/page.tsx client/app/admin/viewer/page.tsx
+   grep -n "N_snake_name\|id: N\|'N':" server/tests/test_eagle_sdk_eval.py test_results_dashboard.html client/app/admin/tests/page.tsx client/app/admin/eval/page.tsx
    ```
 
 3. **Count registrations** — must find 8 (or 7 if SKILL_TEST_MAP not applicable):
@@ -248,7 +248,7 @@ New Test Added
     [x] TEST_DEFS             (test_results_dashboard.html)
     [x] readiness panel       (test_results_dashboard.html)
     [x] TEST_NAMES            (tests/page.tsx)
-    [x] SKILL_TEST_MAP        (viewer/page.tsx) — {added / N/A}
+    [x] SKILL_TEST_MAP        (eval/page.tsx) — {added / N/A}
 
   Syntax Check: PASS
   Test Run:     {PASS / SKIP — not run}

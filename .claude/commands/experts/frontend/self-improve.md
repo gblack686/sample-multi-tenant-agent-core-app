@@ -23,7 +23,7 @@ This is the **LEARN** step in ACT-LEARN-REUSE.
 ```
 /experts:frontend:self-improve chat-interface success
 /experts:frontend:self-improve test-mappings failed
-/experts:frontend:self-improve viewer-page partial
+/experts:frontend:self-improve eval-page partial
 ```
 
 ## Variables

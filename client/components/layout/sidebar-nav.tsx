@@ -31,7 +31,7 @@ const resourceNavItems: NavItem[] = [
 const toolNavItems: NavItem[] = [
   { href: '/admin', label: 'Dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
   { href: '/admin/tests', label: 'Test Results', icon: <FlaskConical className="w-5 h-5" /> },
-  { href: '/admin/viewer', label: 'Workflow Viewer', icon: <GitBranch className="w-5 h-5" /> },
+  { href: '/admin/eval', label: 'Eval Viewer', icon: <GitBranch className="w-5 h-5" /> },
 ];
 
 export default function SidebarNav() {

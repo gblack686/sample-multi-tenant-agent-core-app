@@ -15,7 +15,7 @@ This expert covers:
 - **Next.js App** - `client/` (App Router, pages, components, API routes, auth)
 - **Chat Interface** - `/chat-advanced` complex chat with forms, agent logs, sidebar panels
 - **Minimalist Chat** - `/` simple chat with EAGLE reference design
-- **Admin Dashboard** - `/admin/tests` (test results), `/admin/viewer` (workflow viewer with use cases)
+- **Admin Dashboard** - `/admin/tests` (test results), `/admin/eval` (eval viewer with use cases)
 - **Test Result Mappings** - TEST_NAMES, TEST_DEFS, SKILL_TEST_MAP, readiness panel, category system
 - **Legacy HTML Dashboard** - `test_results_dashboard.html` (standalone test results viewer)
 - **Auth & Context** - Cognito user pool, auth-context.tsx, session-context.tsx
@@ -53,7 +53,7 @@ client/
   |   |-- admin/
   |   |   |-- page.tsx              # /admin (dashboard home)
   |   |   |-- tests/page.tsx        # /admin/tests (test results viewer)
-  |   |   |-- viewer/page.tsx       # /admin/viewer (workflow + use cases)
+  |   |   |-- eval/page.tsx         # /admin/eval (eval viewer + use cases)
   |   |   |-- agents/               # Agent management
   |   |   |-- costs/                # Cost tracking
   |   |   |-- analytics/            # Analytics

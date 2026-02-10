@@ -21,7 +21,7 @@ last_updated: 2026-02-09T00:00:00
 server/tests/test_eagle_sdk_eval.py        # 20 tests, CLI entry point
 server/eagle_skill_constants.py      # Embedded skill/prompt constants
 server/app/agentic_service.py        # execute_tool(), AWS tool implementations
-trace_logs.json               # Per-run output for dashboard viewer
+trace_logs.json               # Per-run output for dashboard eval
 ```
 
 ### Test Tiers
@@ -265,7 +265,7 @@ Every test must be registered in **8 locations** across 4 files. Missing any cau
 |---|------|----------|------|--------|
 | 6 | `test_results_dashboard.html` | `TEST_DEFS` | ~123 | `{ id: N, name: "...", desc: "...", category: "..." }` |
 | 7 | `client/app/admin/tests/page.tsx` | `TEST_NAMES` | ~28 | `'N': 'Human-Readable Name'` |
-| 8 | `client/app/admin/viewer/page.tsx` | `SKILL_TEST_MAP` | ~446 | `tool_key: [N]` (AWS tools only) |
+| 8 | `client/app/admin/eval/page.tsx` | `SKILL_TEST_MAP` | ~446 | `tool_key: [N]` (AWS tools only) |
 
 ### Category Tags (test_results_dashboard.html)
 
@@ -279,7 +279,7 @@ Every test must be registered in **8 locations** across 4 files. Missing any cau
 | `workflow` | 9, 15 | Multi-turn and multi-skill workflows |
 | `aws` | 16-20 | AWS tool integration with boto3 confirm |
 
-### SKILL_TEST_MAP (viewer cross-reference)
+### SKILL_TEST_MAP (eval cross-reference)
 
 | Key | Tests | Notes |
 |-----|-------|-------|
@@ -407,7 +407,7 @@ selected_tests = list(range(1, N+1))
 'N': 'Descriptive Title',
 ```
 
-**3d. `client/app/admin/viewer/page.tsx` — `SKILL_TEST_MAP`** (~line 446, if applicable):
+**3d. `client/app/admin/eval/page.tsx` — `SKILL_TEST_MAP`** (~line 446, if applicable):
 ```typescript
 tool_or_skill_key: [N],
 ```
@@ -447,7 +447,7 @@ python -c "import json; d=json.load(open('trace_logs.json')); print(list(d['resu
 - [ ] TEST_DEFS entry (test_results_dashboard.html ~123)
 - [ ] readiness panel entry (test_results_dashboard.html ~305)
 - [ ] TEST_NAMES entry (client/.../tests/page.tsx ~28)
-- [ ] SKILL_TEST_MAP entry if applicable (client/.../viewer/page.tsx ~446)
+- [ ] SKILL_TEST_MAP entry if applicable (client/.../eval/page.tsx ~446)
 - [ ] syntax check passes
 - [ ] test passes with --tests N
 - [ ] cleanup removes all test artifacts

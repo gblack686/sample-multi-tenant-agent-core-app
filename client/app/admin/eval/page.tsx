@@ -623,7 +623,7 @@ const NOTE_W = 160;
 // ============================================================
 // Component
 // ============================================================
-export default function WorkflowViewer() {
+export default function EvalViewer() {
   const [selectedUC, setSelectedUC] = useState(USE_CASES[0]);
   const [currentStep, setCurrentStep] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -1020,7 +1020,7 @@ export default function WorkflowViewer() {
         <TopNav />
             {/* Header bar */}
             <div className="flex items-center gap-4 px-4 py-2 bg-[#161822] border-b border-[#2a2d3a] shrink-0">
-              <div className="text-sm font-semibold text-white">EAGLE <span className="text-gray-400 font-normal">Workflow Viewer</span></div>
+              <div className="text-sm font-semibold text-white">EAGLE <span className="text-gray-400 font-normal">Eval Viewer</span></div>
               <select
                 value={uc.id}
                 onChange={(e) => {

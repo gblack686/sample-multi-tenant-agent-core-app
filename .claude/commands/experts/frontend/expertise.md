@@ -33,7 +33,7 @@ last_updated: 2026-02-09T00:00:00
 | `/login` | `app/login/page.tsx` | Cognito sign-in page |
 | `/admin` | `app/admin/page.tsx` | Admin dashboard home |
 | `/admin/tests` | `app/admin/tests/page.tsx` | SDK test results viewer |
-| `/admin/viewer` | `app/admin/viewer/page.tsx` | Workflow viewer with use case diagrams |
+| `/admin/eval` | `app/admin/eval/page.tsx` | Eval viewer with use case diagrams |
 | `/admin/agents` | `app/admin/agents/page.tsx` | Agent management |
 | `/admin/costs` | `app/admin/costs/page.tsx` | Cost tracking |
 | `/admin/analytics` | `app/admin/analytics/page.tsx` | Analytics |
@@ -231,7 +231,7 @@ Followed by `SuggestedPrompts` component.
 
 ---
 
-## Part 3: Admin Dashboard (Tests Page, Viewer Page, Data Sources)
+## Part 3: Admin Dashboard (Tests Page, Eval Page, Data Sources)
 
 ### Tests Page (`/admin/tests`)
 
@@ -266,11 +266,11 @@ interface TraceData {
 
 **Protected by**: `<AuthGuard>` wrapper + `<TopNav />` header
 
-### Viewer Page (`/admin/viewer`)
+### Eval Page (`/admin/eval`)
 
-**File**: `client/app/admin/viewer/page.tsx`
+**File**: `client/app/admin/eval/page.tsx`
 
-**Purpose**: Interactive sequence diagram viewer for EAGLE use cases + test run cross-reference
+**Purpose**: Interactive sequence diagram eval viewer for EAGLE use cases + test run cross-reference
 
 **Key Data Structures**:
 
@@ -332,9 +332,9 @@ const TEST_NAMES: Record<string, string> = {
 };
 ```
 
-### SKILL_TEST_MAP (`client/app/admin/viewer/page.tsx` ~line 446)
+### SKILL_TEST_MAP (`client/app/admin/eval/page.tsx` ~line 446)
 
-Maps skill/tool keys to test IDs for cross-referencing in the viewer modal:
+Maps skill/tool keys to test IDs for cross-referencing in the eval modal:
 
 ```typescript
 const SKILL_TEST_MAP: Record<string, number[]> = {
@@ -355,7 +355,7 @@ const SKILL_TEST_MAP: Record<string, number[]> = {
 };
 ```
 
-### PROMPT_TITLES (`client/app/admin/viewer/page.tsx` ~line 436)
+### PROMPT_TITLES (`client/app/admin/eval/page.tsx` ~line 436)
 
 Fallback display names for skill prompts while API loads:
 
@@ -372,7 +372,7 @@ const PROMPT_TITLES: Record<string, string> = {
 
 ### Cross-Reference Usage
 
-The viewer modal uses SKILL_TEST_MAP to:
+The eval modal uses SKILL_TEST_MAP to:
 1. `getTestTracesForPrompt(promptKey)` -- finds test results for the displayed skill
 2. `getLiveLogsForPrompt(promptKey)` -- filters CloudWatch events by test_id
 3. Renders traces in the "Test Traces" tab and CW events in the "Live Logs" tab
@@ -612,9 +612,9 @@ Content paths scanned: `./pages/**`, `./components/**`, `./app/**`
 
 **Custom scrollbar**: 6px width, gray thumb, transparent track
 
-### Viewer Page Styling
+### Eval Page Styling
 
-The viewer page (`/admin/viewer`) uses a dark theme:
+The eval page (`/admin/eval`) uses a dark theme:
 - Background: `#0f1117`
 - Panel backgrounds: `#161822`, `#13151f`, `#1e2030`
 - Borders: `#2a2d3a`
@@ -633,7 +633,7 @@ When adding a new test, the following 3 frontend locations must be updated:
 |---|------|----------|--------|
 | 1 | `test_results_dashboard.html` | `TEST_DEFS` (~line 124) | `{ id: N, name: "...", desc: "...", category: "..." }` |
 | 2 | `client/app/admin/tests/page.tsx` | `TEST_NAMES` (~line 28) | `'N': 'Human Name'` |
-| 3 | `client/app/admin/viewer/page.tsx` | `SKILL_TEST_MAP` (~line 446) | `key: [N]` (if skill/tool test) |
+| 3 | `client/app/admin/eval/page.tsx` | `SKILL_TEST_MAP` (~line 446) | `key: [N]` (if skill/tool test) |
 
 Plus the readiness panel in `test_results_dashboard.html` (~line 306).
 
@@ -646,11 +646,11 @@ server/tests/test_eagle_sdk_eval.py
 
 trace_logs.json
   |-- read by --> /api/trace-logs --> /admin/tests (Next.js)
-  |-- read by --> /api/trace-logs --> /admin/viewer (Next.js, run selector)
+  |-- read by --> /api/trace-logs --> /admin/eval (Next.js, run selector)
   |-- embedded as --> LATEST_RESULTS, TRACE_LOGS (HTML dashboard)
 
 CloudWatch /eagle/test-runs
-  |-- read by --> /api/cloudwatch --> /admin/viewer (Next.js, run selector)
+  |-- read by --> /api/cloudwatch --> /admin/eval (Next.js, run selector)
 ```
 
 ### Patterns That Work
@@ -658,7 +658,7 @@ CloudWatch /eagle/test-runs
 - AuthGuard wrapper for all protected pages
 - `'use client'` directive on all interactive pages
 - Lucide icons consistently used throughout
-- Dark theme for viewer (SVG-based), light theme for chat and tests
+- Dark theme for eval page (SVG-based), light theme for chat and tests
 - Inline forms in message list (not separate pages)
 - Debounced session saves (500ms timeout)
 - Backend health check with 30-second polling interval
@@ -675,15 +675,15 @@ CloudWatch /eagle/test-runs
 - **Backend offline**: Chat falls back to mock responses; health indicator shows red
 - **trace_logs.json missing**: Tests page shows error with run instructions
 - **Cognito not configured**: Auth runs in dev mode with mock user (premium tier)
-- **API routes fail**: Viewer shows empty run selector, traces tab says "No test traces"
-- **SKILL_TEST_MAP missing key**: Viewer modal "Test Traces" tab shows no results for that skill
+- **API routes fail**: Eval page shows empty run selector, traces tab says "No test traces"
+- **SKILL_TEST_MAP missing key**: Eval modal "Test Traces" tab shows no results for that skill
 
 ### Tips
 
 - Open `test_results_dashboard.html` directly in browser for quick test result viewing
-- The viewer page keyboard shortcuts: arrows (navigate), +/- (zoom), 0 (fit), Enter (view prompt)
+- The eval page keyboard shortcuts: arrows (navigate), +/- (zoom), 0 (fit), Enter (view prompt)
 - Filter buttons in HTML dashboard support category-based filtering (skills, workflow, aws)
-- The viewer's run selector prefers CloudWatch runs first, then local files
+- The eval page's run selector prefers CloudWatch runs first, then local files
 - Dev mode auth (no Cognito) gives premium tier with admin role
 
 ---
@@ -693,7 +693,7 @@ CloudWatch /eagle/test-runs
 ### patterns_that_work
 - Dual frontend strategy: standalone HTML for quick viewing, Next.js for full dashboard
 - TEST_NAMES as simple Record<string, string> makes adding tests trivial
-- SKILL_TEST_MAP enables automatic cross-referencing in viewer modal
+- SKILL_TEST_MAP enables automatic cross-referencing in eval modal
 - Readiness panel provides at-a-glance status for all capabilities
 
 ### patterns_to_avoid
@@ -703,9 +703,9 @@ CloudWatch /eagle/test-runs
 ### common_issues
 - trace_logs.json must exist for /admin/tests to show data
 - CloudWatch runs require AWS credentials configured in the environment
-- Viewer modal tabs show empty state when no run is selected
+- Eval modal tabs show empty state when no run is selected
 
 ### tips
-- Use /admin/viewer to demonstrate EAGLE workflow to stakeholders (8 use cases)
-- The viewer's SVG diagram supports export (right-click save as SVG)
+- Use /admin/eval to demonstrate EAGLE workflow to stakeholders (8 use cases)
+- The eval page's SVG diagram supports export (right-click save as SVG)
 - Run `npm run build` in client/ to verify no TypeScript errors

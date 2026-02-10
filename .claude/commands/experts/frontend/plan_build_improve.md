@@ -86,7 +86,7 @@ Execute the complete frontend development workflow:
 2. Update all required registrations if adding tests:
    - `TEST_NAMES` in `client/app/admin/tests/page.tsx`
    - `TEST_DEFS` in `test_results_dashboard.html`
-   - `SKILL_TEST_MAP` in `client/app/admin/viewer/page.tsx` (if applicable)
+   - `SKILL_TEST_MAP` in `client/app/admin/eval/page.tsx` (if applicable)
    - Readiness panel in `test_results_dashboard.html`
 
 3. Keep changes atomic
@@ -210,7 +210,7 @@ flowchart TD
 
 - [x] TEST_NAMES (client/.../tests/page.tsx)
 - [x] TEST_DEFS (test_results_dashboard.html)
-- [x] SKILL_TEST_MAP (client/.../viewer/page.tsx)
+- [x] SKILL_TEST_MAP (client/.../eval/page.tsx)
 - [x] Readiness panel (test_results_dashboard.html)
 
 ### Learnings Captured

@@ -68,9 +68,9 @@ Run build checks, verify mapping consistency between the Next.js app and the leg
    grep "{ id:" test_results_dashboard.html
    ```
 
-3. Extract SKILL_TEST_MAP entries from viewer:
+3. Extract SKILL_TEST_MAP entries from eval page:
    ```bash
-   grep -A1 "^\s*[a-z]" client/app/admin/viewer/page.tsx | grep -E "^\s*(intake|docgen|tech|compliance|supervisor|'[0-9]|s3_|dynamodb|cloudwatch|create_)"
+   grep -A1 "^\s*[a-z]" client/app/admin/eval/page.tsx | grep -E "^\s*(intake|docgen|tech|compliance|supervisor|'[0-9]|s3_|dynamodb|cloudwatch|create_)"
    ```
 
 4. Extract readiness panel entries:
@@ -118,7 +118,7 @@ Write results summary and respond to user.
 |--------|-------|--------|
 | TEST_NAMES (tests/page.tsx) | {N} entries | OK / MISMATCH |
 | TEST_DEFS (dashboard.html) | {N} entries | OK / MISMATCH |
-| SKILL_TEST_MAP (viewer/page.tsx) | {N} keys | OK / MISMATCH |
+| SKILL_TEST_MAP (eval/page.tsx) | {N} keys | OK / MISMATCH |
 | Readiness Panel (dashboard.html) | {N} entries | OK / MISMATCH |
 
 ### Missing Entries (if any)
@@ -189,5 +189,5 @@ grep -oP "id: (\d+)" test_results_dashboard.html | sort -n
 
 ```bash
 # List all test IDs referenced in SKILL_TEST_MAP
-grep -oP '\[\d+' client/app/admin/viewer/page.tsx | sort -n -u
+grep -oP '\[\d+' client/app/admin/eval/page.tsx | sort -n -u
 ```

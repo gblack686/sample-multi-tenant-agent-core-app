@@ -57,16 +57,16 @@ Questions about chat components, message types, forms, or backend integration.
 
 ### Category 3: Admin Dashboard Questions
 
-Questions about the test results page, viewer page, or data sources.
+Questions about the test results page, eval page, or data sources.
 
 **Examples**:
 - "How does the tests page load trace data?"
-- "What use cases does the viewer support?"
-- "How does the viewer modal show test traces?"
+- "What use cases does the eval page support?"
+- "How does the eval modal show test traces?"
 
 **Resolution**:
 1. Read `expertise.md` -> Part 3
-2. If needed, read `client/app/admin/tests/page.tsx` or `client/app/admin/viewer/page.tsx`
+2. If needed, read `client/app/admin/tests/page.tsx` or `client/app/admin/eval/page.tsx`
 3. Provide answer
 
 ---

@@ -69,7 +69,7 @@ const stats = [
 
 const quickActions = [
   { label: 'Test Results', href: '/admin/tests', icon: <FlaskConical className="w-5 h-5" />, count: 15 },
-  { label: 'Workflow Viewer', href: '/admin/viewer', icon: <GitBranch className="w-5 h-5" />, count: 3 },
+  { label: 'Eval Viewer', href: '/admin/eval', icon: <GitBranch className="w-5 h-5" />, count: 3 },
   { label: 'Manage Users', href: '/admin/users', icon: <Users className="w-5 h-5" />, count: MOCK_USERS.length },
   { label: 'Document Templates', href: '/admin/templates', icon: <FileStack className="w-5 h-5" />, count: MOCK_DOCUMENT_TEMPLATES.length },
   { label: 'Agent Skills', href: '/admin/skills', icon: <Bot className="w-5 h-5" />, count: MOCK_AGENT_SKILLS.filter(s => s.is_active).length },
