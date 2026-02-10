@@ -2,8 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import AuthGuard from '@/components/auth/auth-guard';
-import SimpleHeader from '@/components/chat-simple/simple-header';
-import SidebarNav from '@/components/layout/sidebar-nav';
+import TopNav from '@/components/layout/top-nav';
 import {
   CheckCircle2,
   XCircle,
@@ -34,14 +33,19 @@ const TEST_NAMES: Record<string, string> = {
   '5': 'Cost + Token Tracking',
   '6': 'Tier-Gated MCP Tool Access',
   '7': 'Skill Loading: OA Intake',
-  '8': 'Skill Loading: Legal Compliance',
-  '9': 'Skill Loading: Market Research',
-  '10': 'Skill Loading: Tech Review',
-  '11': 'Skill Loading: Public Interest',
-  '12': 'Skill Loading: Document Generator',
-  '13': 'OA Intake Workflow',
-  '14': 'Subagent Tool Tracking',
+  '8': 'Subagent Tool Tracking',
+  '9': 'OA Intake Workflow',
+  '10': 'Legal Counsel Skill',
+  '11': 'Market Intelligence Skill',
+  '12': 'Tech Review Skill',
+  '13': 'Public Interest Skill',
+  '14': 'Document Generator Skill',
   '15': 'Supervisor Multi-Skill Chain',
+  '16': 'S3 Document Operations',
+  '17': 'DynamoDB Intake Operations',
+  '18': 'CloudWatch Logs Operations',
+  '19': 'Document Generation',
+  '20': 'CloudWatch E2E Verification',
 };
 
 export default function TestResults() {
@@ -121,11 +125,9 @@ export default function TestResults() {
 
   return (
     <AuthGuard>
-      <div className="flex flex-col h-screen overflow-hidden">
-        <SimpleHeader />
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          <SidebarNav />
-          <main className="flex-1 overflow-y-auto bg-gray-50">
+      <div className="flex flex-col h-screen overflow-hidden bg-gray-50">
+        <TopNav />
+          <main className="flex-1 overflow-y-auto">
             <div className="p-8 max-w-6xl">
               {/* Page header */}
               <div className="mb-8">
@@ -270,7 +272,6 @@ export default function TestResults() {
               )}
             </div>
           </main>
-        </div>
       </div>
     </AuthGuard>
   );

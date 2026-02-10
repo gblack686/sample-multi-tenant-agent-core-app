@@ -2,8 +2,7 @@
 
 import { useState, useRef, useEffect, useCallback } from 'react';
 import AuthGuard from '@/components/auth/auth-guard';
-import SimpleHeader from '@/components/chat-simple/simple-header';
-import SidebarNav from '@/components/layout/sidebar-nav';
+import TopNav from '@/components/layout/top-nav';
 
 // ============================================================
 // DATA: Use Cases
@@ -454,6 +453,11 @@ const SKILL_TEST_MAP: Record<string, number[]> = {
   '04-market.txt': [11],
   '03-tech.txt': [12],
   '05-public.txt': [13],
+  s3_document_ops: [16],
+  dynamodb_intake: [17],
+  cloudwatch_logs: [18],
+  create_document: [14, 19],
+  cloudwatch_e2e: [20],
 };
 
 interface RunMeta {
@@ -935,11 +939,8 @@ export default function WorkflowViewer() {
 
   return (
     <AuthGuard>
-      <div className="flex flex-col h-screen overflow-hidden bg-[#0f1117]">
-        <SimpleHeader />
-        <div className="flex flex-1 min-h-0 overflow-hidden">
-          <SidebarNav />
-          <div className="flex-1 flex flex-col overflow-hidden text-gray-200">
+      <div className="flex flex-col h-screen overflow-hidden bg-[#0f1117] text-gray-200">
+        <TopNav />
             {/* Header bar */}
             <div className="flex items-center gap-4 px-4 py-2 bg-[#161822] border-b border-[#2a2d3a] shrink-0">
               <div className="text-sm font-semibold text-white">EAGLE <span className="text-gray-400 font-normal">Workflow Viewer</span></div>
@@ -1150,8 +1151,6 @@ export default function WorkflowViewer() {
                 {currentStepData?.prompt ? `View ${prompts[currentStepData.prompt]?.title || PROMPT_TITLES[currentStepData.prompt] || 'Prompt'}` : 'View Prompt'}
               </button>
             </div>
-          </div>
-        </div>
 
         {/* Tabbed Modal: Prompt | Test Traces | Live Logs */}
         {modalOpen && modalPrompt && (() => {

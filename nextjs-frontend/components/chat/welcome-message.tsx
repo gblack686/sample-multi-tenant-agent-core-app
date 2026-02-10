@@ -8,7 +8,7 @@ export default function WelcomeMessage() {
             <div className="max-w-[85%] bg-white border border-gray-100 rounded-2xl p-6 shadow-sm">
                 {/* Header */}
                 <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-blue-600 to-blue-700 flex items-center justify-center text-white text-xl font-bold shadow-md shadow-blue-200">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-nci-info to-nci-primary flex items-center justify-center text-white text-xl font-bold shadow-md shadow-blue-200">
                         E
                     </div>
                     <div>

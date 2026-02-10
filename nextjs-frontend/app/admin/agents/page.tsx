@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { useSearchParams } from 'next/navigation';
 import AuthGuard from '@/components/auth/auth-guard';
-import SidebarNav from '@/components/layout/sidebar-nav';
+import TopNav from '@/components/layout/top-nav';
 import AgentChat from '@/components/agents/agent-chat';
 import {
   AGENT_CONFIGS,
@@ -87,8 +87,8 @@ function AgentsPageContent() {
   // If user has no access to any agents
   if (availableAgents.length === 0) {
     return (
-      <div className="flex h-screen bg-gray-50">
-        <SidebarNav />
+      <div className="flex flex-col h-screen bg-gray-50">
+        <TopNav />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center p-8">
             <div className="p-4 rounded-full bg-red-100 text-red-600 mx-auto w-fit mb-4">
@@ -105,8 +105,8 @@ function AgentsPageContent() {
   }
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <SidebarNav />
+    <div className="flex flex-col h-screen bg-gray-50">
+      <TopNav />
 
       <main className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
@@ -202,8 +202,8 @@ export default function AgentsPage() {
   return (
     <AuthGuard>
     <Suspense fallback={
-      <div className="flex h-screen bg-gray-50">
-        <SidebarNav />
+      <div className="flex flex-col h-screen bg-gray-50">
+        <TopNav />
         <main className="flex-1 flex items-center justify-center">
           <div className="animate-pulse text-gray-400">Loading agents...</div>
         </main>

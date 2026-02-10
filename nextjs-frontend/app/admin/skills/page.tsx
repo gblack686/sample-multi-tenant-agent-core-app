@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Plus, Search, Bot, Edit2, Trash2, Play, Pause, Zap, Settings, Terminal, Brain } from 'lucide-react';
 import AuthGuard from '@/components/auth/auth-guard';
-import SidebarNav from '@/components/layout/sidebar-nav';
+import TopNav from '@/components/layout/top-nav';
 import PageHeader from '@/components/layout/page-header';
 import Badge from '@/components/ui/badge';
 import Modal from '@/components/ui/modal';
@@ -53,8 +53,8 @@ export default function SkillsPage() {
 
   return (
     <AuthGuard>
-    <div className="flex h-screen bg-gray-50">
-      <SidebarNav />
+    <div className="flex flex-col h-screen bg-gray-50">
+      <TopNav />
 
       <main className="flex-1 overflow-y-auto">
         <div className="p-8">

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { CreditCard, Activity, Shield, AlertTriangle, Loader2, RefreshCw } from 'lucide-react';
 import AuthGuard from '@/components/auth/auth-guard';
-import SidebarNav from '@/components/layout/sidebar-nav';
+import TopNav from '@/components/layout/top-nav';
 import PageHeader from '@/components/layout/page-header';
 import { useAuth } from '@/contexts/auth-context';
 
@@ -245,8 +245,8 @@ export default function SubscriptionPage() {
 
   return (
     <AuthGuard>
-    <div className="flex h-screen bg-gray-50">
-      <SidebarNav />
+    <div className="flex flex-col h-screen bg-gray-50">
+      <TopNav />
 
       <main className="flex-1 overflow-y-auto">
         <div className="p-8">

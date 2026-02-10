@@ -96,11 +96,12 @@
         <button onclick="expandAll()" class="secondary">Expand All</button>
         <button onclick="collapseAll()" class="secondary">Collapse All</button>
         <span style="color:#444;">|</span>
-        <span class="filter-btn active" onclick="filterCards('all', this)">All (15)</span>
+        <span class="filter-btn active" onclick="filterCards('all', this)">All (20)</span>
         <span class="filter-btn" onclick="filterCards('pass', this)">Pass</span>
         <span class="filter-btn" onclick="filterCards('fail', this)">Fail</span>
         <span class="filter-btn" onclick="filterCards('skills', this)">Skills</span>
         <span class="filter-btn" onclick="filterCards('workflow', this)">Workflow</span>
+        <span class="filter-btn" onclick="filterCards('aws', this)">AWS</span>
         <span id="statusText">Loaded latest results (2026-02-04) - All 15 tests complete</span>
     </div>
 
@@ -136,7 +137,11 @@
             { id: 13, name: "Public Interest Skill", desc: "Fairness & transparency review for sole source (05-public.txt)", category: "skills" },
             { id: 14, name: "Document Generator Skill", desc: "Acquisition Plan generation with FAR sections (SKILL.md)", category: "skills" },
             { id: 15, name: "Supervisor Multi-Skill Chain", desc: "UC-01 end-to-end: Intake -> Market -> Legal -> synthesis", category: "workflow" },
-
+            { id: 16, name: "S3 Document Operations", desc: "write/list/read via execute_tool + boto3 head_object confirm", category: "aws" },
+            { id: 17, name: "DynamoDB Intake Operations", desc: "CRUD via execute_tool + boto3 get_item confirm", category: "aws" },
+            { id: 18, name: "CloudWatch Logs Operations", desc: "get_stream/recent/search via execute_tool + boto3 confirm", category: "aws" },
+            { id: 19, name: "Document Generation", desc: "SOW/IGCE/AcqPlan generation + S3 boto3 confirm", category: "aws" },
+            { id: 20, name: "CloudWatch E2E Verification", desc: "Verify test-run stream events and run_summary tallies", category: "aws" },
         ];
 
         const LATEST_RESULTS = {
@@ -313,6 +318,11 @@
                 { label: "Public Interest skill (05-public)", ready: results[13]?.status === 'pass' },
                 { label: "Document Generator skill", ready: results[14]?.status === 'pass' },
                 { label: "Supervisor multi-skill chain (UC-01)", ready: results[15]?.status === 'pass' },
+                { label: "S3 document operations (boto3 confirm)", ready: results[16]?.status === 'pass' },
+                { label: "DynamoDB intake CRUD (boto3 confirm)", ready: results[17]?.status === 'pass' },
+                { label: "CloudWatch logs operations", ready: results[18]?.status === 'pass' },
+                { label: "Document generation (SOW/IGCE/AcqPlan)", ready: results[19]?.status === 'pass' },
+                { label: "CloudWatch E2E verification", ready: results[20]?.status === 'pass' },
             ];
 
             const panel = document.getElementById('readinessPanel');
@@ -330,7 +340,7 @@
             testResults = { ...LATEST_RESULTS };
             renderGrid(testResults);
             renderSummary(testResults);
-            document.getElementById('statusText').textContent = 'Loaded latest results (2026-02-04) - All 15 tests complete';
+            document.getElementById('statusText').textContent = 'Loaded latest results - All 20 tests complete';
         }
 
         // Initial render

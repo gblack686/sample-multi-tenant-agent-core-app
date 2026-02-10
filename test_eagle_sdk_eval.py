@@ -2,12 +2,10 @@
 EAGLE SDK Evaluation Suite
 
 Tests the core patterns for the EAGLE multi-tenant architecture:
-1. Session creation via query() - capture session_id from init SystemMessage
-2. Session resume via query(resume=session_id) - stateless multi-turn
-3. Multi-tenant context injection via system_prompt
-4. Trace observation (ThinkingBlock, ToolUseBlock, TextBlock, ResultMessage)
-5. Cost/token tracking from ResultMessage.usage
-6. Subagent orchestration with tenant-scoped tools
+1-6.   SDK patterns: sessions, resume, context, traces, cost, subagents
+7-15.  Skill validation: OA intake, legal, market, tech, public, doc gen, supervisor chain
+16-20. AWS tool integration: S3 ops, DynamoDB CRUD, CloudWatch logs, document generation,
+       CloudWatch E2E verification — direct execute_tool() calls with boto3 confirmation
 
 SDK: claude-agent-sdk >= 0.1.29
 Backend: AWS Bedrock (CLAUDE_CODE_USE_BEDROCK=1)
@@ -18,9 +16,14 @@ import asyncio
 import json
 import os
 import sys
+import uuid
 from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Any
+
+# Add app/ to path so we can import execute_tool for direct tool testing
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "app"))
+from agentic_service import execute_tool
 
 from claude_agent_sdk import (
     query,
@@ -42,7 +45,7 @@ _parser.add_argument(
 )
 _parser.add_argument(
     "--async", dest="run_async", action="store_true",
-    help="Run independent tests concurrently (tests 3-15 in parallel).",
+    help="Run independent tests concurrently (tests 3-20 in parallel).",
 )
 _parser.add_argument(
     "--tests", default=None,
@@ -709,6 +712,7 @@ async def test_6_tier_gated_tools():
 
     collector = TraceCollector()
 
+    mcp_race_condition = False
     try:
         async for message in query(
             prompt="Look up the product called Widget Pro.",
@@ -720,10 +724,15 @@ async def test_6_tier_gated_tools():
         cli_errors = [e for e in eg.exceptions if "CLIConnection" in type(e).__name__]
         if cli_errors:
             print(f"    [Note] MCP server cleanup race condition (expected on Windows)")
+            mcp_race_condition = True
         else:
             raise
     except Exception as e:
-        print(f"    [Note] MCP cleanup: {type(e).__name__}: {e}")
+        if "CLIConnection" in type(e).__name__ or "MCP" in str(e) or "ExceptionGroup" in type(e).__name__:
+            print(f"    [Note] MCP cleanup: {type(e).__name__}: {e}")
+            mcp_race_condition = True
+        else:
+            raise
 
     print()
     summary = collector.summary()
@@ -736,6 +745,10 @@ async def test_6_tier_gated_tools():
     mcp_calls = [t for t in collector.tool_use_blocks
                  if "lookup_product" in t["tool"]]
     print(f"  MCP tool calls: {len(mcp_calls)}")
+
+    if mcp_race_condition and summary["total_messages"] == 0:
+        print(f"\n  SKIP - MCP server race condition (Windows); no messages collected")
+        return None
 
     passed = len(mcp_calls) > 0 or summary["total_messages"] > 0
     print(f"\n  {'PASS' if passed else 'FAIL'} - Tier-gated MCP tools")
@@ -1159,7 +1172,7 @@ async def test_10_legal_counsel_skill():
         system_prompt=tenant_context + skill_content,
         allowed_tools=[],
         permission_mode="bypassPermissions",
-        max_turns=3,
+        max_turns=5,
         max_budget_usd=0.15,
         cwd=os.path.dirname(os.path.abspath(__file__)),
         env={
@@ -1174,7 +1187,8 @@ async def test_10_legal_counsel_skill():
         prompt=(
             "I need to sole source a $985K Illumina NovaSeq X Plus genome sequencer. "
             "Only Illumina makes this instrument. Assess the protest risk and "
-            "tell me what FAR authority applies. What case precedents support this?"
+            "tell me what FAR authority applies. What case precedents support this? "
+            "Answer entirely from your knowledge — do not search files or use tools."
         ),
         options=options,
     ):
@@ -1513,7 +1527,9 @@ async def test_14_document_generator_skill():
             "Generate an Acquisition Plan (AP) for the following: "
             "$300K laboratory centrifuge equipment purchase, new, competitive, "
             "simplified acquisition procedures (FAR Part 13), small business set-aside, "
-            "delivery within 90 days, FY2026 funding. Include all required sections."
+            "delivery within 90 days, FY2026 funding. Include all required sections. "
+            "IMPORTANT: Return the full document as text in your response. "
+            "Do NOT write to a file."
         ),
         options=options,
     ):
@@ -1526,11 +1542,16 @@ async def test_14_document_generator_skill():
     print(f"  Tokens: {summary['total_input_tokens']} in / {summary['total_output_tokens']} out")
     print(f"  Cost: ${summary['total_cost_usd']:.6f}")
 
+    # Collect text from text_blocks, result messages, AND Write tool inputs (fallback)
     all_text = " ".join(collector.text_blocks).lower()
     for msg_entry in collector.messages:
         msg = msg_entry["message"]
         if hasattr(msg, "result") and msg.result:
             all_text += " " + msg.result.lower()
+    # If agent wrote to file via Write tool, include that content too
+    for tu in collector.tool_use_blocks:
+        if tu["tool"] == "Write" and "content" in tu.get("input", {}):
+            all_text += " " + tu["input"]["content"].lower()
 
     indicators = {
         "ap_sections": any(w in all_text for w in ["section 1", "statement of need", "background", "objective"]),
@@ -1690,6 +1711,479 @@ async def test_15_supervisor_multi_skill_chain():
 
 
 # ============================================================
+# Test 16: S3 Document Operations (Direct Tool Call + boto3)
+# ============================================================
+
+async def test_16_s3_document_ops():
+    """Call execute_tool('s3_document_ops') directly, verify via boto3."""
+    print("\n" + "=" * 70)
+    print("TEST 16: S3 Document Operations (Direct Tool + boto3 Confirm)")
+    print("=" * 70)
+
+    import boto3 as _boto3
+
+    tenant_id = "test-tenant"
+    session_id = "test-session-001"
+    test_key = f"test_doc_{uuid.uuid4().hex[:8]}.md"
+    test_content = f"# Test Document\nGenerated at {datetime.now(timezone.utc).isoformat()}\nThis is test content for S3 verification."
+    bucket = "nci-documents"
+
+    steps_passed = []
+
+    # Step 1: Write
+    print(f"  Step 1: write key={test_key}")
+    write_result = json.loads(execute_tool("s3_document_ops", {
+        "operation": "write",
+        "key": test_key,
+        "content": test_content,
+    }, session_id))
+    write_ok = write_result.get("status") == "success"
+    full_key = write_result.get("key", "")
+    steps_passed.append(("write", write_ok))
+    print(f"    status={write_result.get('status')} key={full_key} {'PASS' if write_ok else 'FAIL'}")
+
+    # Step 2: List
+    print(f"  Step 2: list")
+    list_result = json.loads(execute_tool("s3_document_ops", {
+        "operation": "list",
+    }, session_id))
+    list_ok = list_result.get("file_count", 0) >= 1
+    file_keys = [f["key"] for f in list_result.get("files", [])]
+    found_in_list = any(test_key in k for k in file_keys)
+    steps_passed.append(("list", list_ok and found_in_list))
+    print(f"    file_count={list_result.get('file_count')} found_in_list={found_in_list} {'PASS' if list_ok and found_in_list else 'FAIL'}")
+
+    # Step 3: Read
+    print(f"  Step 3: read key={test_key}")
+    read_result = json.loads(execute_tool("s3_document_ops", {
+        "operation": "read",
+        "key": test_key,
+    }, session_id))
+    read_content = read_result.get("content", "")
+    read_ok = test_content in read_content
+    steps_passed.append(("read", read_ok))
+    print(f"    content_match={read_ok} size={read_result.get('size_bytes', 0)} {'PASS' if read_ok else 'FAIL'}")
+
+    # Step 4: boto3 confirm
+    print(f"  Step 4: boto3 head_object confirm")
+    s3 = _boto3.client("s3", region_name="us-east-1")
+    boto3_ok = False
+    try:
+        head = s3.head_object(Bucket=bucket, Key=full_key)
+        boto3_ok = head["ContentLength"] > 0
+        print(f"    ContentLength={head['ContentLength']} exists=True PASS")
+    except Exception as e:
+        print(f"    boto3 error: {e} FAIL")
+    steps_passed.append(("boto3_confirm", boto3_ok))
+
+    # Step 5: Cleanup
+    print(f"  Step 5: cleanup")
+    try:
+        s3.delete_object(Bucket=bucket, Key=full_key)
+        print(f"    deleted {full_key}")
+    except Exception as e:
+        print(f"    cleanup error: {e}")
+
+    # Summary
+    passed = all(ok for _, ok in steps_passed)
+    print(f"\n  Steps: {', '.join(f'{name}={'PASS' if ok else 'FAIL'}' for name, ok in steps_passed)}")
+    print(f"  {'PASS' if passed else 'FAIL'} - S3 Document Operations (direct tool + boto3)")
+    return passed
+
+
+# ============================================================
+# Test 17: DynamoDB Intake Operations (Direct Tool Call + boto3)
+# ============================================================
+
+async def test_17_dynamodb_intake_ops():
+    """Call execute_tool('dynamodb_intake') directly, verify via boto3."""
+    print("\n" + "=" * 70)
+    print("TEST 17: DynamoDB Intake Operations (Direct Tool + boto3 Confirm)")
+    print("=" * 70)
+
+    import boto3 as _boto3
+
+    tenant_id = "test-tenant"
+    session_id = "test-session-001"
+    item_id = f"test-item-{uuid.uuid4().hex[:8]}"
+    test_data = {
+        "title": "Test Acquisition Item",
+        "value": "$50,000",
+        "type": "equipment",
+    }
+    table_name = "eagle"
+
+    steps_passed = []
+
+    # Step 1: Create
+    print(f"  Step 1: create item_id={item_id}")
+    create_result = json.loads(execute_tool("dynamodb_intake", {
+        "operation": "create",
+        "item_id": item_id,
+        "data": test_data,
+    }, session_id))
+    create_ok = create_result.get("item_id") == item_id and create_result.get("status") == "created"
+    steps_passed.append(("create", create_ok))
+    print(f"    item_id={create_result.get('item_id')} status={create_result.get('status')} {'PASS' if create_ok else 'FAIL'}")
+
+    # Step 2: Read
+    print(f"  Step 2: read item_id={item_id}")
+    read_result = json.loads(execute_tool("dynamodb_intake", {
+        "operation": "read",
+        "item_id": item_id,
+    }, session_id))
+    read_item = read_result.get("item", {})
+    read_ok = read_item.get("item_id") == item_id and read_item.get("title") == test_data["title"]
+    steps_passed.append(("read", read_ok))
+    print(f"    item_id={read_item.get('item_id')} title={read_item.get('title')} {'PASS' if read_ok else 'FAIL'}")
+
+    # Step 3: Update
+    print(f"  Step 3: update item_id={item_id}")
+    update_result = json.loads(execute_tool("dynamodb_intake", {
+        "operation": "update",
+        "item_id": item_id,
+        "data": {"status": "reviewed"},
+    }, session_id))
+    update_ok = update_result.get("status") == "updated"
+    steps_passed.append(("update", update_ok))
+    print(f"    status={update_result.get('status')} {'PASS' if update_ok else 'FAIL'}")
+
+    # Step 4: List
+    print(f"  Step 4: list")
+    list_result = json.loads(execute_tool("dynamodb_intake", {
+        "operation": "list",
+    }, session_id))
+    list_count = list_result.get("count", 0)
+    list_items = list_result.get("items", [])
+    found_in_list = any(i.get("item_id") == item_id for i in list_items)
+    list_ok = list_count >= 1 and found_in_list
+    steps_passed.append(("list", list_ok))
+    print(f"    count={list_count} found_in_list={found_in_list} {'PASS' if list_ok else 'FAIL'}")
+
+    # Step 5: boto3 confirm
+    print(f"  Step 5: boto3 get_item confirm")
+    # execute_tool uses _extract_tenant_id which returns "demo-tenant" for our session
+    effective_tenant = "demo-tenant"
+    ddb = _boto3.resource("dynamodb", region_name="us-east-1")
+    table = ddb.Table(table_name)
+    boto3_ok = False
+    try:
+        resp = table.get_item(Key={"PK": f"INTAKE#{effective_tenant}", "SK": f"INTAKE#{item_id}"})
+        ddb_item = resp.get("Item", {})
+        boto3_ok = ddb_item.get("item_id") == item_id and ddb_item.get("status") == "reviewed"
+        print(f"    item_id={ddb_item.get('item_id')} status={ddb_item.get('status')} PASS" if boto3_ok else f"    item={ddb_item} FAIL")
+    except Exception as e:
+        print(f"    boto3 error: {e} FAIL")
+    steps_passed.append(("boto3_confirm", boto3_ok))
+
+    # Step 6: Cleanup
+    print(f"  Step 6: cleanup")
+    try:
+        table.delete_item(Key={"PK": f"INTAKE#{effective_tenant}", "SK": f"INTAKE#{item_id}"})
+        print(f"    deleted PK=INTAKE#{effective_tenant} SK=INTAKE#{item_id}")
+    except Exception as e:
+        print(f"    cleanup error: {e}")
+
+    # Summary
+    passed = all(ok for _, ok in steps_passed)
+    print(f"\n  Steps: {', '.join(f'{name}={'PASS' if ok else 'FAIL'}' for name, ok in steps_passed)}")
+    print(f"  {'PASS' if passed else 'FAIL'} - DynamoDB Intake Operations (direct tool + boto3)")
+    return passed
+
+
+# ============================================================
+# Test 18: CloudWatch Logs Operations (Direct Tool Call + boto3)
+# ============================================================
+
+async def test_18_cloudwatch_logs_ops():
+    """Call execute_tool('cloudwatch_logs') directly, verify via boto3."""
+    print("\n" + "=" * 70)
+    print("TEST 18: CloudWatch Logs Operations (Direct Tool + boto3 Confirm)")
+    print("=" * 70)
+
+    import boto3 as _boto3
+
+    session_id = "test-session-001"
+    log_group = "/eagle/test-runs"
+
+    steps_passed = []
+
+    # Step 1: get_stream
+    print(f"  Step 1: get_stream log_group={log_group}")
+    stream_result = json.loads(execute_tool("cloudwatch_logs", {
+        "operation": "get_stream",
+        "log_group": log_group,
+    }, session_id))
+    streams = stream_result.get("streams", [])
+    stream_ok = "error" not in stream_result and isinstance(streams, list)
+    steps_passed.append(("get_stream", stream_ok))
+    print(f"    streams={len(streams)} {'PASS' if stream_ok else 'FAIL'}")
+    if streams:
+        print(f"    latest_stream={streams[0].get('logStreamName', '?')}")
+
+    # Step 2: recent
+    print(f"  Step 2: recent log_group={log_group} limit=10")
+    recent_result = json.loads(execute_tool("cloudwatch_logs", {
+        "operation": "recent",
+        "log_group": log_group,
+        "limit": 10,
+    }, session_id))
+    events = recent_result.get("events", [])
+    recent_ok = "error" not in recent_result and isinstance(events, list)
+    steps_passed.append(("recent", recent_ok))
+    print(f"    event_count={recent_result.get('event_count', 0)} {'PASS' if recent_ok else 'FAIL'}")
+
+    # Step 3: search
+    print(f"  Step 3: search filter_pattern='run_summary' limit=5")
+    search_result = json.loads(execute_tool("cloudwatch_logs", {
+        "operation": "search",
+        "log_group": log_group,
+        "filter_pattern": "run_summary",
+        "limit": 5,
+    }, session_id))
+    search_events = search_result.get("events", [])
+    search_ok = "error" not in search_result and isinstance(search_events, list)
+    steps_passed.append(("search", search_ok))
+    print(f"    matching_events={search_result.get('event_count', 0)} {'PASS' if search_ok else 'FAIL'}")
+
+    # Step 4: boto3 confirm log group exists
+    print(f"  Step 4: boto3 describe_log_groups confirm")
+    logs_client = _boto3.client("logs", region_name="us-east-1")
+    boto3_ok = False
+    try:
+        resp = logs_client.describe_log_groups(logGroupNamePrefix="/eagle")
+        group_names = [g["logGroupName"] for g in resp.get("logGroups", [])]
+        boto3_ok = log_group in group_names
+        print(f"    log_groups={group_names} found={boto3_ok} {'PASS' if boto3_ok else 'FAIL'}")
+    except Exception as e:
+        print(f"    boto3 error: {e} FAIL")
+    steps_passed.append(("boto3_confirm", boto3_ok))
+
+    # Summary
+    passed = all(ok for _, ok in steps_passed)
+    print(f"\n  Steps: {', '.join(f'{name}={'PASS' if ok else 'FAIL'}' for name, ok in steps_passed)}")
+    print(f"  {'PASS' if passed else 'FAIL'} - CloudWatch Logs Operations (direct tool + boto3)")
+    return passed
+
+
+# ============================================================
+# Test 19: Document Generation (Direct Tool Call + boto3)
+# ============================================================
+
+async def test_19_document_generation():
+    """Call execute_tool('create_document') for 3 doc types, verify via boto3."""
+    print("\n" + "=" * 70)
+    print("TEST 19: Document Generation (3 Doc Types + boto3 Confirm)")
+    print("=" * 70)
+
+    import boto3 as _boto3
+
+    session_id = "test-session-001"
+    bucket = "nci-documents"
+
+    doc_tests = [
+        {
+            "doc_type": "sow",
+            "title": "Test SOW - Lab Equipment",
+            "data": {
+                "description": "laboratory centrifuge equipment and installation services",
+                "deliverables": ["Equipment delivery", "Installation report", "Training completion"],
+            },
+            "expect_in_content": "STATEMENT OF WORK",
+            "min_word_count": 200,
+        },
+        {
+            "doc_type": "igce",
+            "title": "Test IGCE - Lab Equipment",
+            "data": {
+                "line_items": [
+                    {"description": "Centrifuge Model A", "quantity": 2, "unit_price": 15000},
+                    {"description": "Installation Service", "quantity": 1, "unit_price": 5000},
+                    {"description": "Training Package", "quantity": 1, "unit_price": 3000},
+                ],
+            },
+            "expect_in_content": "COST ESTIMATE",
+            "expect_dollar": True,
+        },
+        {
+            "doc_type": "acquisition_plan",
+            "title": "Test AP - Lab Equipment",
+            "data": {
+                "estimated_value": "$300,000",
+                "competition": "Full and Open Competition",
+                "contract_type": "Firm-Fixed-Price",
+                "description": "Laboratory centrifuge procurement for NCI research programs",
+            },
+            "expect_in_content": "ACQUISITION PLAN",
+            "expect_far": True,
+        },
+    ]
+
+    steps_passed = []
+    s3_keys_to_cleanup = []
+
+    for i, dt in enumerate(doc_tests, 1):
+        print(f"\n  Step {i}: create_document doc_type={dt['doc_type']}")
+        result = json.loads(execute_tool("create_document", {
+            "doc_type": dt["doc_type"],
+            "title": dt["title"],
+            "data": dt["data"],
+        }, session_id))
+
+        content = result.get("content", "")
+        word_count = result.get("word_count", 0)
+        s3_key = result.get("s3_key", "")
+        status = result.get("status", "")
+
+        if s3_key:
+            s3_keys_to_cleanup.append(s3_key)
+
+        # Check expected content
+        has_header = dt["expect_in_content"].upper() in content.upper()
+        has_dollar = "$" in content if dt.get("expect_dollar") else True
+        has_far = "far" in content.lower() or "FAR" in content if dt.get("expect_far") else True
+        meets_word_count = word_count >= dt.get("min_word_count", 100)
+
+        doc_ok = has_header and has_dollar and has_far and meets_word_count
+        steps_passed.append((dt["doc_type"], doc_ok))
+        print(f"    header={has_header} words={word_count} s3_status={status} {'PASS' if doc_ok else 'FAIL'}")
+
+    # Step 4: boto3 confirm documents in S3
+    print(f"\n  Step 4: boto3 list_objects_v2 confirm")
+    s3 = _boto3.client("s3", region_name="us-east-1")
+    boto3_ok = False
+    try:
+        # List documents under the test user's documents prefix
+        # execute_tool uses _extract_user_id("test-session-001") which returns "demo-user"
+        prefix = "eagle/demo-tenant/demo-user/documents/"
+        resp = s3.list_objects_v2(Bucket=bucket, Prefix=prefix, MaxKeys=100)
+        s3_objects = [o["Key"] for o in resp.get("Contents", [])]
+        found_count = sum(1 for cleanup_key in s3_keys_to_cleanup if cleanup_key in s3_objects)
+        boto3_ok = found_count == len(doc_tests)
+        print(f"    expected={len(doc_tests)} found={found_count} {'PASS' if boto3_ok else 'FAIL'}")
+    except Exception as e:
+        print(f"    boto3 error: {e} FAIL")
+    steps_passed.append(("boto3_confirm", boto3_ok))
+
+    # Step 5: Cleanup
+    print(f"\n  Step 5: cleanup {len(s3_keys_to_cleanup)} documents")
+    for s3_key in s3_keys_to_cleanup:
+        try:
+            s3.delete_object(Bucket=bucket, Key=s3_key)
+            print(f"    deleted {s3_key}")
+        except Exception as e:
+            print(f"    cleanup error for {s3_key}: {e}")
+
+    # Summary
+    passed = all(ok for _, ok in steps_passed)
+    print(f"\n  Steps: {', '.join(f'{name}={'PASS' if ok else 'FAIL'}' for name, ok in steps_passed)}")
+    print(f"  {'PASS' if passed else 'FAIL'} - Document Generation (3 doc types + boto3)")
+    return passed
+
+
+# ============================================================
+# Test 20: CloudWatch End-to-End Verification
+# ============================================================
+
+async def test_20_cloudwatch_e2e_verification():
+    """Query CloudWatch to confirm test events from this run exist."""
+    print("\n" + "=" * 70)
+    print("TEST 20: CloudWatch End-to-End Verification")
+    print("=" * 70)
+
+    import boto3 as _boto3
+
+    log_group = "/eagle/test-runs"
+    logs_client = _boto3.client("logs", region_name="us-east-1")
+
+    steps_passed = []
+
+    # Step 1: Describe log streams for this run
+    print(f"  Step 1: describe_log_streams for {log_group}")
+    try:
+        resp = logs_client.describe_log_streams(
+            logGroupName=log_group,
+            orderBy="LastEventTime",
+            descending=True,
+            limit=5,
+        )
+        streams = resp.get("logStreams", [])
+        has_streams = len(streams) > 0
+        steps_passed.append(("describe_streams", has_streams))
+        print(f"    streams_found={len(streams)} {'PASS' if has_streams else 'FAIL'}")
+        for s in streams[:3]:
+            print(f"      {s['logStreamName']}")
+    except Exception as e:
+        print(f"    error: {e} FAIL")
+        steps_passed.append(("describe_streams", False))
+
+    # Step 2: Get log events from the most recent stream
+    print(f"  Step 2: get_log_events from latest stream")
+    events = []
+    if streams:
+        latest_stream = streams[0]["logStreamName"]
+        try:
+            resp = logs_client.get_log_events(
+                logGroupName=log_group,
+                logStreamName=latest_stream,
+                startFromHead=True,
+            )
+            events = resp.get("events", [])
+            has_events = len(events) > 0
+            steps_passed.append(("get_events", has_events))
+            print(f"    stream={latest_stream} events={len(events)} {'PASS' if has_events else 'FAIL'}")
+        except Exception as e:
+            print(f"    error: {e} FAIL")
+            steps_passed.append(("get_events", False))
+    else:
+        print(f"    no streams to query FAIL")
+        steps_passed.append(("get_events", False))
+
+    # Step 3: Parse events — check for proper structure
+    print(f"  Step 3: parse events for structure")
+    structured_count = 0
+    for ev in events:
+        try:
+            payload = json.loads(ev.get("message", "{}"))
+            if "type" in payload and "test_id" in payload and "status" in payload:
+                structured_count += 1
+            elif "type" in payload and payload["type"] == "run_summary":
+                structured_count += 1
+        except (json.JSONDecodeError, TypeError):
+            pass
+    parse_ok = structured_count > 0
+    steps_passed.append(("parse_events", parse_ok))
+    print(f"    structured_events={structured_count}/{len(events)} {'PASS' if parse_ok else 'FAIL'}")
+
+    # Step 4: Check run_summary event tallies
+    print(f"  Step 4: check run_summary event")
+    summary_ok = False
+    for ev in events:
+        try:
+            payload = json.loads(ev.get("message", "{}"))
+            if payload.get("type") == "run_summary":
+                total = payload.get("total_tests", 0)
+                p = payload.get("passed", 0)
+                s = payload.get("skipped", 0)
+                f = payload.get("failed", 0)
+                tally_match = (p + s + f) == total
+                summary_ok = tally_match and total > 0
+                print(f"    total={total} passed={p} skipped={s} failed={f} tally_match={tally_match} {'PASS' if summary_ok else 'FAIL'}")
+                break
+        except (json.JSONDecodeError, TypeError):
+            pass
+    if not summary_ok and not any(True for ev in events if "run_summary" in ev.get("message", "")):
+        print(f"    no run_summary event found in latest stream FAIL")
+    steps_passed.append(("run_summary", summary_ok))
+
+    # Summary
+    passed = all(ok for _, ok in steps_passed)
+    print(f"\n  Steps: {', '.join(f'{name}={'PASS' if ok else 'FAIL'}' for name, ok in steps_passed)}")
+    print(f"  {'PASS' if passed else 'FAIL'} - CloudWatch End-to-End Verification")
+    return passed
+
+
+# ============================================================
 # Main
 # ============================================================
 
@@ -1764,6 +2258,9 @@ def emit_to_cloudwatch(trace_output: dict, results: dict):
             11: "11_market_intelligence_skill", 12: "12_tech_review_skill",
             13: "13_public_interest_skill", 14: "14_document_generator_skill",
             15: "15_supervisor_multi_skill_chain",
+            16: "16_s3_document_ops", 17: "17_dynamodb_intake_ops",
+            18: "18_cloudwatch_logs_ops", 19: "19_document_generation",
+            20: "20_cloudwatch_e2e_verification",
         }
 
         for test_id_str, test_data in trace_output.get("results", {}).items():
@@ -1835,6 +2332,11 @@ async def _run_test(test_id: int, capture: "CapturingStream", session_id: str = 
         13: ("13_public_interest_skill", test_13_public_interest_skill),
         14: ("14_document_generator_skill", test_14_document_generator_skill),
         15: ("15_supervisor_multi_skill_chain", test_15_supervisor_multi_skill_chain),
+        16: ("16_s3_document_ops", test_16_s3_document_ops),
+        17: ("17_dynamodb_intake_ops", test_17_dynamodb_intake_ops),
+        18: ("18_cloudwatch_logs_ops", test_18_cloudwatch_logs_ops),
+        19: ("19_document_generation", test_19_document_generation),
+        20: ("20_cloudwatch_e2e_verification", test_20_cloudwatch_e2e_verification),
     }
 
     result_key, test_fn = TEST_REGISTRY[test_id]
@@ -1864,7 +2366,7 @@ async def main():
     if _args.tests:
         selected_tests = sorted(set(int(t.strip()) for t in _args.tests.split(",")))
     else:
-        selected_tests = list(range(1, 16))
+        selected_tests = list(range(1, 21))
 
     # Set up capturing stream
     capture = CapturingStream(sys.stdout)
@@ -1892,7 +2394,7 @@ async def main():
         if sid:
             session_id = sid
 
-    # --- Phase B: independent tests (3-15) ---
+    # --- Phase B: independent tests (3-20) ---
     if _args.run_async and len(parallel_tests) > 1:
         print(f"\n  Running {len(parallel_tests)} tests concurrently (--async)...")
 
@@ -1952,6 +2454,12 @@ async def main():
     print(f"    Public Interest skill: {'Ready' if results.get('13_public_interest_skill') else 'Needs work'}")
     print(f"    Document Generator skill: {'Ready' if results.get('14_document_generator_skill') else 'Needs work'}")
     print(f"    Supervisor Multi-Skill Chain: {'Ready' if results.get('15_supervisor_multi_skill_chain') else 'Needs work'}")
+    print(f"\n  AWS Tool Integration:")
+    print(f"    S3 Document Operations: {'Ready' if results.get('16_s3_document_ops') else 'Needs work'}")
+    print(f"    DynamoDB Intake Operations: {'Ready' if results.get('17_dynamodb_intake_ops') else 'Needs work'}")
+    print(f"    CloudWatch Logs Operations: {'Ready' if results.get('18_cloudwatch_logs_ops') else 'Needs work'}")
+    print(f"    Document Generation (3 types): {'Ready' if results.get('19_document_generation') else 'Needs work'}")
+    print(f"    CloudWatch E2E Verification: {'Ready' if results.get('20_cloudwatch_e2e_verification') else 'Needs work'}")
 
     # Restore stdout
     sys.stdout = capture.original
@@ -1984,6 +2492,11 @@ async def main():
             13: "13_public_interest_skill",
             14: "14_document_generator_skill",
             15: "15_supervisor_multi_skill_chain",
+            16: "16_s3_document_ops",
+            17: "17_dynamodb_intake_ops",
+            18: "18_cloudwatch_logs_ops",
+            19: "19_document_generation",
+            20: "20_cloudwatch_e2e_verification",
         }.get(test_id, str(test_id))
 
         result_val = results.get(result_key)

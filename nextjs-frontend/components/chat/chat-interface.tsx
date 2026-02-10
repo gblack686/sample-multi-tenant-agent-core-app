@@ -552,13 +552,13 @@ export default function ChatInterface() {
                                     }}
                                     placeholder={isRecording ? 'Listening...' : isStreaming ? 'Waiting for response...' : 'Message EAGLE... (type / for commands)'}
                                     disabled={isStreaming}
-                                    className={`w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-sm ${isRecording ? 'bg-red-50/50 border-red-100' : ''} ${isStreaming ? 'opacity-50' : ''}`}
+                                    className={`w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-nci-blue/20 focus:border-nci-blue transition-all text-sm ${isRecording ? 'bg-red-50/50 border-red-100' : ''} ${isStreaming ? 'opacity-50' : ''}`}
                                 />
                                 <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2">
                                     <button
                                         onClick={handleSend}
                                         disabled={!input.trim() || isStreaming}
-                                        className="p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-30 disabled:grayscale transition-all shadow-md shadow-blue-200"
+                                        className="p-2 bg-nci-blue text-white rounded-xl hover:bg-nci-blue-light disabled:opacity-30 disabled:grayscale transition-all shadow-md shadow-blue-200"
                                     >
                                         <Send className="w-4 h-4" />
                                     </button>

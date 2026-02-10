@@ -6,6 +6,7 @@ Hey! I set you up with access to the EAGLE acquisition assistant app for testing
 ```
 git clone <repo-url>
 cd sample-multi-tenant-agent-core-app
+git checkout feat/eagle-plugin-integration
 ```
 
 **2. Set up your `.env` file** in the project root:
@@ -23,17 +24,39 @@ AWS_REGION=us-east-1
 No Anthropic API key needed — it uses Claude through Bedrock with your AWS credentials.
 
 **3. Make sure you have:**
-- Docker installed
+- Docker installed (if using docker-compose), OR Python 3.11+ and Node.js 18+
 - AWS CLI configured (`~/.aws/credentials`) with access to us-east-1 (Bedrock, DynamoDB, S3)
 - Claude Haiku model access enabled in the Bedrock console
 
-**4. Run:**
+**4a. Run with Docker:**
 ```
 docker compose -f docker-compose.dev.yml up --build
 ```
+Then open `http://localhost:3000`
 
-**5. Open** `http://localhost:3000` **and log in with:**
+**4b. Or run locally (two terminals):**
+
+Terminal 1 — Backend:
+```
+pip install -r requirements.txt
+python run.py
+```
+Backend runs at `http://localhost:8000`
+
+Terminal 2 — Frontend:
+```
+cd nextjs-frontend
+npm install
+npm run dev
+```
+Frontend runs at `http://localhost:3003`
+
+**5. Log in with:**
 - Email: `hoquemi@nih.gov`
-- Password: *(sent separately via DM)*
+- Password: `Eagle@NCI2026!`
+
+**6. Routes:**
+- `/` — Minimalist EAGLE chat (default)
+- `/chat-advanced` — Full complex UI with forms, right sidebar, multi-agent logs
 
 Let me know if you hit any issues!

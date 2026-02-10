@@ -2,7 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Expertise Panel Animation */
+/* ── NCI Chat CSS Variables ── */
+:root {
+  --nci-blue: #003366;
+  --nci-blue-light: #004488;
+  --user-bubble: #E3F2FD;
+  --user-border: #BBDEFB;
+}
+
+/* ── Expertise Panel Animation ── */
 @keyframes slideIn {
   from {
     transform: translateX(100%);
@@ -14,4 +22,168 @@
 
 .animate-slide-in {
   animation: slideIn 0.3s ease-out;
+}
+
+/* ── Message entrance animation ── */
+@keyframes msgSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.msg-slide-in {
+  animation: msgSlideIn 0.3s ease-out;
+}
+
+/* ── Typing indicator bounce ── */
+@keyframes bounce {
+  0%, 60%, 100% {
+    transform: translateY(0);
+  }
+  30% {
+    transform: translateY(-6px);
+  }
+}
+
+.typing-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: #9ca3af;
+  animation: bounce 1.4s infinite ease-in-out;
+}
+
+.typing-dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.typing-dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.typing-dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+/* ── Streaming cursor ── */
+.streaming-cursor::after {
+  content: '▊';
+  display: inline;
+  animation: blink 1s step-end infinite;
+  color: var(--nci-blue);
+  font-weight: normal;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ── Markdown styles inside message bubbles ── */
+.msg-bubble strong {
+  color: var(--nci-blue);
+  font-weight: 700;
+}
+
+.msg-bubble code:not(pre code) {
+  background: #e8f0fe;
+  color: var(--nci-blue);
+  padding: 0.15em 0.4em;
+  border-radius: 4px;
+  font-size: 0.875em;
+  font-family: 'Fira Code', 'Consolas', monospace;
+}
+
+.msg-bubble pre {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  padding: 1rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+  font-size: 0.85em;
+  line-height: 1.6;
+}
+
+.msg-bubble pre code {
+  background: none;
+  color: inherit;
+  padding: 0;
+  font-size: inherit;
+}
+
+.msg-bubble table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75rem 0;
+  font-size: 0.875em;
+}
+
+.msg-bubble thead th {
+  background: #f1f5f9;
+  font-weight: 600;
+  text-align: left;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 2px solid #e2e8f0;
+}
+
+.msg-bubble tbody td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.msg-bubble tbody tr:nth-child(even) {
+  background: #f8fafc;
+}
+
+.msg-bubble blockquote {
+  border-left: 3px solid var(--nci-blue);
+  padding-left: 1rem;
+  margin: 0.75rem 0;
+  color: #475569;
+  font-style: italic;
+}
+
+/* ── User bubble markdown overrides (dark text on light blue) ── */
+.msg-bubble-user strong {
+  color: #1e3a5f;
+  font-weight: 700;
+}
+
+.msg-bubble-user code:not(pre code) {
+  background: rgba(0, 51, 102, 0.1);
+  color: #1e3a5f;
+}
+
+/* ── Copy button (hover-to-show) ── */
+.copy-btn {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.msg-wrapper:hover .copy-btn {
+  opacity: 1;
+}
+
+/* ── Custom scrollbar ── */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }

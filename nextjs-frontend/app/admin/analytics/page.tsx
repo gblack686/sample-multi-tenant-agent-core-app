@@ -19,7 +19,7 @@ import {
   FileText,
   DollarSign,
 } from 'lucide-react';
-import SidebarNav from '@/components/layout/sidebar-nav';
+import TopNav from '@/components/layout/top-nav';
 import PageHeader from '@/components/layout/page-header';
 import {
   MOCK_USERS,
@@ -224,8 +224,8 @@ export default function AnalyticsPage() {
 
   return (
     <AuthGuard>
-    <div className="flex h-screen bg-gray-50">
-      <SidebarNav />
+    <div className="flex flex-col h-screen bg-gray-50">
+      <TopNav />
 
       <main className="flex-1 flex flex-col overflow-hidden">
         <div className="p-6 pb-0">

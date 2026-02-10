@@ -14,10 +14,12 @@ import {
   ArrowRight,
   CheckCircle2,
   AlertCircle,
-  Zap
+  Zap,
+  FlaskConical,
+  GitBranch,
 } from 'lucide-react';
 import AuthGuard from '@/components/auth/auth-guard';
-import SidebarNav from '@/components/layout/sidebar-nav';
+import TopNav from '@/components/layout/top-nav';
 import PageHeader from '@/components/layout/page-header';
 import {
   MOCK_USERS,
@@ -66,6 +68,8 @@ const stats = [
 ];
 
 const quickActions = [
+  { label: 'Test Results', href: '/admin/tests', icon: <FlaskConical className="w-5 h-5" />, count: 15 },
+  { label: 'Workflow Viewer', href: '/admin/viewer', icon: <GitBranch className="w-5 h-5" />, count: 3 },
   { label: 'Manage Users', href: '/admin/users', icon: <Users className="w-5 h-5" />, count: MOCK_USERS.length },
   { label: 'Document Templates', href: '/admin/templates', icon: <FileStack className="w-5 h-5" />, count: MOCK_DOCUMENT_TEMPLATES.length },
   { label: 'Agent Skills', href: '/admin/skills', icon: <Bot className="w-5 h-5" />, count: MOCK_AGENT_SKILLS.filter(s => s.is_active).length },
@@ -74,8 +78,8 @@ const quickActions = [
 export default function AdminDashboard() {
   return (
     <AuthGuard>
-    <div className="flex h-screen bg-gray-50">
-      <SidebarNav />
+    <div className="flex flex-col h-screen bg-gray-50">
+      <TopNav />
 
       <main className="flex-1 overflow-y-auto">
         <div className="p-8">

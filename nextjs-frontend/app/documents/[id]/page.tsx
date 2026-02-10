@@ -3,7 +3,7 @@
 import { useState, use } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Save, MessageSquare, FileText, CheckSquare, Send, Bot, User, Sparkles } from 'lucide-react';
-import SidebarNav from '@/components/layout/sidebar-nav';
+import TopNav from '@/components/layout/top-nav';
 import { Tabs } from '@/components/ui/tabs';
 import MarkdownRenderer from '@/components/ui/markdown-renderer';
 import DocumentRequirements from '@/components/documents/document-requirements';
@@ -27,8 +27,8 @@ export default function DocumentEditorPage({ params }: PageProps) {
 
   if (!document) {
     return (
-      <div className="flex h-screen bg-gray-50">
-        <SidebarNav />
+      <div className="flex flex-col h-screen bg-gray-50">
+        <TopNav />
         <main className="flex-1 flex items-center justify-center">
           <div className="text-center">
             <FileText className="w-16 h-16 text-gray-300 mx-auto mb-4" />
@@ -62,8 +62,8 @@ export default function DocumentEditorPage({ params }: PageProps) {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      <SidebarNav />
+    <div className="flex flex-col h-screen bg-gray-50">
+      <TopNav />
 
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}

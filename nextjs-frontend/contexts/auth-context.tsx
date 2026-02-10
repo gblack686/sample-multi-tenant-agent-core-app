@@ -302,6 +302,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             });
 
             return new Promise<void>((resolve, reject) => {
+                // Use USER_PASSWORD_AUTH flow (Cognito Essentials tier
+                // only allows PASSWORD as a first auth factor).
+                cognitoUser.setAuthenticationFlowType('USER_PASSWORD_AUTH');
                 cognitoUser.authenticateUser(authDetails, {
                     onSuccess: (session: CognitoUserSession) => {
                         setUser(userFromSession(session));
