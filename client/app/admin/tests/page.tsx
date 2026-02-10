@@ -46,6 +46,13 @@ const TEST_NAMES: Record<string, string> = {
   '18': 'CloudWatch Logs Operations',
   '19': 'Document Generation',
   '20': 'CloudWatch E2E Verification',
+  '21': 'UC-02 Micro-Purchase (<$15K)',
+  '22': 'UC-03 Option Exercise',
+  '23': 'UC-04 Contract Modification',
+  '24': 'UC-05 CO Package Review',
+  '25': 'UC-07 Contract Close-Out',
+  '26': 'UC-08 Shutdown Notification',
+  '27': 'UC-09 Score Consolidation',
 };
 
 export default function TestResults() {

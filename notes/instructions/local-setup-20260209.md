@@ -49,7 +49,7 @@ cd nextjs-frontend
 npm install
 npm run dev
 ```
-Frontend runs at `http://localhost:3003`
+Frontend runs at `http://localhost:3000`
 
 **5. Log in with:**
 - Email: `hoquemi@nih.gov`

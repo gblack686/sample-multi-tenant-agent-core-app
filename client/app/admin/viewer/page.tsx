@@ -517,14 +517,14 @@ const PROMPT_TITLES: Record<string, string> = {
 
 // Map prompt keys to test numbers for cross-referencing
 const SKILL_TEST_MAP: Record<string, number[]> = {
-  intake: [7, 9],
+  intake: [7, 9, 21, 22, 23],
   docgen: [14],
-  'tech-review': [12],
-  compliance: [10],    // Legal Counsel uses compliance prompt key
+  'tech-review': [12, 27],
+  compliance: [10, 24, 25, 26],
   supervisor: [15],
-  '02-legal.txt': [10],
+  '02-legal.txt': [10, 24, 25, 26],
   '04-market.txt': [11],
-  '03-tech.txt': [12],
+  '03-tech.txt': [12, 27],
   '05-public.txt': [13],
   s3_document_ops: [16],
   dynamodb_intake: [17],
@@ -628,7 +628,7 @@ export default function WorkflowViewer() {
   const [currentStep, setCurrentStep] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalPrompt, setModalPrompt] = useState<{ title: string; section: string; content: string; file: string } | null>(null);
+  const [modalPrompt, setModalPrompt] = useState<{ key: string; title: string; section: string; content: string; file: string } | null>(null);
   const [prompts, setPrompts] = useState<Record<string, { title: string; file: string; content: string }>>({});
   const [promptsLoading, setPromptsLoading] = useState(true);
   const [availableRuns, setAvailableRuns] = useState<RunMeta[]>([]);
@@ -692,11 +692,13 @@ export default function WorkflowViewer() {
   // When a run is selected, load its trace data
   useEffect(() => {
     if (!selectedRun) return;
+    let cancelled = false;
 
     async function loadRunData() {
       if (selectedRun!.source === 'local' && selectedRun!.filename) {
         try {
           const res = await fetch(`/api/trace-logs?run=${selectedRun!.filename}`);
+          if (cancelled) return;
           if (res.ok) {
             const data = await res.json();
             setTraceResults(data.results || {});
@@ -705,6 +707,7 @@ export default function WorkflowViewer() {
       } else if (selectedRun!.source === 'cloudwatch' && selectedRun!.name) {
         try {
           const res = await fetch(`/api/cloudwatch?stream=${encodeURIComponent(selectedRun!.name)}&group=test-runs`);
+          if (cancelled) return;
           if (res.ok) {
             const data = await res.json();
             setCwEvents(data.events || []);
@@ -726,6 +729,7 @@ export default function WorkflowViewer() {
       }
     }
     loadRunData();
+    return () => { cancelled = true; };
   }, [selectedRun]);
 
   const svgRef = useRef<SVGSVGElement>(null);
@@ -860,7 +864,7 @@ export default function WorkflowViewer() {
       const match = content.match(new RegExp(`(## ${escaped}[\\s\\S]*?)(?=\\n## |$)`, 'i'));
       if (match) content = match[1];
     }
-    setModalPrompt({ title: prompt.title, section: section || 'Full Prompt', content, file: prompt.file });
+    setModalPrompt({ key, title: prompt.title, section: section || 'Full Prompt', content, file: prompt.file });
     setModalTab('prompt');
     setModalOpen(true);
   };
@@ -1227,7 +1231,7 @@ export default function WorkflowViewer() {
 
         {/* Tabbed Modal: Prompt | Test Traces | Live Logs */}
         {modalOpen && modalPrompt && (() => {
-          const promptKey = currentStepData?.prompt || '';
+          const promptKey = modalPrompt.key || currentStepData?.prompt || '';
           const testTraces = getTestTracesForPrompt(promptKey);
           const liveLogs = getLiveLogsForPrompt(promptKey);
           const tabs = [

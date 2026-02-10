@@ -142,6 +142,13 @@
             { id: 18, name: "CloudWatch Logs Operations", desc: "get_stream/recent/search via execute_tool + boto3 confirm", category: "aws" },
             { id: 19, name: "Document Generation", desc: "SOW/IGCE/AcqPlan generation + S3 boto3 confirm", category: "aws" },
             { id: 20, name: "CloudWatch E2E Verification", desc: "Verify test-run stream events and run_summary tallies", category: "aws" },
+            { id: 21, name: "UC-02 Micro-Purchase", desc: "Micro-purchase fast path (<$15K) — threshold detection, streamlined intake", category: "workflow" },
+            { id: 22, name: "UC-03 Option Exercise", desc: "Option exercise package — previous package review, escalation, COR change", category: "workflow" },
+            { id: 23, name: "UC-04 Contract Modification", desc: "Contract modification — add funding, extend PoP, mod type classification", category: "workflow" },
+            { id: 24, name: "UC-05 CO Package Review", desc: "CO package review — compliance findings by severity, cross-reference check", category: "workflow" },
+            { id: 25, name: "UC-07 Contract Close-Out", desc: "Contract close-out — FAR 4.804 checklist, release of claims, COR assessment", category: "workflow" },
+            { id: 26, name: "UC-08 Shutdown Notification", desc: "Shutdown notification — contract classification, batch email templates", category: "workflow" },
+            { id: 27, name: "UC-09 Score Consolidation", desc: "Score consolidation — reviewer variance, question dedup, evaluation report", category: "workflow" },
         ];
 
         const LATEST_RESULTS = {
@@ -323,6 +330,13 @@
                 { label: "CloudWatch logs operations", ready: results[18]?.status === 'pass' },
                 { label: "Document generation (SOW/IGCE/AcqPlan)", ready: results[19]?.status === 'pass' },
                 { label: "CloudWatch E2E verification", ready: results[20]?.status === 'pass' },
+                { label: "UC-02 Micro-Purchase (<$15K)", ready: results[21]?.status === 'pass' },
+                { label: "UC-03 Option Exercise", ready: results[22]?.status === 'pass' },
+                { label: "UC-04 Contract Modification", ready: results[23]?.status === 'pass' },
+                { label: "UC-05 CO Package Review", ready: results[24]?.status === 'pass' },
+                { label: "UC-07 Contract Close-Out", ready: results[25]?.status === 'pass' },
+                { label: "UC-08 Shutdown Notification", ready: results[26]?.status === 'pass' },
+                { label: "UC-09 Score Consolidation", ready: results[27]?.status === 'pass' },
             ];
 
             const panel = document.getElementById('readinessPanel');

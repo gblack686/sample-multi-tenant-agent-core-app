@@ -6,6 +6,8 @@ Tests the core patterns for the EAGLE multi-tenant architecture:
 7-15.  Skill validation: OA intake, legal, market, tech, public, doc gen, supervisor chain
 16-20. AWS tool integration: S3 ops, DynamoDB CRUD, CloudWatch logs, document generation,
        CloudWatch E2E verification — direct execute_tool() calls with boto3 confirmation
+21-27. UC workflow validation: micro-purchase, option exercise, contract modification,
+       CO package review, contract close-out, shutdown notification, score consolidation
 
 SDK: claude-agent-sdk >= 0.1.29
 Backend: AWS Bedrock (CLAUDE_CODE_USE_BEDROCK=1)
@@ -1713,6 +1715,612 @@ async def test_15_supervisor_multi_skill_chain():
 
 
 # ============================================================
+# Test 21: UC-02 Micro-Purchase Workflow (<$15K Fast Path)
+# ============================================================
+
+async def test_21_uc02_micro_purchase():
+    """UC-02: Micro-purchase fast path — threshold detection, streamlined intake,
+    purchase request generation. Validates sub-$15K streamlined workflow.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 21: UC-02 Micro-Purchase Workflow (<$15K Fast Path)")
+    print("=" * 70)
+
+    intake_content, _ = load_skill_or_prompt(skill_name="oa-intake")
+    if not intake_content:
+        print(f"  SKIP - OA Intake skill not found")
+        return None
+
+    print(f"  Scenario: $13,800 lab supplies — Fisher Scientific quote")
+    print()
+
+    tenant_context = (
+        "Tenant: nci-oa | User: cor-adams-001 | Tier: premium\n"
+        "You are the OA Intake skill for the EAGLE Supervisor Agent.\n"
+        "Handle micro-purchase requests efficiently with minimal questions.\n\n"
+    )
+
+    options = ClaudeAgentOptions(
+        model=MODEL,
+        system_prompt=tenant_context + intake_content,
+        allowed_tools=[],
+        permission_mode="bypassPermissions",
+        max_turns=3,
+        max_budget_usd=0.15,
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        env={
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_REGION": "us-east-1",
+        },
+    )
+
+    collector = TraceCollector()
+
+    async for message in query(
+        prompt=(
+            "I have a quote for $13,800 from Fisher Scientific for lab supplies — "
+            "centrifuge tubes, pipette tips, and reagents. Grant-funded, deliver to "
+            "Building 37 Room 204. I want to use the purchase card. "
+            "What's the fastest way to process this?"
+        ),
+        options=options,
+    ):
+        collector.process(message, indent=2)
+
+    print()
+    summary = collector.summary()
+    print(f"  --- Results ---")
+    print(f"  Messages: {summary['total_messages']}")
+    print(f"  Tokens: {summary['total_input_tokens']} in / {summary['total_output_tokens']} out")
+    print(f"  Cost: ${summary['total_cost_usd']:.6f}")
+
+    all_text = " ".join(collector.text_blocks).lower()
+    for msg_entry in collector.messages:
+        msg = msg_entry["message"]
+        if hasattr(msg, "result") and msg.result:
+            all_text += " " + msg.result.lower()
+
+    indicators = {
+        "micro_purchase": any(w in all_text for w in ["micro-purchase", "micro purchase", "micropurchase", "simplified"]),
+        "threshold": any(w in all_text for w in ["$15,000", "15k", "threshold", "below", "under"]),
+        "purchase_card": any(w in all_text for w in ["purchase card", "p-card", "card holder", "government purchase"]),
+        "streamlined": any(w in all_text for w in ["streamlined", "fast", "quick", "expedit", "minimal"]),
+        "far_reference": any(w in all_text for w in ["far 13", "part 13", "far part", "simplified acquisition"]),
+    }
+
+    print(f"  UC-02 indicators:")
+    for indicator, found in indicators.items():
+        print(f"    {indicator}: {found}")
+
+    indicators_found = sum(1 for v in indicators.values() if v)
+    passed = indicators_found >= 3 and summary["total_messages"] > 0
+    print(f"\n  UC-02 indicators: {indicators_found}/5")
+    print(f"  {'PASS' if passed else 'FAIL'} - UC-02 Micro-Purchase workflow")
+    return passed
+
+
+# ============================================================
+# Test 22: UC-03 Option Exercise Package Preparation
+# ============================================================
+
+async def test_22_uc03_option_exercise():
+    """UC-03: Option exercise — previous package ingestion, tuning questions,
+    compliance validation, updated package generation with cost escalation.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 22: UC-03 Option Exercise Package Preparation")
+    print("=" * 70)
+
+    intake_content, _ = load_skill_or_prompt(skill_name="oa-intake")
+    if not intake_content:
+        print(f"  SKIP - OA Intake skill not found")
+        return None
+
+    print(f"  Scenario: Exercise Option Year 3, same scope, 3% escalation")
+    print()
+
+    tenant_context = (
+        "Tenant: nci-oa | User: co-chen-001 | Tier: premium\n"
+        "You are the OA Intake skill for the EAGLE Supervisor Agent.\n"
+        "Handle option exercise requests by reviewing prior packages and asking tuning questions.\n\n"
+    )
+
+    options = ClaudeAgentOptions(
+        model=MODEL,
+        system_prompt=tenant_context + intake_content,
+        allowed_tools=[],
+        permission_mode="bypassPermissions",
+        max_turns=3,
+        max_budget_usd=0.15,
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        env={
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_REGION": "us-east-1",
+        },
+    )
+
+    collector = TraceCollector()
+
+    async for message in query(
+        prompt=(
+            "I need to exercise Option Year 3 on contract HHSN261201500003I. "
+            "The base value was $1.2M, same scope continuing, new COR replacing "
+            "Dr. Smith, 3% cost escalation per the contract terms, no performance "
+            "issues. Option period would be 10/1/2028 through 9/30/2029. "
+            "What documents do I need to prepare?"
+        ),
+        options=options,
+    ):
+        collector.process(message, indent=2)
+
+    print()
+    summary = collector.summary()
+    print(f"  --- Results ---")
+    print(f"  Messages: {summary['total_messages']}")
+    print(f"  Tokens: {summary['total_input_tokens']} in / {summary['total_output_tokens']} out")
+    print(f"  Cost: ${summary['total_cost_usd']:.6f}")
+
+    all_text = " ".join(collector.text_blocks).lower()
+    for msg_entry in collector.messages:
+        msg = msg_entry["message"]
+        if hasattr(msg, "result") and msg.result:
+            all_text += " " + msg.result.lower()
+
+    indicators = {
+        "option_exercise": any(w in all_text for w in ["option", "exercise", "option year", "option period"]),
+        "escalation": any(w in all_text for w in ["escalat", "3%", "cost increase", "price adjust"]),
+        "cor_change": any(w in all_text for w in ["cor", "contracting officer representative", "nomination", "new cor"]),
+        "package_docs": any(w in all_text for w in ["acquisition plan", "sow", "igce", "statement of work"]),
+        "option_letter": any(w in all_text for w in ["option letter", "exercise letter", "modification", "bilateral"]),
+    }
+
+    print(f"  UC-03 indicators:")
+    for indicator, found in indicators.items():
+        print(f"    {indicator}: {found}")
+
+    indicators_found = sum(1 for v in indicators.values() if v)
+    passed = indicators_found >= 3 and summary["total_messages"] > 0
+    print(f"\n  UC-03 indicators: {indicators_found}/5")
+    print(f"  {'PASS' if passed else 'FAIL'} - UC-03 Option Exercise workflow")
+    return passed
+
+
+# ============================================================
+# Test 23: UC-04 Contract Modification Request
+# ============================================================
+
+async def test_23_uc04_contract_modification():
+    """UC-04: Contract modification — add funding + extend PoP, determine mod type,
+    compliance check, generate SF-30 and supporting documents.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 23: UC-04 Contract Modification Request")
+    print("=" * 70)
+
+    intake_content, _ = load_skill_or_prompt(skill_name="oa-intake")
+    if not intake_content:
+        print(f"  SKIP - OA Intake skill not found")
+        return None
+
+    print(f"  Scenario: Add $150K funding + extend PoP 6 months")
+    print()
+
+    tenant_context = (
+        "Tenant: nci-oa | User: co-garcia-001 | Tier: premium\n"
+        "You are the OA Intake skill for the EAGLE Supervisor Agent.\n"
+        "Handle contract modification requests by classifying mod type and identifying required documents.\n\n"
+    )
+
+    options = ClaudeAgentOptions(
+        model=MODEL,
+        system_prompt=tenant_context + intake_content,
+        allowed_tools=[],
+        permission_mode="bypassPermissions",
+        max_turns=3,
+        max_budget_usd=0.15,
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        env={
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_REGION": "us-east-1",
+        },
+    )
+
+    collector = TraceCollector()
+
+    async for message in query(
+        prompt=(
+            "I need to modify contract HHSN261201500003I. Adding $150K in FY2026 "
+            "funding and extending the period of performance by 6 months to September 30, 2027. "
+            "Same scope of work, just continuing the existing effort. "
+            "Is this within scope? What type of modification is this? What documents do I need?"
+        ),
+        options=options,
+    ):
+        collector.process(message, indent=2)
+
+    print()
+    summary = collector.summary()
+    print(f"  --- Results ---")
+    print(f"  Messages: {summary['total_messages']}")
+    print(f"  Tokens: {summary['total_input_tokens']} in / {summary['total_output_tokens']} out")
+    print(f"  Cost: ${summary['total_cost_usd']:.6f}")
+
+    all_text = " ".join(collector.text_blocks).lower()
+    for msg_entry in collector.messages:
+        msg = msg_entry["message"]
+        if hasattr(msg, "result") and msg.result:
+            all_text += " " + msg.result.lower()
+
+    indicators = {
+        "modification": any(w in all_text for w in ["modif", "mod ", "sf-30", "amendment"]),
+        "funding": any(w in all_text for w in ["fund", "$150", "fy2026", "incremental", "additional"]),
+        "pop_extension": any(w in all_text for w in ["period of performance", "pop", "extend", "extension", "september"]),
+        "within_scope": any(w in all_text for w in ["within scope", "in-scope", "no j&a", "same work", "bilateral"]),
+        "far_compliance": any(w in all_text for w in ["far", "compliance", "justif", "clause", "unilateral"]),
+    }
+
+    print(f"  UC-04 indicators:")
+    for indicator, found in indicators.items():
+        print(f"    {indicator}: {found}")
+
+    indicators_found = sum(1 for v in indicators.values() if v)
+    passed = indicators_found >= 3 and summary["total_messages"] > 0
+    print(f"\n  UC-04 indicators: {indicators_found}/5")
+    print(f"  {'PASS' if passed else 'FAIL'} - UC-04 Contract Modification workflow")
+    return passed
+
+
+# ============================================================
+# Test 24: UC-05 CO Package Review & Findings
+# ============================================================
+
+async def test_24_uc05_co_package_review():
+    """UC-05: CO package review — compliance checks across AP/SOW/IGCE,
+    cross-reference consistency, findings report with severity levels.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 24: UC-05 CO Package Review & Findings Generation")
+    print("=" * 70)
+
+    # This UC uses compliance + tech review skills
+    comp_content, _ = load_skill_or_prompt(prompt_file="02-legal.txt")
+    if not comp_content:
+        print(f"  SKIP - Compliance/legal prompt not found")
+        return None
+
+    print(f"  Scenario: CO reviews acquisition package for $487K IT services")
+    print()
+
+    tenant_context = (
+        "Tenant: nci-oa | User: co-patel-001 | Tier: premium\n"
+        "You are the Compliance skill for the EAGLE Supervisor Agent.\n"
+        "Review acquisition packages for FAR compliance, cross-reference consistency, "
+        "and generate findings organized by severity.\n\n"
+    )
+
+    options = ClaudeAgentOptions(
+        model=MODEL,
+        system_prompt=tenant_context + comp_content,
+        allowed_tools=[],
+        permission_mode="bypassPermissions",
+        max_turns=3,
+        max_budget_usd=0.15,
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        env={
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_REGION": "us-east-1",
+        },
+    )
+
+    collector = TraceCollector()
+
+    async for message in query(
+        prompt=(
+            "Review this acquisition package for a $487,500 IT services contract: "
+            "The AP says competitive full and open, but the IGCE total is $495,000 — "
+            "cost mismatch. The SOW mentions a 3-year PoP but the AP says 2 years. "
+            "Market research is 14 months old. No FAR 52.219 small business clause. "
+            "Task 3 deliverable in the SOW has no acceptance criteria. "
+            "Identify all findings and categorize by severity (critical/moderate/minor)."
+        ),
+        options=options,
+    ):
+        collector.process(message, indent=2)
+
+    print()
+    summary = collector.summary()
+    print(f"  --- Results ---")
+    print(f"  Messages: {summary['total_messages']}")
+    print(f"  Tokens: {summary['total_input_tokens']} in / {summary['total_output_tokens']} out")
+    print(f"  Cost: ${summary['total_cost_usd']:.6f}")
+
+    all_text = " ".join(collector.text_blocks).lower()
+    for msg_entry in collector.messages:
+        msg = msg_entry["message"]
+        if hasattr(msg, "result") and msg.result:
+            all_text += " " + msg.result.lower()
+
+    indicators = {
+        "cost_mismatch": any(w in all_text for w in ["cost mismatch", "igce", "inconsisten", "$487", "$495"]),
+        "pop_inconsistency": any(w in all_text for w in ["period of performance", "pop", "mismatch", "3-year", "2-year"]),
+        "far_clause": any(w in all_text for w in ["far 52", "clause", "52.219", "small business"]),
+        "severity": any(w in all_text for w in ["critical", "moderate", "minor", "severity", "finding"]),
+        "market_research": any(w in all_text for w in ["market research", "outdated", "14 month", "stale"]),
+    }
+
+    print(f"  UC-05 indicators:")
+    for indicator, found in indicators.items():
+        print(f"    {indicator}: {found}")
+
+    indicators_found = sum(1 for v in indicators.values() if v)
+    passed = indicators_found >= 3 and summary["total_messages"] > 0
+    print(f"\n  UC-05 indicators: {indicators_found}/5")
+    print(f"  {'PASS' if passed else 'FAIL'} - UC-05 CO Package Review workflow")
+    return passed
+
+
+# ============================================================
+# Test 25: UC-07 Contract Close-Out
+# ============================================================
+
+async def test_25_uc07_contract_closeout():
+    """UC-07: Contract close-out — FAR 4.804 checklist, release of claims,
+    final patent/property reports, COR final assessment.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 25: UC-07 Contract Close-Out")
+    print("=" * 70)
+
+    comp_content, _ = load_skill_or_prompt(prompt_file="02-legal.txt")
+    if not comp_content:
+        print(f"  SKIP - Compliance/legal prompt not found")
+        return None
+
+    print(f"  Scenario: Close out FFP contract HHSN261200900045C")
+    print()
+
+    tenant_context = (
+        "Tenant: nci-oa | User: co-brown-001 | Tier: premium\n"
+        "You are the Compliance skill for the EAGLE Supervisor Agent.\n"
+        "Handle contract close-out by generating FAR 4.804 checklists and identifying required actions.\n\n"
+    )
+
+    options = ClaudeAgentOptions(
+        model=MODEL,
+        system_prompt=tenant_context + comp_content,
+        allowed_tools=[],
+        permission_mode="bypassPermissions",
+        max_turns=3,
+        max_budget_usd=0.15,
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        env={
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_REGION": "us-east-1",
+        },
+    )
+
+    collector = TraceCollector()
+
+    async for message in query(
+        prompt=(
+            "I need to close out contract HHSN261200900045C. It's a firm-fixed-price "
+            "contract, all options were exercised, final invoice has been paid, "
+            "and all deliverables have been accepted. What's the FAR 4.804 close-out "
+            "checklist? What documents do I still need — release of claims letter, "
+            "patent report, property report? Draft a COR final assessment outline."
+        ),
+        options=options,
+    ):
+        collector.process(message, indent=2)
+
+    print()
+    summary = collector.summary()
+    print(f"  --- Results ---")
+    print(f"  Messages: {summary['total_messages']}")
+    print(f"  Tokens: {summary['total_input_tokens']} in / {summary['total_output_tokens']} out")
+    print(f"  Cost: ${summary['total_cost_usd']:.6f}")
+
+    all_text = " ".join(collector.text_blocks).lower()
+    for msg_entry in collector.messages:
+        msg = msg_entry["message"]
+        if hasattr(msg, "result") and msg.result:
+            all_text += " " + msg.result.lower()
+
+    indicators = {
+        "far_4804": any(w in all_text for w in ["far 4.804", "4.804", "close-out", "closeout"]),
+        "release_claims": any(w in all_text for w in ["release of claims", "release", "claims letter"]),
+        "patent_report": any(w in all_text for w in ["patent", "intellectual property", "invention"]),
+        "property_report": any(w in all_text for w in ["property", "gfp", "government furnished", "disposition"]),
+        "cor_assessment": any(w in all_text for w in ["cor", "final assessment", "performance assessment", "completion"]),
+    }
+
+    print(f"  UC-07 indicators:")
+    for indicator, found in indicators.items():
+        print(f"    {indicator}: {found}")
+
+    indicators_found = sum(1 for v in indicators.values() if v)
+    passed = indicators_found >= 3 and summary["total_messages"] > 0
+    print(f"\n  UC-07 indicators: {indicators_found}/5")
+    print(f"  {'PASS' if passed else 'FAIL'} - UC-07 Contract Close-Out workflow")
+    return passed
+
+
+# ============================================================
+# Test 26: UC-08 Government Shutdown Notification
+# ============================================================
+
+async def test_26_uc08_shutdown_notification():
+    """UC-08: Shutdown notification — contract classification (continue/stop/excepted),
+    batch email generation, time-critical processing.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 26: UC-08 Government Shutdown Notification")
+    print("=" * 70)
+
+    comp_content, _ = load_skill_or_prompt(prompt_file="02-legal.txt")
+    if not comp_content:
+        print(f"  SKIP - Compliance/legal prompt not found")
+        return None
+
+    print(f"  Scenario: Government shutdown in 4 hours, classify 200+ contracts")
+    print()
+
+    tenant_context = (
+        "Tenant: nci-oa | User: co-wilson-001 | Tier: premium\n"
+        "You are the Compliance skill for the EAGLE Supervisor Agent.\n"
+        "Handle government shutdown notifications by classifying contracts and generating notifications.\n\n"
+    )
+
+    options = ClaudeAgentOptions(
+        model=MODEL,
+        system_prompt=tenant_context + comp_content,
+        allowed_tools=[],
+        permission_mode="bypassPermissions",
+        max_turns=3,
+        max_budget_usd=0.15,
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        env={
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_REGION": "us-east-1",
+        },
+    )
+
+    collector = TraceCollector()
+
+    async for message in query(
+        prompt=(
+            "Government shutdown is imminent — 4 hours away. I have 200+ active contracts. "
+            "How should I classify them? I know some are fully funded FFP (should continue), "
+            "some are incrementally funded (stop at limit), some are cost-reimbursement "
+            "(stop work immediately), and some support excepted life/safety activities. "
+            "What notification categories do I need? What should each email say? "
+            "Draft the four notification templates."
+        ),
+        options=options,
+    ):
+        collector.process(message, indent=2)
+
+    print()
+    summary = collector.summary()
+    print(f"  --- Results ---")
+    print(f"  Messages: {summary['total_messages']}")
+    print(f"  Tokens: {summary['total_input_tokens']} in / {summary['total_output_tokens']} out")
+    print(f"  Cost: ${summary['total_cost_usd']:.6f}")
+
+    all_text = " ".join(collector.text_blocks).lower()
+    for msg_entry in collector.messages:
+        msg = msg_entry["message"]
+        if hasattr(msg, "result") and msg.result:
+            all_text += " " + msg.result.lower()
+
+    indicators = {
+        "shutdown": any(w in all_text for w in ["shutdown", "lapse", "appropriation", "continuing resolution"]),
+        "ffp_continue": any(w in all_text for w in ["firm-fixed", "ffp", "continue", "fully funded"]),
+        "stop_work": any(w in all_text for w in ["stop work", "cease", "stop-work", "suspend"]),
+        "excepted": any(w in all_text for w in ["excepted", "life", "safety", "essential", "emergency"]),
+        "notification": any(w in all_text for w in ["notif", "email", "letter", "template", "contractor"]),
+    }
+
+    print(f"  UC-08 indicators:")
+    for indicator, found in indicators.items():
+        print(f"    {indicator}: {found}")
+
+    indicators_found = sum(1 for v in indicators.values() if v)
+    passed = indicators_found >= 3 and summary["total_messages"] > 0
+    print(f"\n  UC-08 indicators: {indicators_found}/5")
+    print(f"  {'PASS' if passed else 'FAIL'} - UC-08 Shutdown Notification workflow")
+    return passed
+
+
+# ============================================================
+# Test 27: UC-09 Technical Score Sheet Consolidation
+# ============================================================
+
+async def test_27_uc09_score_consolidation():
+    """UC-09: Score consolidation — parse score sheets from multiple reviewers,
+    cross-reviewer variance analysis, question deduplication, evaluation report.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 27: UC-09 Technical Score Sheet Consolidation")
+    print("=" * 70)
+
+    tech_content, _ = load_skill_or_prompt(prompt_file="03-tech.txt")
+    if not tech_content:
+        print(f"  SKIP - Tech Review prompt not found")
+        return None
+
+    print(f"  Scenario: Consolidate 180 score sheets from 9 reviewers on 20 proposals")
+    print()
+
+    tenant_context = (
+        "Tenant: nci-oa | User: co-taylor-001 | Tier: premium\n"
+        "You are the Tech Review skill for the EAGLE Supervisor Agent.\n"
+        "Handle technical evaluation score consolidation and question deduplication.\n\n"
+    )
+
+    options = ClaudeAgentOptions(
+        model=MODEL,
+        system_prompt=tenant_context + tech_content,
+        allowed_tools=[],
+        permission_mode="bypassPermissions",
+        max_turns=3,
+        max_budget_usd=0.15,
+        cwd=os.path.dirname(os.path.abspath(__file__)),
+        env={
+            "CLAUDE_CODE_USE_BEDROCK": "1",
+            "AWS_REGION": "us-east-1",
+        },
+    )
+
+    collector = TraceCollector()
+
+    async for message in query(
+        prompt=(
+            "I have 180 score sheets from 9 technical reviewers evaluating 20 proposals. "
+            "Each reviewer scored 5 evaluation factors: Technical Approach, Management Plan, "
+            "Past Performance, Key Personnel, and Cost Realism. "
+            "Three proposals have significant reviewer divergence. "
+            "The reviewers also submitted 847 total questions — many are duplicates. "
+            "How should I consolidate the scores? What analysis should I run for "
+            "reviewer variance? How do I deduplicate and categorize the questions?"
+        ),
+        options=options,
+    ):
+        collector.process(message, indent=2)
+
+    print()
+    summary = collector.summary()
+    print(f"  --- Results ---")
+    print(f"  Messages: {summary['total_messages']}")
+    print(f"  Tokens: {summary['total_input_tokens']} in / {summary['total_output_tokens']} out")
+    print(f"  Cost: ${summary['total_cost_usd']:.6f}")
+
+    all_text = " ".join(collector.text_blocks).lower()
+    for msg_entry in collector.messages:
+        msg = msg_entry["message"]
+        if hasattr(msg, "result") and msg.result:
+            all_text += " " + msg.result.lower()
+
+    indicators = {
+        "score_matrix": any(w in all_text for w in ["score", "matrix", "consensus", "consolidat"]),
+        "eval_factors": any(w in all_text for w in ["technical approach", "management", "past performance", "key personnel"]),
+        "variance_analysis": any(w in all_text for w in ["variance", "divergen", "outlier", "disagree", "spread"]),
+        "deduplication": any(w in all_text for w in ["dedup", "duplicate", "unique", "cluster", "categoriz"]),
+        "evaluation_report": any(w in all_text for w in ["report", "summary", "per-contractor", "question sheet"]),
+    }
+
+    print(f"  UC-09 indicators:")
+    for indicator, found in indicators.items():
+        print(f"    {indicator}: {found}")
+
+    indicators_found = sum(1 for v in indicators.values() if v)
+    passed = indicators_found >= 3 and summary["total_messages"] > 0
+    print(f"\n  UC-09 indicators: {indicators_found}/5")
+    print(f"  {'PASS' if passed else 'FAIL'} - UC-09 Score Consolidation workflow")
+    return passed
+
+
+# ============================================================
 # Test 16: S3 Document Operations (Direct Tool Call + boto3)
 # ============================================================
 
@@ -2263,6 +2871,13 @@ def emit_to_cloudwatch(trace_output: dict, results: dict):
             16: "16_s3_document_ops", 17: "17_dynamodb_intake_ops",
             18: "18_cloudwatch_logs_ops", 19: "19_document_generation",
             20: "20_cloudwatch_e2e_verification",
+            21: "21_uc02_micro_purchase",
+            22: "22_uc03_option_exercise",
+            23: "23_uc04_contract_modification",
+            24: "24_uc05_co_package_review",
+            25: "25_uc07_contract_closeout",
+            26: "26_uc08_shutdown_notification",
+            27: "27_uc09_score_consolidation",
         }
 
         for test_id_str, test_data in trace_output.get("results", {}).items():
@@ -2339,6 +2954,13 @@ async def _run_test(test_id: int, capture: "CapturingStream", session_id: str = 
         18: ("18_cloudwatch_logs_ops", test_18_cloudwatch_logs_ops),
         19: ("19_document_generation", test_19_document_generation),
         20: ("20_cloudwatch_e2e_verification", test_20_cloudwatch_e2e_verification),
+        21: ("21_uc02_micro_purchase", test_21_uc02_micro_purchase),
+        22: ("22_uc03_option_exercise", test_22_uc03_option_exercise),
+        23: ("23_uc04_contract_modification", test_23_uc04_contract_modification),
+        24: ("24_uc05_co_package_review", test_24_uc05_co_package_review),
+        25: ("25_uc07_contract_closeout", test_25_uc07_contract_closeout),
+        26: ("26_uc08_shutdown_notification", test_26_uc08_shutdown_notification),
+        27: ("27_uc09_score_consolidation", test_27_uc09_score_consolidation),
     }
 
     result_key, test_fn = TEST_REGISTRY[test_id]
@@ -2368,7 +2990,7 @@ async def main():
     if _args.tests:
         selected_tests = sorted(set(int(t.strip()) for t in _args.tests.split(",")))
     else:
-        selected_tests = list(range(1, 21))
+        selected_tests = list(range(1, 28))
 
     # Set up capturing stream
     capture = CapturingStream(sys.stdout)
@@ -2462,6 +3084,14 @@ async def main():
     print(f"    CloudWatch Logs Operations: {'Ready' if results.get('18_cloudwatch_logs_ops') else 'Needs work'}")
     print(f"    Document Generation (3 types): {'Ready' if results.get('19_document_generation') else 'Needs work'}")
     print(f"    CloudWatch E2E Verification: {'Ready' if results.get('20_cloudwatch_e2e_verification') else 'Needs work'}")
+    print(f"\n  UC Workflow Validation:")
+    print(f"    UC-02 Micro-Purchase (<$15K): {'Ready' if results.get('21_uc02_micro_purchase') else 'Needs work'}")
+    print(f"    UC-03 Option Exercise: {'Ready' if results.get('22_uc03_option_exercise') else 'Needs work'}")
+    print(f"    UC-04 Contract Modification: {'Ready' if results.get('23_uc04_contract_modification') else 'Needs work'}")
+    print(f"    UC-05 CO Package Review: {'Ready' if results.get('24_uc05_co_package_review') else 'Needs work'}")
+    print(f"    UC-07 Contract Close-Out: {'Ready' if results.get('25_uc07_contract_closeout') else 'Needs work'}")
+    print(f"    UC-08 Shutdown Notification: {'Ready' if results.get('26_uc08_shutdown_notification') else 'Needs work'}")
+    print(f"    UC-09 Score Consolidation: {'Ready' if results.get('27_uc09_score_consolidation') else 'Needs work'}")
 
     # Restore stdout
     sys.stdout = capture.original
@@ -2499,6 +3129,13 @@ async def main():
             18: "18_cloudwatch_logs_ops",
             19: "19_document_generation",
             20: "20_cloudwatch_e2e_verification",
+            21: "21_uc02_micro_purchase",
+            22: "22_uc03_option_exercise",
+            23: "23_uc04_contract_modification",
+            24: "24_uc05_co_package_review",
+            25: "25_uc07_contract_closeout",
+            26: "26_uc08_shutdown_notification",
+            27: "27_uc09_score_consolidation",
         }.get(test_id, str(test_id))
 
         result_val = results.get(result_key)
