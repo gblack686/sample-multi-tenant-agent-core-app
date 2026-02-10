@@ -9,7 +9,7 @@ last_updated: 2026-02-09T00:00:00
 
 # Backend Expertise (Complete Mental Model)
 
-> **Sources**: app/agentic_service.py, eagle_skill_constants.py
+> **Sources**: server/app/agentic_service.py, server/eagle_skill_constants.py
 
 ---
 
@@ -18,8 +18,8 @@ last_updated: 2026-02-09T00:00:00
 ### File Layout
 
 ```
-app/agentic_service.py        # 2357 lines — main backend, all handlers + dispatch
-eagle_skill_constants.py       # Embedded skill/prompt constants (test-only)
+server/app/agentic_service.py        # 2357 lines — main backend, all handlers + dispatch
+server/eagle_skill_constants.py       # Embedded skill/prompt constants (test-only)
 ```
 
 ### Tech Stack
@@ -348,7 +348,7 @@ Checklist for adding a new tool:
 3. **Add to TOOLS_NEEDING_SESSION** (line 2178) if it needs per-user scoping
 4. **Add to EAGLE_TOOLS** (line 173): Anthropic tool_use schema with name, description, input_schema
 5. **Update SYSTEM_PROMPT** if the tool needs usage guidance
-6. **Validate**: `python -c "import py_compile; py_compile.compile('app/agentic_service.py', doraise=True)"`
+6. **Validate**: `python -c "import py_compile; py_compile.compile('server/app/agentic_service.py', doraise=True)"`
 
 ### stream_chat() Tool-Use Loop
 

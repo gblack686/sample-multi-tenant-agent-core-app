@@ -43,7 +43,7 @@ This is the **LEARN** step in ACT-LEARN-REUSE.
 
 1. Read current `.claude/commands/experts/backend/expertise.md`
 2. Read recent changes:
-   - `app/agentic_service.py` — check modified sections
+   - `server/app/agentic_service.py` — check modified sections
    - Git log for recent commits:
      ```bash
      git log --oneline -10
@@ -150,7 +150,7 @@ Update the `last_updated` field in the frontmatter.
 
 | Source | Location | Content |
 |--------|----------|---------|
-| Backend code | `app/agentic_service.py` | Handler implementations, dispatch |
+| Backend code | `server/app/agentic_service.py` | Handler implementations, dispatch |
 | Test results | `trace_logs.json` | Tool test pass/fail data |
 | Git history | `git log` | Recent changes and context |
 | Expertise | `.claude/commands/experts/backend/expertise.md` | Current mental model |

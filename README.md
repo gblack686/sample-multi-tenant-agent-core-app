@@ -81,7 +81,7 @@ All traces and metrics are captured in DynamoDB for audit trails and cost optimi
 
 ## 🏗️ Architecture Overview
 
-![Architecture Diagram](architecuture.png)
+![Architecture Diagram](data/media/architecuture.png)
 
 ### Core Components
 - **Amazon Bedrock Agent Core Runtime**: Advanced AI orchestration with planning, reasoning, and tool execution
@@ -548,7 +548,7 @@ Configure the model ID in your application based on your use case and cost requi
 
 Watch the application in action:
 
-![Demo](Demo.gif)
+![Demo](data/media/Demo.gif)
 
 The demo showcases:
 - User registration and authentication with Cognito

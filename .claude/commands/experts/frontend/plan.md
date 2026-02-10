@@ -57,13 +57,13 @@ Generate a plan for adding pages, modifying components, updating test mappings, 
 
 1. Search for related components:
    ```
-   glob "nextjs-frontend/components/**/*.tsx"
-   grep "pattern" nextjs-frontend/
+   glob "client/components/**/*.tsx"
+   grep "pattern" client/
    ```
 
 2. Check existing pages:
    ```
-   glob "nextjs-frontend/app/**/page.tsx"
+   glob "client/app/**/page.tsx"
    ```
 
 3. Identify:
@@ -91,7 +91,7 @@ Create a plan document:
 
 | File | Change | Reason |
 |------|--------|--------|
-| `nextjs-frontend/...` | {description} | {why} |
+| `client/...` | {description} | {why} |
 
 ### Component Design (if new component)
 
@@ -114,7 +114,7 @@ interface Props {
 
 | File | Change Type |
 |------|-------------|
-| `nextjs-frontend/...` | modify |
+| `client/...` | modify |
 
 ## Verification
 

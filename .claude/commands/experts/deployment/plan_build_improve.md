@@ -171,13 +171,13 @@ Execute the complete infrastructure development workflow:
 
    **Static Export**:
    ```bash
-   cd nextjs-frontend && npm run build
+   cd client && npm run build
    ls out/index.html || echo "Export failed"
    ```
 
 3. Run eval suite to check nothing is broken:
    ```bash
-   python test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
+   python server/tests/test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
    ```
 
 4. Compare to baseline:

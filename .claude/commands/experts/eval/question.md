@@ -34,7 +34,7 @@ Questions about specific tests or test tiers.
 
 **Resolution**:
 1. Read `expertise.md` -> relevant test tier section
-2. If needed, read `test_eagle_sdk_eval.py` for exact implementation
+2. If needed, read `server/tests/test_eagle_sdk_eval.py` for exact implementation
 3. Provide formatted answer
 
 ---
@@ -50,7 +50,7 @@ Questions about the AWS tools being tested.
 
 **Resolution**:
 1. Read `expertise.md` -> Part 4 (AWS Tool Integration)
-2. If needed, read `app/agentic_service.py` for tool implementations
+2. If needed, read `server/app/agentic_service.py` for tool implementations
 3. Provide answer with code references
 
 ---
@@ -152,8 +152,8 @@ flowchart TD
 ## Source
 
 - expertise.md -> {section}
-- test_eagle_sdk_eval.py:{line} (if referenced)
-- app/agentic_service.py:{line} (if referenced)
+- server/tests/test_eagle_sdk_eval.py:{line} (if referenced)
+- server/app/agentic_service.py:{line} (if referenced)
 ```
 
 ---

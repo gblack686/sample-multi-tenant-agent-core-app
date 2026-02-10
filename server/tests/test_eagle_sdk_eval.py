@@ -21,8 +21,10 @@ from datetime import datetime, timezone
 from dataclasses import dataclass
 from typing import Any
 
-# Add app/ to path so we can import execute_tool for direct tool testing
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "app"))
+# Add server/ to path so we can import app modules and eagle_skill_constants
+_server_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+sys.path.insert(0, _server_dir)
+sys.path.insert(0, os.path.join(_server_dir, "app"))
 from agentic_service import execute_tool
 
 from claude_agent_sdk import (

@@ -60,10 +60,10 @@ Execute the complete eval development workflow:
 1. Run pre-change validation:
    ```bash
    # Syntax check
-   python -c "import py_compile; py_compile.compile('test_eagle_sdk_eval.py', doraise=True)"
+   python -c "import py_compile; py_compile.compile('server/tests/test_eagle_sdk_eval.py', doraise=True)"
 
    # Run existing AWS tool tests (fast, no LLM cost)
-   python test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
+   python server/tests/test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
    ```
 
 2. Save baseline: Note pass/fail counts from `trace_logs.json`
@@ -74,7 +74,7 @@ Execute the complete eval development workflow:
 
 ### Step 3: BUILD (Implement Tests)
 
-1. Implement test function(s) in `test_eagle_sdk_eval.py`:
+1. Implement test function(s) in `server/tests/test_eagle_sdk_eval.py`:
    - Follow the async test function pattern
    - Include step-by-step progress printing
    - Add boto3 confirmation for AWS tests
@@ -97,13 +97,13 @@ Execute the complete eval development workflow:
 1. Run post-change validation:
    ```bash
    # Syntax check
-   python -c "import py_compile; py_compile.compile('test_eagle_sdk_eval.py', doraise=True)"
+   python -c "import py_compile; py_compile.compile('server/tests/test_eagle_sdk_eval.py', doraise=True)"
 
    # Run new test(s) in isolation
-   python test_eagle_sdk_eval.py --model haiku --tests {N}
+   python server/tests/test_eagle_sdk_eval.py --model haiku --tests {N}
 
    # Run full AWS tier to check for regressions
-   python test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
+   python server/tests/test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
    ```
 
 2. Compare to baseline:

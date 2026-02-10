@@ -154,10 +154,10 @@ Run CloudWatch-related tests and verify the emission pipeline end-to-end.
 
 ```bash
 # Step 1: Syntax check
-python -c "import py_compile; py_compile.compile('test_eagle_sdk_eval.py', doraise=True)"
+python -c "import py_compile; py_compile.compile('server/tests/test_eagle_sdk_eval.py', doraise=True)"
 
 # Step 2: Run CloudWatch tests (test 18 = tool, test 20 = E2E)
-python test_eagle_sdk_eval.py --model haiku --tests 18,20
+python server/tests/test_eagle_sdk_eval.py --model haiku --tests 18,20
 
 # Step 3: Check trace_logs.json for results
 python -c "
@@ -358,7 +358,7 @@ aws logs create-log-group --log-group-name /eagle/test-runs
 ### No Streams Found
 This is normal for a fresh setup. Run the eval suite once to create the first stream:
 ```bash
-python test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
+python server/tests/test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
 ```
 
 ### Emission Says "non-fatal" in Output
@@ -373,5 +373,5 @@ Test 20 validates the **previous** run's data due to eventual consistency. Run t
 ```bash
 # Wait and re-run
 sleep 10
-python test_eagle_sdk_eval.py --model haiku --tests 20
+python server/tests/test_eagle_sdk_eval.py --model haiku --tests 20
 ```

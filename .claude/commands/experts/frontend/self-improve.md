@@ -44,12 +44,12 @@ This is the **LEARN** step in ACT-LEARN-REUSE.
 1. Read current `.claude/commands/experts/frontend/expertise.md`
 2. Check build status:
    ```bash
-   cd nextjs-frontend && npm run build 2>&1 | tail -20
+   cd client && npm run build 2>&1 | tail -20
    ```
 3. Read git log for recent changes:
    ```bash
    git log --oneline -10
-   git diff HEAD~3 --stat -- nextjs-frontend/ test_results_dashboard.html
+   git diff HEAD~3 --stat -- client/ test_results_dashboard.html
    ```
 4. Check for mapping consistency (if applicable)
 

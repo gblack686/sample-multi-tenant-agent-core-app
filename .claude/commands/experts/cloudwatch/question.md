@@ -34,7 +34,7 @@ Questions about the CloudWatch log group structure and event flow.
 
 **Resolution**:
 1. Read `.claude/commands/experts/cloudwatch/expertise.md` -> Part 1 (Architecture)
-2. If needed, read `test_eagle_sdk_eval.py` (~line 2222-2250) for stream naming
+2. If needed, read `server/tests/test_eagle_sdk_eval.py` (~line 2222-2250) for stream naming
 3. Provide formatted answer
 
 ---
@@ -65,7 +65,7 @@ Questions about how test results get to CloudWatch.
 
 **Resolution**:
 1. Read `.claude/commands/experts/cloudwatch/expertise.md` -> Part 3 (Emission Pipeline)
-2. If needed, read `test_eagle_sdk_eval.py` (~line 2224-2311) for implementation
+2. If needed, read `server/tests/test_eagle_sdk_eval.py` (~line 2224-2311) for implementation
 3. Provide answer with code references
 
 ---
@@ -81,7 +81,7 @@ Questions about the _exec_cloudwatch_logs tool in agentic_service.py.
 
 **Resolution**:
 1. Read `.claude/commands/experts/cloudwatch/expertise.md` -> Part 4 (CloudWatch Logs Tool)
-2. If needed, read `app/agentic_service.py` (~line 589-705) for implementation
+2. If needed, read `server/app/agentic_service.py` (~line 589-705) for implementation
 3. Provide answer with param tables and return shapes
 
 ---
@@ -138,7 +138,7 @@ flowchart TD
     A[Receive Question] --> B{Classify Question}
     B -->|Architecture| C[Read expertise.md Part 1]
     B -->|Event Schema| D[Read expertise.md Part 2]
-    B -->|Emission| E[Read expertise.md Part 3 + test_eagle_sdk_eval.py]
+    B -->|Emission| E[Read expertise.md Part 3 + server/tests/test_eagle_sdk_eval.py]
     B -->|CW Tool| F[Read expertise.md Part 4 + agentic_service.py]
     B -->|boto3 API| G[Read expertise.md Part 5]
     B -->|Querying| H[Read expertise.md Part 6]
@@ -169,8 +169,8 @@ flowchart TD
 ## Source
 
 - expertise.md -> {section}
-- test_eagle_sdk_eval.py:{line} (if referenced)
-- app/agentic_service.py:{line} (if referenced)
+- server/tests/test_eagle_sdk_eval.py:{line} (if referenced)
+- server/app/agentic_service.py:{line} (if referenced)
 ```
 
 ---

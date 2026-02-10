@@ -120,16 +120,15 @@ jobs:
       run: |
         USER_POOL_ID="${{ needs.deploy-infrastructure.outputs.user-pool-id }}"
         CLIENT_ID="${{ needs.deploy-infrastructure.outputs.client-id }}"
-        
-        # Update frontend configuration
-        sed -i "s/userPoolId: 'UPDATE_FROM_DEPLOYMENT'/userPoolId: '$USER_POOL_ID'/g" frontend/index.html
-        sed -i "s/clientId: 'UPDATE_FROM_DEPLOYMENT'/clientId: '$CLIENT_ID'/g" frontend/index.html
-        
+
+        # Next.js client uses environment variables via client/.env.local
+        echo "NEXT_PUBLIC_COGNITO_USER_POOL_ID=$USER_POOL_ID" >> client/.env.local
+        echo "NEXT_PUBLIC_COGNITO_CLIENT_ID=$CLIENT_ID" >> client/.env.local
+
         echo "✅ Frontend configured with:"
         echo "   User Pool ID: $USER_POOL_ID"
         echo "   Client ID: $CLIENT_ID"
-        echo "🌐 Frontend ready at: http://localhost:8000"
-        echo "📝 Manual user registration available with subscription tier selection"
+        echo "🌐 Frontend (Next.js) in client/"
         
     - name: Create Environment File
       run: |

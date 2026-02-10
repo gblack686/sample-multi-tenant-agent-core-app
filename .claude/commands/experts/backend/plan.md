@@ -42,7 +42,7 @@ Generate a plan for adding tool handlers, modifying existing handlers, updating 
    - Tenant scoping rules
    - Known issues and gotchas
 
-2. Read `app/agentic_service.py` for:
+2. Read `server/app/agentic_service.py` for:
    - Current TOOL_DISPATCH entries
    - EAGLE_TOOLS schema definitions
    - Handler implementations near the change area
@@ -57,12 +57,12 @@ Generate a plan for adding tool handlers, modifying existing handlers, updating 
 
 1. Search for related code:
    ```
-   grep "pattern" app/agentic_service.py
+   grep "pattern" server/app/agentic_service.py
    ```
 
 2. Check existing patterns:
    ```
-   grep "def _exec_" app/agentic_service.py
+   grep "def _exec_" server/app/agentic_service.py
    ```
 
 3. Identify:
@@ -87,7 +87,7 @@ Create a plan document:
 
 ## Design
 
-### Changes to app/agentic_service.py
+### Changes to server/app/agentic_service.py
 
 | Location | Change |
 |----------|--------|
@@ -118,7 +118,7 @@ Create a plan document:
 
 ## Validation
 
-1. `python -c "import py_compile; py_compile.compile('app/agentic_service.py', doraise=True)"`
+1. `python -c "import py_compile; py_compile.compile('server/app/agentic_service.py', doraise=True)"`
 2. Test via execute_tool() call
 3. Check existing tests still pass
 ```

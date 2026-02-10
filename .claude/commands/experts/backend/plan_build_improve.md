@@ -46,7 +46,7 @@ Execute the complete backend development workflow:
 
 2. Analyze the TASK:
    - Search codebase for relevant implementations
-   - Identify which sections of `app/agentic_service.py` are affected
+   - Identify which sections of `server/app/agentic_service.py` are affected
    - Determine dependencies
 
 3. Create implementation plan:
@@ -61,7 +61,7 @@ Execute the complete backend development workflow:
 1. Run pre-change validation:
    ```bash
    # Syntax check
-   python -c "import py_compile; py_compile.compile('app/agentic_service.py', doraise=True)"
+   python -c "import py_compile; py_compile.compile('server/app/agentic_service.py', doraise=True)"
 
    # Check tool dispatch is intact
    python -c "import sys; sys.path.insert(0, 'app'); from agentic_service import TOOL_DISPATCH, TOOLS_NEEDING_SESSION; print(f'Tools: {len(TOOL_DISPATCH)}, Session-scoped: {len(TOOLS_NEEDING_SESSION)}')"
@@ -70,7 +70,7 @@ Execute the complete backend development workflow:
 2. If eval tests exist for affected tools, run them:
    ```bash
    # AWS tool tests (free, fast)
-   python test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
+   python server/tests/test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
    ```
 
 3. **STOP if baseline fails** - Fix existing issues first
@@ -79,7 +79,7 @@ Execute the complete backend development workflow:
 
 ### Step 3: BUILD (Implement Changes)
 
-1. Implement changes in `app/agentic_service.py`:
+1. Implement changes in `server/app/agentic_service.py`:
    - Follow the existing handler pattern (`_exec_*` functions)
    - Match return shape conventions (`{message, ...}` dicts)
    - Use `_extract_tenant_id()` and `_get_user_prefix()` for scoping
@@ -101,7 +101,7 @@ Execute the complete backend development workflow:
 1. Run post-change validation:
    ```bash
    # Syntax check
-   python -c "import py_compile; py_compile.compile('app/agentic_service.py', doraise=True)"
+   python -c "import py_compile; py_compile.compile('server/app/agentic_service.py', doraise=True)"
 
    # Import check
    python -c "import sys; sys.path.insert(0, 'app'); from agentic_service import execute_tool, TOOL_DISPATCH; print(f'Tools: {list(TOOL_DISPATCH.keys())}')"
@@ -118,7 +118,7 @@ Execute the complete backend development workflow:
 
 2. Run affected eval tests:
    ```bash
-   python test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
+   python server/tests/test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
    ```
 
 3. Compare to baseline:
@@ -220,7 +220,7 @@ flowchart TD
 
 | File | Location | Change |
 |------|----------|--------|
-| app/agentic_service.py | line ~{N} | {description} |
+| server/app/agentic_service.py | line ~{N} | {description} |
 
 ### Registration Points Updated
 

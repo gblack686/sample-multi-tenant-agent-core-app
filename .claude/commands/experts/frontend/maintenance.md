@@ -36,7 +36,7 @@ Run build checks, verify mapping consistency between the Next.js app and the leg
 
 1. Verify project structure:
    ```bash
-   ls nextjs-frontend/package.json
+   ls client/package.json
    ls test_results_dashboard.html
    ```
 
@@ -46,12 +46,12 @@ Run build checks, verify mapping consistency between the Next.js app and the leg
 
 1. TypeScript check:
    ```bash
-   cd nextjs-frontend && npx tsc --noEmit 2>&1
+   cd client && npx tsc --noEmit 2>&1
    ```
 
 2. Full build (if TypeScript passes):
    ```bash
-   cd nextjs-frontend && npm run build 2>&1 | tail -40
+   cd client && npm run build 2>&1 | tail -40
    ```
 
 3. Note any errors or warnings
@@ -60,7 +60,7 @@ Run build checks, verify mapping consistency between the Next.js app and the leg
 
 1. Extract TEST_NAMES entries from Next.js:
    ```bash
-   grep "^\s*'" nextjs-frontend/app/admin/tests/page.tsx | head -30
+   grep "^\s*'" client/app/admin/tests/page.tsx | head -30
    ```
 
 2. Extract TEST_DEFS entries from HTML dashboard:
@@ -70,7 +70,7 @@ Run build checks, verify mapping consistency between the Next.js app and the leg
 
 3. Extract SKILL_TEST_MAP entries from viewer:
    ```bash
-   grep -A1 "^\s*[a-z]" nextjs-frontend/app/admin/viewer/page.tsx | grep -E "^\s*(intake|docgen|tech|compliance|supervisor|'[0-9]|s3_|dynamodb|cloudwatch|create_)"
+   grep -A1 "^\s*[a-z]" client/app/admin/viewer/page.tsx | grep -E "^\s*(intake|docgen|tech|compliance|supervisor|'[0-9]|s3_|dynamodb|cloudwatch|create_)"
    ```
 
 4. Extract readiness panel entries:
@@ -149,16 +149,16 @@ If you just want to verify specific things without a full check:
 
 ```bash
 # TypeScript only
-cd nextjs-frontend && npx tsc --noEmit 2>&1 | tail -5
+cd client && npx tsc --noEmit 2>&1 | tail -5
 
 # Count TEST_NAMES entries
-grep -c "'" nextjs-frontend/app/admin/tests/page.tsx
+grep -c "'" client/app/admin/tests/page.tsx
 
 # Count TEST_DEFS entries
 grep -c "{ id:" test_results_dashboard.html
 
 # Verify both have same count
-echo "TEST_NAMES:" && grep -c "'" nextjs-frontend/app/admin/tests/page.tsx
+echo "TEST_NAMES:" && grep -c "'" client/app/admin/tests/page.tsx
 echo "TEST_DEFS:" && grep -c "{ id:" test_results_dashboard.html
 ```
 
@@ -168,20 +168,20 @@ echo "TEST_DEFS:" && grep -c "{ id:" test_results_dashboard.html
 
 ```bash
 # Show specific errors
-cd nextjs-frontend && npx tsc --noEmit 2>&1 | grep "error TS"
+cd client && npx tsc --noEmit 2>&1 | grep "error TS"
 ```
 
 ### Missing node_modules
 
 ```bash
-cd nextjs-frontend && npm install
+cd client && npm install
 ```
 
 ### TEST_NAMES Count Mismatch
 
 ```bash
 # Compare test IDs in both files
-grep -oP "'(\d+)'" nextjs-frontend/app/admin/tests/page.tsx | sort -n
+grep -oP "'(\d+)'" client/app/admin/tests/page.tsx | sort -n
 grep -oP "id: (\d+)" test_results_dashboard.html | sort -n
 ```
 
@@ -189,5 +189,5 @@ grep -oP "id: (\d+)" test_results_dashboard.html | sort -n
 
 ```bash
 # List all test IDs referenced in SKILL_TEST_MAP
-grep -oP '\[\d+' nextjs-frontend/app/admin/viewer/page.tsx | sort -n -u
+grep -oP '\[\d+' client/app/admin/viewer/page.tsx | sort -n -u
 ```

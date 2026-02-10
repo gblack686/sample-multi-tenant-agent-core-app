@@ -11,7 +11,7 @@ model: opus
 
 ## Purpose
 
-Automate the full SOP for adding a new test to `test_eagle_sdk_eval.py`. A single missed registration causes silent data loss (test runs but results vanish from dashboards or CloudWatch). This command handles every touchpoint.
+Automate the full SOP for adding a new test to `server/tests/test_eagle_sdk_eval.py`. A single missed registration causes silent data loss (test runs but results vanish from dashboards or CloudWatch). This command handles every touchpoint.
 
 ## Variables
 
@@ -39,7 +39,7 @@ Automate the full SOP for adding a new test to `test_eagle_sdk_eval.py`. A singl
 
 2. Find the current highest test ID:
    ```
-   Grep pattern="^\s+\d+:" path="test_eagle_sdk_eval.py" — look at TEST_REGISTRY
+   Grep pattern="^\s+\d+:" path="server/tests/test_eagle_sdk_eval.py" — look at TEST_REGISTRY
    ```
 
 3. Set `N` = highest ID + 1.
@@ -61,9 +61,9 @@ Automate the full SOP for adding a new test to `test_eagle_sdk_eval.py`. A singl
 
 ### Phase 2: Write the Test Function
 
-1. Read `test_eagle_sdk_eval.py` to find the insertion point (before the `# ── Main` section).
+1. Read `server/tests/test_eagle_sdk_eval.py` to find the insertion point (before the `# ── Main` section).
 
-2. Read `app/agentic_service.py` if the test exercises an AWS tool — understand the handler's params and return shape.
+2. Read `server/app/agentic_service.py` if the test exercises an AWS tool — understand the handler's params and return shape.
 
 3. Write the test function using the appropriate tier template:
 
@@ -147,9 +147,9 @@ Automate the full SOP for adding a new test to `test_eagle_sdk_eval.py`. A singl
 
 4. Insert the function using Edit before the `# ── Main` marker.
 
-### Phase 3: Register in Backend (5 edits in test_eagle_sdk_eval.py)
+### Phase 3: Register in Backend (5 edits in server/tests/test_eagle_sdk_eval.py)
 
-All 5 edits target `test_eagle_sdk_eval.py`. Make them in order:
+All 5 edits target `server/tests/test_eagle_sdk_eval.py`. Make them in order:
 
 **3a. `TEST_REGISTRY`** — find `TEST_REGISTRY = {` in `_run_test()` (~line 2319). Add:
 ```python
@@ -185,12 +185,12 @@ print(f"  Test N  {'PASS' if results.get('N_snake_name') else 'FAIL':6s}  Title"
 { label: "Descriptive readiness label", ready: results[N]?.status === 'pass' },
 ```
 
-**4c. `nextjs-frontend/app/admin/tests/page.tsx` — `TEST_NAMES`** (~line 28):
+**4c. `client/app/admin/tests/page.tsx` — `TEST_NAMES`** (~line 28):
 ```typescript
 'N': 'Title',
 ```
 
-**4d. `nextjs-frontend/app/admin/viewer/page.tsx` — `SKILL_TEST_MAP`** (~line 446):
+**4d. `client/app/admin/viewer/page.tsx` — `SKILL_TEST_MAP`** (~line 446):
 Only if the test maps to a tool/skill key:
 ```typescript
 tool_key: [N],
@@ -202,12 +202,12 @@ Run these commands in sequence:
 
 1. **Syntax check**:
    ```bash
-   python -c "import py_compile; py_compile.compile('test_eagle_sdk_eval.py', doraise=True)"
+   python -c "import py_compile; py_compile.compile('server/tests/test_eagle_sdk_eval.py', doraise=True)"
    ```
 
 2. **Verify registrations** — grep for the new test ID in all 4 files:
    ```bash
-   grep -n "N_snake_name\|id: N\|'N':" test_eagle_sdk_eval.py test_results_dashboard.html nextjs-frontend/app/admin/tests/page.tsx nextjs-frontend/app/admin/viewer/page.tsx
+   grep -n "N_snake_name\|id: N\|'N':" server/tests/test_eagle_sdk_eval.py test_results_dashboard.html client/app/admin/tests/page.tsx client/app/admin/viewer/page.tsx
    ```
 
 3. **Count registrations** — must find 8 (or 7 if SKILL_TEST_MAP not applicable):
@@ -217,7 +217,7 @@ Run these commands in sequence:
 
 4. **Run the test** (if AWS credentials available):
    ```bash
-   python test_eagle_sdk_eval.py --model haiku --tests N
+   python server/tests/test_eagle_sdk_eval.py --model haiku --tests N
    ```
 
 5. **Verify trace output**:
@@ -240,11 +240,11 @@ New Test Added
   Title:      {Title}
 
   Registrations: 8/8 complete
-    [x] TEST_REGISTRY        (test_eagle_sdk_eval.py)
-    [x] test_names            (test_eagle_sdk_eval.py)
-    [x] result_key            (test_eagle_sdk_eval.py)
-    [x] summary printout      (test_eagle_sdk_eval.py)
-    [x] selected_tests range  (test_eagle_sdk_eval.py)
+    [x] TEST_REGISTRY        (server/tests/test_eagle_sdk_eval.py)
+    [x] test_names            (server/tests/test_eagle_sdk_eval.py)
+    [x] result_key            (server/tests/test_eagle_sdk_eval.py)
+    [x] summary printout      (server/tests/test_eagle_sdk_eval.py)
+    [x] selected_tests range  (server/tests/test_eagle_sdk_eval.py)
     [x] TEST_DEFS             (test_results_dashboard.html)
     [x] readiness panel       (test_results_dashboard.html)
     [x] TEST_NAMES            (tests/page.tsx)

@@ -102,7 +102,7 @@ Future State (CDK + CI/CD)
   |     |-- Multi-stage Next.js standalone build
   |     |-- HOSTNAME=0.0.0.0 for ECS
   |
-  |-- nextjs-frontend/
+  |-- client/
         |-- Static export OR standalone mode
         |-- CloudFront + S3 OR ECS Fargate
 ```

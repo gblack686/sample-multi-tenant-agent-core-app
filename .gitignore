@@ -64,3 +64,10 @@ htmlcov/
 node_modules/
 .next/
 next-env.d.ts
+
+# Dev-only (not on main)
+notes/
+data/
+
+# Legacy directories (kept locally, not tracked)
+nextjs-frontend/

@@ -39,7 +39,7 @@ Run the EAGLE SDK Evaluation Suite (or a subset), analyze pass/fail results, and
 1. Verify prerequisites:
    ```bash
    # Check Python syntax
-   python -c "import py_compile; py_compile.compile('test_eagle_sdk_eval.py', doraise=True)"
+   python -c "import py_compile; py_compile.compile('server/tests/test_eagle_sdk_eval.py', doraise=True)"
 
    # Check AWS credentials
    python -c "import boto3; boto3.client('sts').get_caller_identity()" 2>&1
@@ -53,13 +53,13 @@ Based on the preset:
 
 ```bash
 # AWS tool tests (free, fast)
-python test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
+python server/tests/test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
 
 # Full suite
-python test_eagle_sdk_eval.py --model haiku
+python server/tests/test_eagle_sdk_eval.py --model haiku
 
 # Specific tests
-python test_eagle_sdk_eval.py --model haiku --tests {N,N,N}
+python server/tests/test_eagle_sdk_eval.py --model haiku --tests {N,N,N}
 ```
 
 ### Phase 3: Analyze Results
@@ -131,10 +131,10 @@ If you just want to verify the suite is healthy without a full run:
 
 ```bash
 # Syntax only
-python -c "import py_compile; py_compile.compile('test_eagle_sdk_eval.py', doraise=True)"
+python -c "import py_compile; py_compile.compile('server/tests/test_eagle_sdk_eval.py', doraise=True)"
 
 # AWS connectivity only (test 16 is fastest)
-python test_eagle_sdk_eval.py --model haiku --tests 16
+python server/tests/test_eagle_sdk_eval.py --model haiku --tests 16
 
 # Last run results
 python -c "import json; d=json.load(open('trace_logs.json')); print(f'Last run: {d[\"passed\"]}P {d[\"failed\"]}F {d[\"skipped\"]}S')"

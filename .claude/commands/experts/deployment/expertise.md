@@ -86,9 +86,9 @@ Example:
 ```
 
 **Used by**:
-- `app/agentic_service.py` — `_exec_s3_document_ops()` for read/write/list/delete
-- `app/agentic_service.py` — `_exec_create_document()` for saving generated docs
-- `test_eagle_sdk_eval.py` — Tests 16 and 19 (with cleanup)
+- `server/app/agentic_service.py` — `_exec_s3_document_ops()` for read/write/list/delete
+- `server/app/agentic_service.py` — `_exec_create_document()` for saving generated docs
+- `server/tests/test_eagle_sdk_eval.py` — Tests 16 and 19 (with cleanup)
 
 ### DynamoDB Table: `eagle`
 
@@ -108,8 +108,8 @@ GSI: Unknown (may not have any)
 ```
 
 **Used by**:
-- `app/agentic_service.py` — `_exec_dynamodb_intake()` for create/read/update/list/delete
-- `test_eagle_sdk_eval.py` — Test 17 (with cleanup)
+- `server/app/agentic_service.py` — `_exec_dynamodb_intake()` for create/read/update/list/delete
+- `server/tests/test_eagle_sdk_eval.py` — Test 17 (with cleanup)
 
 ### CloudWatch Log Group: `/eagle/test-runs`
 
@@ -127,9 +127,9 @@ Event Types:
 ```
 
 **Used by**:
-- `test_eagle_sdk_eval.py` — `emit_to_cloudwatch()` writes structured events
-- `app/agentic_service.py` — `_exec_cloudwatch_logs()` reads log data
-- `test_eagle_sdk_eval.py` — Tests 18 and 20 (read-only verification)
+- `server/tests/test_eagle_sdk_eval.py` — `emit_to_cloudwatch()` writes structured events
+- `server/app/agentic_service.py` — `_exec_cloudwatch_logs()` reads log data
+- `server/tests/test_eagle_sdk_eval.py` — Tests 18 and 20 (read-only verification)
 
 ### Bedrock: Anthropic Models
 
@@ -147,7 +147,7 @@ Auth: Same AWS credentials as other services
 
 **Used by**:
 - `claude-agent-sdk` — `query()` calls route through Bedrock
-- `test_eagle_sdk_eval.py` — Tests 1-15 (SDK and skill tests)
+- `server/tests/test_eagle_sdk_eval.py` — Tests 1-15 (SDK and skill tests)
 
 ---
 
@@ -175,7 +175,7 @@ Cons:
   - Must handle client-side auth differently
 
 Build Command:
-  cd nextjs-frontend && npm run build
+  cd client && npm run build
   # Produces out/ directory with static files
 
 Deploy Command:
@@ -228,7 +228,7 @@ Deploy Command:
 
 ### Current Project Assessment
 
-The `nextjs-frontend/` directory uses:
+The `client/` directory uses:
 - API routes (`app/api/prompts/`) -> Needs server
 - Auth context (`contexts/auth-context.tsx`) -> Could be client-side
 - No confirmed SSR/ISR usage
@@ -350,13 +350,13 @@ const existingTable = dynamodb.Table.fromTableName(this, 'ExistingTable', 'eagle
 # Stage 1: Dependencies
 FROM node:20-alpine AS deps
 WORKDIR /app
-COPY nextjs-frontend/package.json nextjs-frontend/package-lock.json ./
+COPY client/package.json client/package-lock.json ./
 RUN npm ci --only=production
 
 # Stage 2: Build
 FROM node:20-alpine AS builder
 WORKDIR /app
-COPY nextjs-frontend/ .
+COPY client/ .
 COPY --from=deps /app/node_modules ./node_modules
 RUN npm run build
 
@@ -386,7 +386,7 @@ CMD ["node", "server.js"]
 ### Next.js Standalone Configuration
 
 ```javascript
-// nextjs-frontend/next.config.js
+// client/next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',  // Produces minimal server.js + dependencies
@@ -457,17 +457,17 @@ jobs:
         with:
           node-version: '20'
           cache: 'npm'
-          cache-dependency-path: nextjs-frontend/package-lock.json
+          cache-dependency-path: client/package-lock.json
 
       - name: Install Dependencies
-        run: cd nextjs-frontend && npm ci
+        run: cd client && npm ci
 
       - name: Build
-        run: cd nextjs-frontend && npm run build
+        run: cd client && npm run build
 
       - name: Deploy to S3 (static export)
         run: |
-          aws s3 sync nextjs-frontend/out/ s3://eagle-frontend-${{ env.STAGE }}/ --delete
+          aws s3 sync client/out/ s3://eagle-frontend-${{ env.STAGE }}/ --delete
           aws cloudfront create-invalidation --distribution-id ${{ secrets.CF_DISTRIBUTION_ID }} --paths "/*"
 ```
 
@@ -506,7 +506,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'nextjs-frontend/**'
+      - 'client/**'
       - 'Dockerfile'
 
 permissions:

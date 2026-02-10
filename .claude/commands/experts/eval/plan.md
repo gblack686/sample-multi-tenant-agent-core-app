@@ -42,7 +42,7 @@ Generate a plan for adding tests, modifying existing tests, or improving coverag
    - AWS tool interfaces
    - Known issues and gotchas
 
-2. Read `test_eagle_sdk_eval.py` for:
+2. Read `server/tests/test_eagle_sdk_eval.py` for:
    - Current test count and registry
    - Existing test implementations
    - Helper functions available
@@ -56,12 +56,12 @@ Generate a plan for adding tests, modifying existing tests, or improving coverag
 
 1. Search for related tests:
    ```
-   grep "test_pattern" test_eagle_sdk_eval.py
+   grep "test_pattern" server/tests/test_eagle_sdk_eval.py
    ```
 
 2. Check tool implementations:
    ```
-   grep "def _exec_" app/agentic_service.py
+   grep "def _exec_" server/app/agentic_service.py
    ```
 
 3. Identify:
@@ -100,7 +100,7 @@ Pass criteria: {conditions}
 
 | File | Change |
 |------|--------|
-| `test_eagle_sdk_eval.py` | Add test function, update registry |
+| `server/tests/test_eagle_sdk_eval.py` | Add test function, update registry |
 
 ## Registration Checklist
 
@@ -118,7 +118,7 @@ Pass criteria: {conditions}
 
 ## Verification
 
-1. `python test_eagle_sdk_eval.py --tests {N}` — passes
+1. `python server/tests/test_eagle_sdk_eval.py --tests {N}` — passes
 2. CloudWatch: event emitted for test {N}
 3. No artifacts left behind
 ```

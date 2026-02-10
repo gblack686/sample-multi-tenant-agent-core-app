@@ -62,10 +62,10 @@ Execute the complete CloudWatch development workflow:
 1. Run pre-change validation:
    ```bash
    # Syntax check
-   python -c "import py_compile; py_compile.compile('test_eagle_sdk_eval.py', doraise=True)"
+   python -c "import py_compile; py_compile.compile('server/tests/test_eagle_sdk_eval.py', doraise=True)"
 
    # Run CloudWatch-related tests (free, no LLM cost)
-   python test_eagle_sdk_eval.py --model haiku --tests 18,20
+   python server/tests/test_eagle_sdk_eval.py --model haiku --tests 18,20
    ```
 
 2. Save baseline: Note pass/fail for tests 18 and 20
@@ -116,13 +116,13 @@ Keep changes atomic and focused.
 1. Run post-change validation:
    ```bash
    # Syntax check
-   python -c "import py_compile; py_compile.compile('test_eagle_sdk_eval.py', doraise=True)"
+   python -c "import py_compile; py_compile.compile('server/tests/test_eagle_sdk_eval.py', doraise=True)"
 
    # Run CloudWatch tests
-   python test_eagle_sdk_eval.py --model haiku --tests 18,20
+   python server/tests/test_eagle_sdk_eval.py --model haiku --tests 18,20
 
    # Run full AWS tier to check for regressions
-   python test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
+   python server/tests/test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
    ```
 
 2. Compare to baseline:

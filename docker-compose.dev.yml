@@ -10,11 +10,11 @@ services:
     environment:
       - DEV_MODE=true
     volumes:
-      - ./app:/app/app
+      - ./server/app:/app/app
 
   frontend:
     build:
-      context: ./nextjs-frontend
+      context: ./client
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
@@ -23,9 +23,9 @@ services:
     depends_on:
       - backend
     volumes:
-      - ./nextjs-frontend/app:/app/app
-      - ./nextjs-frontend/components:/app/components
-      - ./nextjs-frontend/hooks:/app/hooks
-      - ./nextjs-frontend/contexts:/app/contexts
-      - ./nextjs-frontend/lib:/app/lib
-      - ./nextjs-frontend/types:/app/types
+      - ./client/app:/app/app
+      - ./client/components:/app/components
+      - ./client/hooks:/app/hooks
+      - ./client/contexts:/app/contexts
+      - ./client/lib:/app/lib
+      - ./client/types:/app/types

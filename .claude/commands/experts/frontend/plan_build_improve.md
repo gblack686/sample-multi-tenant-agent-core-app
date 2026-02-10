@@ -61,10 +61,10 @@ Execute the complete frontend development workflow:
 1. Run pre-change validation:
    ```bash
    # TypeScript build check
-   cd nextjs-frontend && npx tsc --noEmit 2>&1 | tail -20
+   cd client && npx tsc --noEmit 2>&1 | tail -20
 
    # Check current mapping counts
-   grep -c "'" nextjs-frontend/app/admin/tests/page.tsx   # TEST_NAMES entries
+   grep -c "'" client/app/admin/tests/page.tsx   # TEST_NAMES entries
    grep -c "id:" test_results_dashboard.html              # TEST_DEFS entries
    ```
 
@@ -84,9 +84,9 @@ Execute the complete frontend development workflow:
    - Follow existing interface patterns
 
 2. Update all required registrations if adding tests:
-   - `TEST_NAMES` in `nextjs-frontend/app/admin/tests/page.tsx`
+   - `TEST_NAMES` in `client/app/admin/tests/page.tsx`
    - `TEST_DEFS` in `test_results_dashboard.html`
-   - `SKILL_TEST_MAP` in `nextjs-frontend/app/admin/viewer/page.tsx` (if applicable)
+   - `SKILL_TEST_MAP` in `client/app/admin/viewer/page.tsx` (if applicable)
    - Readiness panel in `test_results_dashboard.html`
 
 3. Keep changes atomic
@@ -98,13 +98,13 @@ Execute the complete frontend development workflow:
 1. Run post-change validation:
    ```bash
    # TypeScript build check
-   cd nextjs-frontend && npx tsc --noEmit 2>&1 | tail -20
+   cd client && npx tsc --noEmit 2>&1 | tail -20
 
    # Full build
-   cd nextjs-frontend && npm run build 2>&1 | tail -30
+   cd client && npm run build 2>&1 | tail -30
 
    # Check mapping consistency
-   grep "'[0-9]'" nextjs-frontend/app/admin/tests/page.tsx | wc -l
+   grep "'[0-9]'" client/app/admin/tests/page.tsx | wc -l
    grep "id:" test_results_dashboard.html | grep -c "category"
    ```
 
@@ -204,13 +204,13 @@ flowchart TD
 
 | File | Change |
 |------|--------|
-| `nextjs-frontend/...` | {description} |
+| `client/...` | {description} |
 
 ### Mapping Updates (if applicable)
 
-- [x] TEST_NAMES (nextjs-frontend/.../tests/page.tsx)
+- [x] TEST_NAMES (client/.../tests/page.tsx)
 - [x] TEST_DEFS (test_results_dashboard.html)
-- [x] SKILL_TEST_MAP (nextjs-frontend/.../viewer/page.tsx)
+- [x] SKILL_TEST_MAP (client/.../viewer/page.tsx)
 - [x] Readiness panel (test_results_dashboard.html)
 
 ### Learnings Captured

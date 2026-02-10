@@ -184,7 +184,7 @@ except Exception as e:
     print(f'  Error:    {e}')
     print()
     print('  Fix: Run eval suite to auto-create log group')
-    print('       python test_eagle_sdk_eval.py --model haiku --tests 16')
+    print('       python server/tests/test_eagle_sdk_eval.py --model haiku --tests 16')
 "
 ```
 
@@ -243,10 +243,10 @@ checks = [
     ('Dockerfile',        'Dockerfile'),
     ('Docker Compose',    'docker-compose.yml'),
     ('GitHub Actions',    '.github/workflows/'),
-    ('Next.js config',    'nextjs-frontend/next.config.ts'),
-    ('Next.js package',   'nextjs-frontend/package.json'),
+    ('Next.js config',    'client/next.config.ts'),
+    ('Next.js package',   'client/package.json'),
     ('.env file',         '.env'),
-    ('.env.local',        'nextjs-frontend/.env.local'),
+    ('.env.local',        'client/.env.local'),
 ]
 
 for label, path in checks:

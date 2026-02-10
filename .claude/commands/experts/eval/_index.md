@@ -12,12 +12,12 @@ tags: [expert, eval, testing, eagle, sdk, aws, cloudwatch, boto3]
 ## Domain Scope
 
 This expert covers:
-- **Test Suite** - `test_eagle_sdk_eval.py` (20 tests across 3 tiers)
+- **Test Suite** - `server/tests/test_eagle_sdk_eval.py` (20 tests across 3 tiers)
 - **SDK Patterns** (1-6) - Sessions, resume, traces, subagents, cost tracking, MCP tools
 - **Skill Validation** (7-15) - OA intake, legal, market, tech, public interest, doc gen, supervisor chain
 - **AWS Tool Integration** (16-20) - S3 ops, DynamoDB CRUD, CloudWatch logs, document generation, E2E verification
 - **CloudWatch Telemetry** - `/eagle/test-runs` log group, per-run streams, structured events
-- **Agentic Service** - `app/agentic_service.py` tools: `execute_tool()`, S3, DynamoDB, CloudWatch, document generators
+- **Agentic Service** - `server/app/agentic_service.py` tools: `execute_tool()`, S3, DynamoDB, CloudWatch, document generators
 
 ## Available Commands
 
@@ -45,7 +45,7 @@ This expert covers:
 ## Architecture
 
 ```
-test_eagle_sdk_eval.py
+server/tests/test_eagle_sdk_eval.py
   |-- Tests 1-6:  claude-agent-sdk query() calls (LLM-based, Bedrock)
   |-- Tests 7-15: Skill loading via system_prompt (LLM-based)
   |-- Tests 16-20: execute_tool() direct calls (no LLM, boto3 confirm)
@@ -55,7 +55,7 @@ test_eagle_sdk_eval.py
   |-- emit_to_cloudwatch(): structured JSON to /eagle/test-runs
   |-- trace_logs.json: local file output for dashboard
 
-app/agentic_service.py
+server/app/agentic_service.py
   |-- execute_tool(): tool dispatch router
   |-- _exec_s3_document_ops(): S3 read/write/list
   |-- _exec_dynamodb_intake(): DDB create/read/update/list

@@ -12,7 +12,7 @@ tags: [expert, frontend, nextjs, tailwind, chat, dashboard, test-results, html]
 ## Domain Scope
 
 This expert covers:
-- **Next.js App** - `nextjs-frontend/` (App Router, pages, components, API routes, auth)
+- **Next.js App** - `client/` (App Router, pages, components, API routes, auth)
 - **Chat Interface** - `/chat-advanced` complex chat with forms, agent logs, sidebar panels
 - **Minimalist Chat** - `/` simple chat with EAGLE reference design
 - **Admin Dashboard** - `/admin/tests` (test results), `/admin/viewer` (workflow viewer with use cases)
@@ -45,7 +45,7 @@ This expert covers:
 ## Architecture
 
 ```
-nextjs-frontend/
+client/
   |-- app/
   |   |-- page.tsx                  # / (minimalist chat)
   |   |-- chat-advanced/page.tsx    # /chat-advanced (complex chat)

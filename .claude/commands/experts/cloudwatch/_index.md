@@ -12,10 +12,10 @@ tags: [expert, cloudwatch, telemetry, aws, boto3, logging, eagle]
 ## Domain Scope
 
 This expert covers:
-- **Telemetry Emission** - `emit_to_cloudwatch()` in `test_eagle_sdk_eval.py` (~line 2224)
+- **Telemetry Emission** - `emit_to_cloudwatch()` in `server/tests/test_eagle_sdk_eval.py` (~line 2224)
 - **Log Group Structure** - `/eagle/test-runs` with per-run streams (`run-{ISO-timestamp}Z`)
 - **Event Schemas** - `test_result` and `run_summary` structured JSON events
-- **CloudWatch Logs Tool** - `_exec_cloudwatch_logs()` in `app/agentic_service.py` (~line 589)
+- **CloudWatch Logs Tool** - `_exec_cloudwatch_logs()` in `server/app/agentic_service.py` (~line 589)
 - **boto3 API Patterns** - `put_log_events`, `describe_log_groups`, `describe_log_streams`, `get_log_events`, `filter_log_events`
 - **Querying and Analysis** - Finding failures, aggregating pass rates, inspecting run history
 
@@ -43,7 +43,7 @@ This expert covers:
 ## Architecture
 
 ```
-test_eagle_sdk_eval.py
+server/tests/test_eagle_sdk_eval.py
   |-- LOG_GROUP = "/eagle/test-runs"          # Constant (~line 2222)
   |-- emit_to_cloudwatch(trace_output, results)  # Emission function (~line 2224)
       |-- create_log_group (if needed)
@@ -54,7 +54,7 @@ test_eagle_sdk_eval.py
       |-- put_log_events -> /eagle/test-runs/{stream}
       |-- Non-fatal: catches all exceptions
 
-app/agentic_service.py
+server/app/agentic_service.py
   |-- _exec_cloudwatch_logs(params, tenant_id)   # Tool handler (~line 589)
       |-- operation="get_stream" -> describe_log_streams
       |-- operation="recent"     -> filter_log_events (time-bounded)

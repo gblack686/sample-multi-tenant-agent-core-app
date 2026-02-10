@@ -45,8 +45,8 @@ Generate a plan for modifying the CloudWatch emission pipeline, adding new event
    - Known issues
 
 2. Read source files as needed:
-   - `test_eagle_sdk_eval.py` (~line 2222-2311) for emission implementation
-   - `app/agentic_service.py` (~line 589-705) for CloudWatch tool
+   - `server/tests/test_eagle_sdk_eval.py` (~line 2222-2311) for emission implementation
+   - `server/app/agentic_service.py` (~line 589-705) for CloudWatch tool
 
 3. Understand the TASK:
    - Is this a schema change? New event type?
@@ -57,7 +57,7 @@ Generate a plan for modifying the CloudWatch emission pipeline, adding new event
 ### Phase 2: Analyze Impact
 
 1. Identify affected components:
-   - `emit_to_cloudwatch()` in test_eagle_sdk_eval.py
+   - `emit_to_cloudwatch()` in server/tests/test_eagle_sdk_eval.py
    - `_exec_cloudwatch_logs()` in agentic_service.py
    - Test 18 (cloudwatch_logs_ops)
    - Test 20 (cloudwatch_e2e_verification)
@@ -121,8 +121,8 @@ Create a plan document:
 
 ## Verification
 
-1. Run test 18: `python test_eagle_sdk_eval.py --model haiku --tests 18`
-2. Run test 20: `python test_eagle_sdk_eval.py --model haiku --tests 20`
+1. Run test 18: `python server/tests/test_eagle_sdk_eval.py --model haiku --tests 18`
+2. Run test 20: `python server/tests/test_eagle_sdk_eval.py --model haiku --tests 20`
 3. Check CloudWatch: `aws logs describe-log-streams --log-group-name /eagle/test-runs --limit 1`
 4. Verify event structure: {specific check}
 

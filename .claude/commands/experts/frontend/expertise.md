@@ -9,7 +9,7 @@ last_updated: 2026-02-09T00:00:00
 
 # Frontend Expertise (Complete Mental Model)
 
-> **Sources**: nextjs-frontend/, test_results_dashboard.html, tailwind.config.ts, globals.css
+> **Sources**: client/, test_results_dashboard.html, tailwind.config.ts, globals.css
 
 ---
 
@@ -235,7 +235,7 @@ Followed by `SuggestedPrompts` component.
 
 ### Tests Page (`/admin/tests`)
 
-**File**: `nextjs-frontend/app/admin/tests/page.tsx`
+**File**: `client/app/admin/tests/page.tsx`
 
 **Purpose**: Display SDK test results from trace_logs.json
 
@@ -268,7 +268,7 @@ interface TraceData {
 
 ### Viewer Page (`/admin/viewer`)
 
-**File**: `nextjs-frontend/app/admin/viewer/page.tsx`
+**File**: `client/app/admin/viewer/page.tsx`
 
 **Purpose**: Interactive sequence diagram viewer for EAGLE use cases + test run cross-reference
 
@@ -303,7 +303,7 @@ interface TraceData {
 
 ## Part 4: Test Result Mappings (TEST_NAMES, TEST_DEFS, SKILL_TEST_MAP, Readiness Panel, Categories)
 
-### TEST_NAMES (`nextjs-frontend/app/admin/tests/page.tsx` ~line 28)
+### TEST_NAMES (`client/app/admin/tests/page.tsx` ~line 28)
 
 Maps test ID strings to human-readable names for the Next.js test results page:
 
@@ -332,7 +332,7 @@ const TEST_NAMES: Record<string, string> = {
 };
 ```
 
-### SKILL_TEST_MAP (`nextjs-frontend/app/admin/viewer/page.tsx` ~line 446)
+### SKILL_TEST_MAP (`client/app/admin/viewer/page.tsx` ~line 446)
 
 Maps skill/tool keys to test IDs for cross-referencing in the viewer modal:
 
@@ -355,7 +355,7 @@ const SKILL_TEST_MAP: Record<string, number[]> = {
 };
 ```
 
-### PROMPT_TITLES (`nextjs-frontend/app/admin/viewer/page.tsx` ~line 436)
+### PROMPT_TITLES (`client/app/admin/viewer/page.tsx` ~line 436)
 
 Fallback display names for skill prompts while API loads:
 
@@ -486,7 +486,7 @@ Each test card shows:
 
 ## Part 6: Auth and Context (Cognito, auth-context.tsx)
 
-### Auth Context (`nextjs-frontend/contexts/auth-context.tsx`)
+### Auth Context (`client/contexts/auth-context.tsx`)
 
 **Provider**: `<AuthProvider>` wraps the app
 
@@ -557,7 +557,7 @@ Provides session persistence:
 
 ## Part 7: Styling and Config (Tailwind, globals.css)
 
-### Tailwind Config (`nextjs-frontend/tailwind.config.ts`)
+### Tailwind Config (`client/tailwind.config.ts`)
 
 Custom NCI color palette:
 
@@ -583,7 +583,7 @@ Usage in components: `bg-nci-blue`, `text-nci-info`, `bg-nci-user-bubble`, etc.
 
 Content paths scanned: `./pages/**`, `./components/**`, `./app/**`
 
-### Global CSS (`nextjs-frontend/app/globals.css`)
+### Global CSS (`client/app/globals.css`)
 
 **CSS Variables**:
 - `--nci-blue: #003366`
@@ -632,15 +632,15 @@ When adding a new test, the following 3 frontend locations must be updated:
 | # | File | Variable | Format |
 |---|------|----------|--------|
 | 1 | `test_results_dashboard.html` | `TEST_DEFS` (~line 124) | `{ id: N, name: "...", desc: "...", category: "..." }` |
-| 2 | `nextjs-frontend/app/admin/tests/page.tsx` | `TEST_NAMES` (~line 28) | `'N': 'Human Name'` |
-| 3 | `nextjs-frontend/app/admin/viewer/page.tsx` | `SKILL_TEST_MAP` (~line 446) | `key: [N]` (if skill/tool test) |
+| 2 | `client/app/admin/tests/page.tsx` | `TEST_NAMES` (~line 28) | `'N': 'Human Name'` |
+| 3 | `client/app/admin/viewer/page.tsx` | `SKILL_TEST_MAP` (~line 446) | `key: [N]` (if skill/tool test) |
 
 Plus the readiness panel in `test_results_dashboard.html` (~line 306).
 
 ### Data Flow
 
 ```
-test_eagle_sdk_eval.py
+server/tests/test_eagle_sdk_eval.py
   |-- writes --> trace_logs.json
   |-- emits --> CloudWatch /eagle/test-runs
 
@@ -708,4 +708,4 @@ CloudWatch /eagle/test-runs
 ### tips
 - Use /admin/viewer to demonstrate EAGLE workflow to stakeholders (8 use cases)
 - The viewer's SVG diagram supports export (right-click save as SVG)
-- Run `npm run build` in nextjs-frontend/ to verify no TypeScript errors
+- Run `npm run build` in client/ to verify no TypeScript errors

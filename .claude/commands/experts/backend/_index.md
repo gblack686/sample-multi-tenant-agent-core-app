@@ -12,7 +12,7 @@ tags: [expert, backend, agentic-service, eagle, aws, s3, dynamodb, cloudwatch, a
 ## Domain Scope
 
 This expert covers:
-- **Agentic Service** - `app/agentic_service.py` (2357 lines) — main backend file
+- **Agentic Service** - `server/app/agentic_service.py` (2357 lines) — main backend file
 - **Tool Dispatch** - `execute_tool()`, `TOOL_DISPATCH` dict, `TOOLS_NEEDING_SESSION` set
 - **AWS Tool Handlers** - S3 ops, DynamoDB intake, CloudWatch logs, FAR search, document generation, intake status, intake workflow
 - **Tenant Scoping** - `_extract_tenant_id()`, `_extract_user_id()`, `_get_user_prefix()`, per-tenant S3/DDB isolation
@@ -44,7 +44,7 @@ This expert covers:
 ## Architecture
 
 ```
-app/agentic_service.py (2357 lines)
+server/app/agentic_service.py (2357 lines)
   |
   |-- SYSTEM_PROMPT: ~4800 chars, 7 sections
   |     |-- Identity & Mission

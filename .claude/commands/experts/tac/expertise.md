@@ -198,7 +198,7 @@ ADWs are standardized workflows that combine TAC tactics into repeatable process
 | Supervisor | Orchestrates specialists | EAGLE supervisor with intake/legal/market/tech |
 | Domain Specialist | Deep expertise in one area | Legal counsel, tech review, market intelligence |
 | Tool Agent | Executes specific tool operations | S3 ops, DynamoDB CRUD, CloudWatch queries |
-| Eval Agent | Runs and validates test suites | Eval expert running test_eagle_sdk_eval.py |
+| Eval Agent | Runs and validates test suites | Eval expert running server/tests/test_eagle_sdk_eval.py |
 | Builder Agent | Implements features from specs | Plan-build-improve workflow agent |
 | Reviewer Agent | Reviews code and provides feedback | PR review, compliance check agents |
 

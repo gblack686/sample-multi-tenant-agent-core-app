@@ -34,7 +34,7 @@ Questions about the Next.js app structure, routes, or component tree.
 
 **Resolution**:
 1. Read `.claude/commands/experts/frontend/expertise.md` -> Part 1
-2. If needed, read specific files in `nextjs-frontend/`
+2. If needed, read specific files in `client/`
 3. Provide formatted answer
 
 ---
@@ -50,7 +50,7 @@ Questions about chat components, message types, forms, or backend integration.
 
 **Resolution**:
 1. Read `expertise.md` -> Part 2
-2. If needed, read `nextjs-frontend/components/chat/chat-interface.tsx`
+2. If needed, read `client/components/chat/chat-interface.tsx`
 3. Provide answer with component references
 
 ---
@@ -66,7 +66,7 @@ Questions about the test results page, viewer page, or data sources.
 
 **Resolution**:
 1. Read `expertise.md` -> Part 3
-2. If needed, read `nextjs-frontend/app/admin/tests/page.tsx` or `nextjs-frontend/app/admin/viewer/page.tsx`
+2. If needed, read `client/app/admin/tests/page.tsx` or `client/app/admin/viewer/page.tsx`
 3. Provide answer
 
 ---
@@ -113,7 +113,7 @@ Questions about Cognito, dev mode, or the auth guard.
 
 **Resolution**:
 1. Read `expertise.md` -> Part 6
-2. If needed, read `nextjs-frontend/contexts/auth-context.tsx`
+2. If needed, read `client/contexts/auth-context.tsx`
 3. Provide answer
 
 ---
@@ -129,7 +129,7 @@ Questions about Tailwind config, CSS variables, or animations.
 
 **Resolution**:
 1. Read `expertise.md` -> Part 7
-2. If needed, read `nextjs-frontend/tailwind.config.ts` or `nextjs-frontend/app/globals.css`
+2. If needed, read `client/tailwind.config.ts` or `client/app/globals.css`
 3. Provide answer
 
 ---
@@ -172,7 +172,7 @@ flowchart TD
 ## Source
 
 - expertise.md -> {section}
-- nextjs-frontend/{file}:{line} (if referenced)
+- client/{file}:{line} (if referenced)
 - test_results_dashboard.html:{line} (if referenced)
 ```
 

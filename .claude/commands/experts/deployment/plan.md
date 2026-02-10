@@ -46,9 +46,9 @@ Generate a plan for deploying services, adding CDK stacks, configuring CI/CD, or
    - Known issues and gotchas
 
 2. Read relevant project files:
-   - `nextjs-frontend/next.config.ts` — Current Next.js configuration
-   - `nextjs-frontend/package.json` — Dependencies and scripts
-   - `app/agentic_service.py` — AWS resource references (bucket names, table names)
+   - `client/next.config.ts` — Current Next.js configuration
+   - `client/package.json` — Dependencies and scripts
+   - `server/app/agentic_service.py` — AWS resource references (bucket names, table names)
 
 3. Understand the TASK:
    - What is being deployed or changed?

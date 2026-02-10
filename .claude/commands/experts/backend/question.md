@@ -34,7 +34,7 @@ Questions about how tools are routed and executed.
 
 **Resolution**:
 1. Read `.claude/commands/experts/backend/expertise.md` -> Part 2
-2. If needed, read `app/agentic_service.py` lines 2167-2201
+2. If needed, read `server/app/agentic_service.py` lines 2167-2201
 3. Provide formatted answer
 
 ---
@@ -50,7 +50,7 @@ Questions about specific tool handler implementations.
 
 **Resolution**:
 1. Read `.claude/commands/experts/backend/expertise.md` -> Part 3
-2. If needed, read `app/agentic_service.py` at the handler's line number
+2. If needed, read `server/app/agentic_service.py` at the handler's line number
 3. Provide answer with code references
 
 ---
@@ -81,7 +81,7 @@ Questions about the 10 document types and their generators.
 
 **Resolution**:
 1. Read `.claude/commands/experts/backend/expertise.md` -> Part 5
-2. If needed, read `app/agentic_service.py` at the generator's line number
+2. If needed, read `server/app/agentic_service.py` at the generator's line number
 3. Provide answer with field details
 
 ---
@@ -97,7 +97,7 @@ Questions about the agent's system prompt and behavior.
 
 **Resolution**:
 1. Read `.claude/commands/experts/backend/expertise.md` -> Part 6
-2. If needed, read `app/agentic_service.py` lines 25-115
+2. If needed, read `server/app/agentic_service.py` lines 25-115
 3. Provide structured answer
 
 ---
@@ -113,7 +113,7 @@ Questions about the overall backend architecture and patterns.
 
 **Resolution**:
 1. Read `.claude/commands/experts/backend/expertise.md` -> Part 1 and Part 7
-2. If needed, read `app/agentic_service.py` for specific implementations
+2. If needed, read `server/app/agentic_service.py` for specific implementations
 3. Provide answer with flow diagrams if helpful
 
 ---
@@ -154,7 +154,7 @@ flowchart TD
 ## Source
 
 - expertise.md -> {section}
-- app/agentic_service.py:{line} (if referenced)
+- server/app/agentic_service.py:{line} (if referenced)
 ```
 
 ---

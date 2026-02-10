@@ -9,7 +9,7 @@ last_updated: 2026-02-09T00:00:00
 
 # CloudWatch Expertise (Complete Mental Model)
 
-> **Sources**: test_eagle_sdk_eval.py (~line 2222-2311), app/agentic_service.py (~line 589-705)
+> **Sources**: server/tests/test_eagle_sdk_eval.py (~line 2222-2311), server/app/agentic_service.py (~line 589-705)
 
 ---
 
@@ -48,7 +48,7 @@ stream_name = f"run-{run_ts.replace(':', '-').replace('+', 'Z')}"
 ### Event Flow
 
 ```
-test_eagle_sdk_eval.py main()
+server/tests/test_eagle_sdk_eval.py main()
   |-- Run all tests, collect results dict
   |-- Write trace_logs.json (always succeeds)
   |-- emit_to_cloudwatch(trace_output, results)
@@ -164,7 +164,7 @@ This is validated by test 20 (`cloudwatch_e2e_verification`).
 
 ### emit_to_cloudwatch Function
 
-Location: `test_eagle_sdk_eval.py` (~line 2224)
+Location: `server/tests/test_eagle_sdk_eval.py` (~line 2224)
 
 ```python
 def emit_to_cloudwatch(trace_output: dict, results: dict):
@@ -230,7 +230,7 @@ This is intentionally non-fatal. The local `trace_logs.json` file is always writ
 
 ### _exec_cloudwatch_logs Function
 
-Location: `app/agentic_service.py` (~line 589)
+Location: `server/app/agentic_service.py` (~line 589)
 
 This is the agent's tool for querying CloudWatch Logs at runtime, exposed as `cloudwatch_logs` via `execute_tool()`.
 
@@ -359,7 +359,7 @@ Default: last 1 hour (`now - 3600 * 1000` to `now`).
 ### Client Initialization
 
 ```python
-# Emission (test_eagle_sdk_eval.py)
+# Emission (server/tests/test_eagle_sdk_eval.py)
 client = boto3.client("logs", region_name=os.environ.get("AWS_REGION", "us-east-1"))
 
 # Tool handler (agentic_service.py) — uses cached client via _get_logs()

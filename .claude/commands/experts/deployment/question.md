@@ -35,7 +35,7 @@ Questions about what AWS resources exist and how they are configured.
 
 **Resolution**:
 1. Read `.claude/commands/experts/deployment/expertise.md` -> Part 1 and Part 2
-2. If needed, check `app/agentic_service.py` for resource references
+2. If needed, check `server/app/agentic_service.py` for resource references
 3. Provide formatted answer
 
 ---
@@ -156,8 +156,8 @@ flowchart TD
 ## Source
 
 - expertise.md -> {section}
-- app/agentic_service.py:{line} (if referenced)
-- nextjs-frontend/next.config.{ts,js} (if referenced)
+- server/app/agentic_service.py:{line} (if referenced)
+- client/next.config.{ts,js} (if referenced)
 ```
 
 ---

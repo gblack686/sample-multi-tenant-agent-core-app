@@ -9,7 +9,7 @@ last_updated: 2026-02-09T00:00:00
 
 # Eval Expertise (Complete Mental Model)
 
-> **Sources**: test_eagle_sdk_eval.py, app/agentic_service.py, eagle_skill_constants.py
+> **Sources**: server/tests/test_eagle_sdk_eval.py, server/app/agentic_service.py, server/eagle_skill_constants.py
 
 ---
 
@@ -18,9 +18,9 @@ last_updated: 2026-02-09T00:00:00
 ### File Layout
 
 ```
-test_eagle_sdk_eval.py        # 20 tests, CLI entry point
-eagle_skill_constants.py      # Embedded skill/prompt constants
-app/agentic_service.py        # execute_tool(), AWS tool implementations
+server/tests/test_eagle_sdk_eval.py        # 20 tests, CLI entry point
+server/eagle_skill_constants.py      # Embedded skill/prompt constants
+server/app/agentic_service.py        # execute_tool(), AWS tool implementations
 trace_logs.json               # Per-run output for dashboard viewer
 ```
 
@@ -36,13 +36,13 @@ trace_logs.json               # Per-run output for dashboard viewer
 
 ```bash
 # Run all 20 tests
-python test_eagle_sdk_eval.py --model haiku
+python server/tests/test_eagle_sdk_eval.py --model haiku
 
 # Run specific tests
-python test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
+python server/tests/test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
 
 # Run with async parallelism (tests 3-20)
-python test_eagle_sdk_eval.py --model haiku --async
+python server/tests/test_eagle_sdk_eval.py --model haiku --async
 ```
 
 ### Execution Flow
@@ -249,7 +249,7 @@ emit_to_cloudwatch(trace_output, results)
 
 Every test must be registered in **8 locations** across 4 files. Missing any causes silent data loss (test runs but results don't show in dashboards or CloudWatch).
 
-### Backend Registrations (test_eagle_sdk_eval.py)
+### Backend Registrations (server/tests/test_eagle_sdk_eval.py)
 
 | # | Location | Line | Format | Purpose |
 |---|----------|------|--------|---------|
@@ -264,8 +264,8 @@ Every test must be registered in **8 locations** across 4 files. Missing any cau
 | # | File | Variable | Line | Format |
 |---|------|----------|------|--------|
 | 6 | `test_results_dashboard.html` | `TEST_DEFS` | ~123 | `{ id: N, name: "...", desc: "...", category: "..." }` |
-| 7 | `nextjs-frontend/app/admin/tests/page.tsx` | `TEST_NAMES` | ~28 | `'N': 'Human-Readable Name'` |
-| 8 | `nextjs-frontend/app/admin/viewer/page.tsx` | `SKILL_TEST_MAP` | ~446 | `tool_key: [N]` (AWS tools only) |
+| 7 | `client/app/admin/tests/page.tsx` | `TEST_NAMES` | ~28 | `'N': 'Human-Readable Name'` |
+| 8 | `client/app/admin/viewer/page.tsx` | `SKILL_TEST_MAP` | ~446 | `tool_key: [N]` (AWS tools only) |
 
 ### Category Tags (test_results_dashboard.html)
 
@@ -315,7 +315,7 @@ The readiness panel at ~line 305 shows pass/fail dots for each test. Each entry 
 
 ### Step 1: Write the Test Function
 
-Add before the `# ── Main` section in `test_eagle_sdk_eval.py`:
+Add before the `# ── Main` section in `server/tests/test_eagle_sdk_eval.py`:
 
 ```python
 async def test_N_descriptive_name():
@@ -363,7 +363,7 @@ async def test_N_descriptive_name():
 - Print step-by-step progress for debugging
 - Cleanup all created resources in a try/except (non-fatal)
 
-### Step 2: Register in Backend (4 edits in test_eagle_sdk_eval.py)
+### Step 2: Register in Backend (4 edits in server/tests/test_eagle_sdk_eval.py)
 
 **2a. `TEST_REGISTRY`** (~line 2319 in `_run_test()`):
 ```python
@@ -402,12 +402,12 @@ selected_tests = list(range(1, N+1))
 { label: "Descriptive label", ready: results[N]?.status === 'pass' },
 ```
 
-**3c. `nextjs-frontend/app/admin/tests/page.tsx` — `TEST_NAMES`** (~line 28):
+**3c. `client/app/admin/tests/page.tsx` — `TEST_NAMES`** (~line 28):
 ```typescript
 'N': 'Descriptive Title',
 ```
 
-**3d. `nextjs-frontend/app/admin/viewer/page.tsx` — `SKILL_TEST_MAP`** (~line 446, if applicable):
+**3d. `client/app/admin/viewer/page.tsx` — `SKILL_TEST_MAP`** (~line 446, if applicable):
 ```typescript
 tool_or_skill_key: [N],
 ```
@@ -416,10 +416,10 @@ tool_or_skill_key: [N],
 
 ```bash
 # Syntax check
-python -c "import py_compile; py_compile.compile('test_eagle_sdk_eval.py', doraise=True)"
+python -c "import py_compile; py_compile.compile('server/tests/test_eagle_sdk_eval.py', doraise=True)"
 
 # Run just the new test
-python test_eagle_sdk_eval.py --model haiku --tests N
+python server/tests/test_eagle_sdk_eval.py --model haiku --tests N
 
 # Verify CloudWatch emission
 # (check /eagle/test-runs for event with test_id=N)
@@ -439,15 +439,15 @@ python -c "import json; d=json.load(open('trace_logs.json')); print(list(d['resu
 
 ```
 - [ ] test function `test_N_name()` added
-- [ ] TEST_REGISTRY entry (test_eagle_sdk_eval.py ~2319)
-- [ ] test_names entry (test_eagle_sdk_eval.py ~2252)
-- [ ] result_key entry (test_eagle_sdk_eval.py ~2479)
-- [ ] summary printout line (test_eagle_sdk_eval.py main())
-- [ ] selected_tests range updated (test_eagle_sdk_eval.py ~2405)
+- [ ] TEST_REGISTRY entry (server/tests/test_eagle_sdk_eval.py ~2319)
+- [ ] test_names entry (server/tests/test_eagle_sdk_eval.py ~2252)
+- [ ] result_key entry (server/tests/test_eagle_sdk_eval.py ~2479)
+- [ ] summary printout line (server/tests/test_eagle_sdk_eval.py main())
+- [ ] selected_tests range updated (server/tests/test_eagle_sdk_eval.py ~2405)
 - [ ] TEST_DEFS entry (test_results_dashboard.html ~123)
 - [ ] readiness panel entry (test_results_dashboard.html ~305)
-- [ ] TEST_NAMES entry (nextjs-frontend/.../tests/page.tsx ~28)
-- [ ] SKILL_TEST_MAP entry if applicable (nextjs-frontend/.../viewer/page.tsx ~446)
+- [ ] TEST_NAMES entry (client/.../tests/page.tsx ~28)
+- [ ] SKILL_TEST_MAP entry if applicable (client/.../viewer/page.tsx ~446)
 - [ ] syntax check passes
 - [ ] test passes with --tests N
 - [ ] cleanup removes all test artifacts

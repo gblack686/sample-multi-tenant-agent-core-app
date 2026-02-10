@@ -38,7 +38,7 @@ Always run first, regardless of preset:
 
 ```bash
 # Python syntax validation
-python -c "import py_compile; py_compile.compile('app/agentic_service.py', doraise=True)"
+python -c "import py_compile; py_compile.compile('server/app/agentic_service.py', doraise=True)"
 ```
 
 If this fails, report the error and stop.
@@ -102,7 +102,7 @@ for name, handler in TOOL_DISPATCH.items():
 python -c "import boto3; ident = boto3.client('sts').get_caller_identity(); print(f'AWS Account: {ident[\"Account\"]}, ARN: {ident[\"Arn\"]}')" 2>&1
 
 # Run eval suite AWS tool tests (16-20)
-python test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
+python server/tests/test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
 ```
 
 ### Phase 5: Analyze and Report
@@ -122,7 +122,7 @@ python test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
 
 ### Syntax Check
 
-- app/agentic_service.py: PASS | FAIL ({error})
+- server/app/agentic_service.py: PASS | FAIL ({error})
 
 ### Dispatch Integrity (if checked)
 
@@ -166,7 +166,7 @@ If you just want to verify the backend is healthy without a full run:
 
 ```bash
 # Syntax only (fastest)
-python -c "import py_compile; py_compile.compile('app/agentic_service.py', doraise=True)"
+python -c "import py_compile; py_compile.compile('server/app/agentic_service.py', doraise=True)"
 
 # Import check (no AWS needed)
 python -c "import sys; sys.path.insert(0, 'app'); from agentic_service import execute_tool; print('OK')"
@@ -189,7 +189,7 @@ print(json.loads(result).get('matches', [])[:2])
 ### Syntax Error
 ```bash
 # Get detailed error
-python -c "import py_compile; py_compile.compile('app/agentic_service.py', doraise=True)" 2>&1
+python -c "import py_compile; py_compile.compile('server/app/agentic_service.py', doraise=True)" 2>&1
 ```
 
 ### Import Error
