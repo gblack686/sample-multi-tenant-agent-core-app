@@ -4,6 +4,7 @@
 
 - **Git** installed
 - **Python 3.11+** and **Node.js 18+** (or Docker)
+- **Docker Desktop** (if using Option A below) — [install guide](https://docs.docker.com/desktop/)
 - **AWS CLI v2** installed ([install guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html))
 
 ---
@@ -62,10 +63,25 @@ No Anthropic API key needed — Claude runs through Bedrock with your AWS creden
 ## 4. Run the App
 
 ### Option A: Docker (easiest)
+
+Uses `docker-compose.dev.yml` which spins up two containers:
+
+| Container | Base Image | Port | What it does |
+|-----------|-----------|------|--------------|
+| `backend` | Python 3.11-slim | 8000 | FastAPI + Anthropic SDK agent |
+| `frontend` | Node 20-alpine | 3000 | Next.js app (connects to backend internally) |
+
 ```bash
 docker compose -f docker-compose.dev.yml up --build
 ```
+
 Then open http://localhost:3000
+
+Source directories are mounted as volumes, so code changes are reflected without rebuilding. To rebuild from scratch:
+```bash
+docker compose -f docker-compose.dev.yml down
+docker compose -f docker-compose.dev.yml up --build
+```
 
 ### Option B: Run locally (two terminals)
 
