@@ -1,15 +1,49 @@
 # EAGLE Local Setup Instructions
 
-Hey! I set you up with access to the EAGLE acquisition assistant app for testing. Here's how to get it running:
+## Prerequisites
 
-**1. Clone the repo**
+- **Git** installed
+- **Python 3.11+** and **Node.js 18+** (or Docker)
+- **AWS CLI v2** installed ([install guide](https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html))
+
+---
+
+## 1. Configure AWS Credentials
+
+Run this in your terminal:
+```bash
+aws configure
 ```
-git clone <repo-url>
+
+Enter when prompted:
+```
+AWS Access Key ID:     <sent via Slack DM>
+AWS Secret Access Key: <sent via Slack DM>
+Default region name:   us-east-1
+Default output format: json
+```
+
+Verify it works:
+```bash
+aws sts get-caller-identity
+```
+You should see `eagle-dev-hoquemi` as the user.
+
+---
+
+## 2. Clone the Repo
+
+```bash
+git clone https://github.com/gblack686/sample-multi-tenant-agent-core-app.git
 cd sample-multi-tenant-agent-core-app
-git checkout feat/eagle-plugin-integration
+git checkout dev/greg
 ```
 
-**2. Set up your `.env` file** in the project root:
+---
+
+## 3. Create `.env` File
+
+Create a `.env` file in the project root:
 ```
 USE_BEDROCK=true
 DEV_MODE=false
@@ -21,42 +55,93 @@ COGNITO_REGION=us-east-1
 AWS_REGION=us-east-1
 ```
 
-No Anthropic API key needed — it uses Claude through Bedrock with your AWS credentials.
+No Anthropic API key needed — Claude runs through Bedrock with your AWS credentials.
 
-**3. Make sure you have:**
-- Docker installed (if using docker-compose), OR Python 3.11+ and Node.js 18+
-- AWS CLI configured (`~/.aws/credentials`) with access to us-east-1 (Bedrock, DynamoDB, S3)
-- Claude Haiku model access enabled in the Bedrock console
+---
 
-**4a. Run with Docker:**
-```
+## 4. Run the App
+
+### Option A: Docker (easiest)
+```bash
 docker compose -f docker-compose.dev.yml up --build
 ```
-Then open `http://localhost:3000`
+Then open http://localhost:3000
 
-**4b. Or run locally (two terminals):**
+### Option B: Run locally (two terminals)
 
-Terminal 1 — Backend:
-```
+**Terminal 1 — Backend:**
+```bash
+cd server
 pip install -r requirements.txt
 python run.py
 ```
-Backend runs at `http://localhost:8000`
+Backend runs at http://localhost:8000
 
-Terminal 2 — Frontend:
-```
-cd nextjs-frontend
+**Terminal 2 — Frontend:**
+```bash
+cd client
 npm install
 npm run dev
 ```
-Frontend runs at `http://localhost:3000`
+Frontend runs at http://localhost:3000
 
-**5. Log in with:**
-- Email: `hoquemi@nih.gov`
-- Password: `Eagle@NCI2026!`
+---
 
-**6. Routes:**
-- `/` — Minimalist EAGLE chat (default)
-- `/chat-advanced` — Full complex UI with forms, right sidebar, multi-agent logs
+## 5. Log In
 
-Let me know if you hit any issues!
+- **Email:** `hoquemi@nih.gov`
+- **Password:** `Eagle@NCI2026!`
+
+---
+
+## 6. Key Routes
+
+| Route | Description |
+|-------|-------------|
+| `/` | EAGLE chat (default) |
+| `/admin/eval` | Eval suite results + UC sequence diagrams |
+
+---
+
+## 7. Run the Eval Suite (optional)
+
+```bash
+cd server/tests
+python test_eagle_sdk_eval.py --model haiku --tests 16,17,18,19,20
+```
+
+This runs the AWS tool integration tests (no LLM cost). To run the full 28-test suite:
+```bash
+python test_eagle_sdk_eval.py --model haiku
+```
+
+---
+
+## Project Structure
+
+```
+client/           <- Next.js frontend
+server/           <- Python backend (FastAPI + Anthropic SDK)
+  app/            <- Main app code (agentic_service.py, sdk_agentic_service.py)
+  tests/          <- Eval suite (28 tests)
+eagle-plugin/     <- EAGLE plugin (skills + prompts)
+infra/            <- CDK + Terraform
+data/             <- Media, eval results, traces
+```
+
+---
+
+## AWS Services Your Credentials Access
+
+| Service | Resource | Purpose |
+|---------|----------|---------|
+| Bedrock | Claude Haiku/Sonnet | LLM inference |
+| S3 | `nci-documents` | Document storage |
+| S3 | `eagle-eval-artifacts` | Eval results archival |
+| DynamoDB | `eagle` table | Intake records |
+| CloudWatch | `/eagle/*` log groups | App + eval logs |
+| CloudWatch | `EAGLE/Eval` namespace | Eval metrics |
+
+---
+
+Questions? Ping me on Slack.
