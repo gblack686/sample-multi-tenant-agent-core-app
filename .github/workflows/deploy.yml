@@ -55,17 +55,17 @@ jobs:
 
     - name: Install CDK dependencies
       run: |
-        cd infra/cdk
+        cd infrastructure/cdk
         pip install -r requirements.txt
 
     - name: CDK Bootstrap
       run: |
-        cd infra/cdk
+        cd infrastructure/cdk
         cdk bootstrap
 
     - name: Deploy CDK Stack
       run: |
-        cd infra/cdk
+        cd infrastructure/cdk
         cdk deploy --require-approval never --outputs-file outputs.json
 
     - name: Install Python dependencies for Bedrock Agent
@@ -73,7 +73,7 @@ jobs:
 
     - name: Create Bedrock Agent
       run: |
-        python scripts/create_bedrock_agent.py > bedrock_agent_output.txt 2>&1 || echo "Bedrock Agent creation failed, using fallback"
+        python deployment/scripts/create_bedrock_agent.py > bedrock_agent_output.txt 2>&1 || echo "Bedrock Agent creation failed, using fallback"
         echo "📝 Bedrock Agent Output:"
         cat bedrock_agent_output.txt
 
@@ -81,7 +81,7 @@ jobs:
       id: cdk-outputs
       run: |
         # Get CDK outputs
-        USER_POOL_ID=$(jq -r '.MultiTenantBedrockStack.UserPoolId' infra/cdk/outputs.json)
+        USER_POOL_ID=$(jq -r '.MultiTenantBedrockStack.UserPoolId' infrastructure/cdk/outputs.json)
         CLIENT_ID=$(jq -r '.MultiTenantBedrockStack.UserPoolClientId' infra/cdk/outputs.json)
         
         # Extract Agent ID from bedrock agent creation output

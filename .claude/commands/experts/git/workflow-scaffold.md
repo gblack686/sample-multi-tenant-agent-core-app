@@ -134,7 +134,7 @@ jobs:
           aws-region: us-east-1
       - uses: actions/setup-node@v4
         with: { node-version: '20' }
-      - run: cd infra/eval && npm ci && npx cdk deploy --require-approval never
+      - run: cd infrastructure/eval && npm ci && npx cdk deploy --require-approval never
 ```
 
 ### pr — PR Checks with Claude Review

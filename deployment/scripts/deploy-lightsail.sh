@@ -8,7 +8,7 @@ SERVICE_NAME="nci-eagle"
 REGION="us-east-1"
 POWER="small"
 SCALE=1
-REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
 # Colors
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'; NC='\033[0m'
@@ -99,7 +99,7 @@ cmd_deploy() {
   docker build -t nci-eagle-frontend:latest "$REPO_ROOT/client"
 
   info "Building backend image..."
-  docker build -t nci-eagle-backend:latest -f "$REPO_ROOT/Dockerfile.backend" "$REPO_ROOT"
+  docker build -t nci-eagle-backend:latest -f "$REPO_ROOT/deployment/docker/Dockerfile.backend" "$REPO_ROOT"
 
   # Step 2: Push
   info "Pushing backend image..."

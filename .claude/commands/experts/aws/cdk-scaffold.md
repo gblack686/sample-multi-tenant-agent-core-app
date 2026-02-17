@@ -37,15 +37,15 @@ Generate CDK stack boilerplate for common infrastructure patterns, pre-configure
 ### Phase 1: Load Context
 
 1. Read `.claude/commands/experts/aws/expertise.md` -> Parts 3-5
-2. Check existing CDK stacks: `ls infra/*/cdk.json`
-3. Determine target directory (default: `infra/{stack_type}/`)
+2. Check existing CDK stacks: `ls infrastructure/*/cdk.json`
+3. Determine target directory (default: `infrastructure/{stack_type}/`)
 
 ### Phase 2: Scaffold Files
 
 Create the following structure:
 
 ```
-infra/{stack_type}/
+infrastructure/{stack_type}/
   bin/{stack_type}.ts          # CDK app entry point
   lib/{stack_type}-stack.ts    # Main stack definition
   cdk.json                     # CDK configuration
@@ -65,7 +65,7 @@ infra/{stack_type}/
 ### Phase 4: Validate
 
 ```bash
-cd infra/{stack_type} && npm install && npx cdk synth
+cd infrastructure/{stack_type} && npm install && npx cdk synth
 ```
 
 ---
@@ -107,7 +107,7 @@ import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 
 ```typescript
 // CloudWatch dashboard + alarms + SNS
-// Pattern from existing infra/eval/ stack
+// Pattern from existing infrastructure/eval/ stack
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as sns from 'aws-cdk-lib/aws-sns';
 ```

@@ -9,7 +9,7 @@ last_updated: 2026-02-11T00:00:00
 
 # AWS Expertise (Complete Mental Model)
 
-> **Sources**: AWS Console (manual resources), infra/eval/ CDK stack, nci-oa-agent CDK patterns, AWS CDK documentation, Next.js documentation
+> **Sources**: AWS Console (manual resources), infrastructure/eval/ CDK stack, nci-oa-agent CDK patterns, AWS CDK documentation, Next.js documentation
 
 ---
 
@@ -17,14 +17,14 @@ last_updated: 2026-02-11T00:00:00
 
 ### Provisioning Model
 
-Core AWS resources (S3, DynamoDB, Bedrock) are **manually provisioned**. The eval observability stack (`infra/eval/`) is managed by **TypeScript CDK**.
+Core AWS resources (S3, DynamoDB, Bedrock) are **manually provisioned**. The eval observability stack (`infrastructure/eval/`) is managed by **TypeScript CDK**.
 
 ```
 Provisioning: Hybrid (Manual + CDK)
 Region: us-east-1
 Account: Accessed via ~/.aws/credentials (local profile)
 IAM: Developer credentials with broad permissions
-CDK: infra/eval/ (TypeScript, EagleEvalStack)
+CDK: infrastructure/eval/ (TypeScript, EagleEvalStack)
 CI/CD: GitHub Actions (deploy.yml, claude-merge-analysis.yml)
 Docker: Not configured
 ```
@@ -57,8 +57,8 @@ Docker: Not configured
 | CloudWatch dashboard | Yes | `EAGLE-Eval-Dashboard`, CDK-managed |
 | SNS topic | Yes | `eagle-eval-alerts`, CDK-managed |
 | Bedrock model access | Yes | Anthropic models enabled in Console |
-| CDK project (eval) | Yes | `infra/eval/` — EagleEvalStack |
-| CDK project (reference) | Yes | `infra/cdk/` — Python, not deployed |
+| CDK project (eval) | Yes | `infrastructure/eval/` — EagleEvalStack |
+| CDK project (reference) | Yes | `infrastructure/cdk/` — Python, not deployed |
 | GitHub Actions | Yes | `deploy.yml`, `claude-merge-analysis.yml` |
 | Dockerfile | No | No container configuration |
 | CloudFront distribution | No | Frontend runs locally only |
@@ -153,10 +153,10 @@ Auth: Same AWS credentials as other services
 
 ### Active CDK Stacks
 
-#### `infra/eval/` — EagleEvalStack (Eval Observability)
+#### `infrastructure/eval/` — EagleEvalStack (Eval Observability)
 
 ```
-infra/eval/
+infrastructure/eval/
   |-- bin/eval.ts                    # CDK app entry point
   |-- lib/eval-stack.ts              # EvalObservabilityStack
   |-- cdk.json                       # app: npx ts-node --prefer-ts-exts bin/eval.ts
@@ -170,14 +170,14 @@ Resources:
   - CW Alarm: EvalPassRate (< 80% -> SNS)
   - CW Dashboard: EAGLE-Eval-Dashboard
 
-Deploy: cd infra/eval && npx cdk deploy
-Synth:  cd infra/eval && npx cdk synth
+Deploy: cd infrastructure/eval && npx cdk deploy
+Synth:  cd infrastructure/eval && npx cdk synth
 ```
 
-#### `infra/cdk/` — MultiTenantBedrockStack (Reference, Python)
+#### `infrastructure/cdk/` — MultiTenantBedrockStack (Reference, Python)
 
 ```
-infra/cdk/
+infrastructure/cdk/
   |-- app.py                         # Python CDK entry point
   |-- bedrock_agents.py              # Bedrock agent construct
   |-- lambda_deployment.py           # Lambda + API Gateway construct
@@ -452,9 +452,9 @@ steps:
 ```yaml
 steps:
   - name: CDK Diff
-    run: cd infra/eval && npx cdk diff
+    run: cd infrastructure/eval && npx cdk diff
   - name: CDK Deploy
-    run: cd infra/eval && npx cdk deploy --require-approval never
+    run: cd infrastructure/eval && npx cdk deploy --require-approval never
 ```
 
 ---
@@ -526,5 +526,5 @@ steps:
 - Tag all CDK resources with Project=eagle and ManagedBy=cdk for cost tracking
 - Use OIDC for GitHub Actions instead of static IAM keys
 - Run `npx cdk synth` before `cdk deploy` to verify template generates correctly
-- The eval CDK stack lives at `infra/eval/` — run `cd infra/eval && npx cdk deploy`
+- The eval CDK stack lives at `infrastructure/eval/` — run `cd infrastructure/eval && npx cdk deploy`
 - `put_metric_data` supports up to 1000 metrics per call

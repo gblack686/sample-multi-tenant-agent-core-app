@@ -198,7 +198,7 @@ Each expert's `expertise.md` includes a cross-reference section:
 
 1. **aws ↔ git**: CDK deploy triggered by Git push via GitHub Actions
 2. **aws ↔ cloudwatch**: CDK stacks include CloudWatch resources
-3. **aws ↔ eval**: Eval stack (`infra/eval/`) managed by CDK
+3. **aws ↔ eval**: Eval stack (`infrastructure/eval/`) managed by CDK
 4. **git ↔ eval**: CI pipeline runs eval suite on PR
 5. **git ↔ frontend**: CI pipeline builds + deploys frontend
 6. **git ↔ backend**: CI pipeline deploys backend service

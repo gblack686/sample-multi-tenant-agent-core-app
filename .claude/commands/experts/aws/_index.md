@@ -23,7 +23,7 @@ This expert covers:
 
 ## Current State
 
-**Hybrid provisioning** — Core resources (S3, DynamoDB, Bedrock) are manually provisioned. Eval observability stack (`infra/eval/`) is CDK-managed.
+**Hybrid provisioning** — Core resources (S3, DynamoDB, Bedrock) are manually provisioned. Eval observability stack (`infrastructure/eval/`) is CDK-managed.
 
 | Resource | Name | Region | Provisioning |
 |----------|------|--------|-------------|
@@ -82,8 +82,8 @@ AWS Resources (EAGLE Platform)
   |     |-- Anthropic models (Console) — Haiku, Sonnet, Opus
   |
   |-- CDK Stacks
-  |     |-- infra/eval/ (TypeScript) — EagleEvalStack
-  |     |-- infra/cdk/ (Python) — Reference MultiTenantBedrockStack
+  |     |-- infrastructure/eval/ (TypeScript) — EagleEvalStack
+  |     |-- infrastructure/cdk/ (Python) — Reference MultiTenantBedrockStack
   |
   |-- Credentials
         |-- ~/.aws/credentials (local profile)

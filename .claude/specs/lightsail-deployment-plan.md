@@ -34,8 +34,8 @@ Wait ~2 min for state `READY`.
 # Frontend (from client/ directory)
 docker build -t nci-eagle-frontend:latest ./client
 
-# Backend (from repo root, uses Dockerfile.backend)
-docker build -t nci-eagle-backend:latest -f Dockerfile.backend .
+# Backend (from repo root, uses deployment/docker/Dockerfile.backend)
+docker build -t nci-eagle-backend:latest -f deployment/docker/Dockerfile.backend .
 ```
 
 ### Step 3: Push Images to Lightsail
@@ -46,7 +46,7 @@ aws lightsail push-container-image --service-name nci-eagle --label backend --im
 Each returns an image ref like `:nci-eagle.frontend.1` — used in deployment JSON.
 
 ### Step 4: Create Deployment
-Create `scripts/lightsail-deployment.json` with:
+Create `deployment/scripts/lightsail-deployment.json` with:
 - **backend container**: image ref, env vars (USE_BEDROCK=true, AWS creds, Cognito config, table names), port 8000
 - **frontend container**: image ref, env vars (FASTAPI_URL=http://localhost:8000, Cognito config, AWS creds for CloudWatch), port 3000
 - **publicEndpoint**: frontend on port 3000, health check on `/` with codes `200-399`
@@ -56,12 +56,12 @@ AWS credentials: Use existing credentials from `~/.aws/credentials` as container
 ### Step 5: Deploy
 ```bash
 aws lightsail create-container-service-deployment \
-  --service-name nci-eagle --cli-input-json file://scripts/lightsail-deployment.json
+  --service-name nci-eagle --cli-input-json file://deployment/scripts/lightsail-deployment.json
 ```
 Poll until state `ACTIVE` (~3-5 min).
 
 ### Step 6: Create Deploy Script
-Create `scripts/deploy-lightsail.sh` that automates steps 2-5 with flags:
+Create `deployment/scripts/deploy-lightsail.sh` that automates steps 2-5 with flags:
 - `--create` — first-time service creation
 - `--deploy` — build, push, deploy
 - `--status` — check current state + URL
@@ -71,9 +71,9 @@ Create `scripts/deploy-lightsail.sh` that automates steps 2-5 with flags:
 
 | File | Action |
 |------|--------|
-| `scripts/deploy-lightsail.sh` | New — deployment automation script |
-| `scripts/lightsail-deployment.json` | New — deployment config (secrets as env vars) |
-| `.gitignore` | Add `scripts/lightsail-deployment.json` (contains secrets) |
+| `deployment/scripts/deploy-lightsail.sh` | New — deployment automation script |
+| `deployment/scripts/lightsail-deployment.json` | New — deployment config (secrets as env vars) |
+| `.gitignore` | Add `deployment/scripts/lightsail-deployment.json` (contains secrets) |
 
 **No application code changes needed** — existing Dockerfiles, configs, and env var defaults all align with Lightsail's shared-localhost model.
 

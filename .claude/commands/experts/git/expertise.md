@@ -66,7 +66,7 @@ Triggers: push to main, PR to main, workflow_dispatch
 Auth: Static IAM keys (AWS_ACCESS_KEY_ID secret)
 Jobs:
   1. deploy-infrastructure:
-     - CDK bootstrap + deploy (infra/cdk/, Python stack)
+     - CDK bootstrap + deploy (infrastructure/cdk/, Python stack)
      - Bedrock agent creation
      - Extract CDK outputs
   2. setup-frontend:
@@ -77,7 +77,7 @@ Jobs:
 
 **Issues**:
 - Uses static IAM keys (should migrate to OIDC)
-- Deploys Python CDK stack (`infra/cdk/`), not TypeScript eval stack
+- Deploys Python CDK stack (`infrastructure/cdk/`), not TypeScript eval stack
 - No lint/test/build verification before deploy
 - No rollback capability
 
@@ -209,9 +209,9 @@ cdk-ci:
       with:
         node-version: '20'
     - name: Install CDK dependencies
-      run: cd infra/eval && npm ci
+      run: cd infrastructure/eval && npm ci
     - name: CDK Synth
-      run: cd infra/eval && npx cdk synth
+      run: cd infrastructure/eval && npx cdk synth
 ```
 
 ### Parallel Job Execution
@@ -236,7 +236,7 @@ jobs:
 |-------------------|-----------|------|
 | npm | `client/package-lock.json` | `~/.npm` |
 | pip | `server/requirements.txt` | `~/.cache/pip` |
-| CDK | `infra/eval/package-lock.json` | `~/.npm` |
+| CDK | `infrastructure/eval/package-lock.json` | `~/.npm` |
 
 ---
 
@@ -255,9 +255,9 @@ deploy-cdk:
         role-to-assume: ${{ vars.CDK_DEPLOY_ROLE_ARN }}
         aws-region: us-east-1
     - name: CDK Diff
-      run: cd infra/eval && npx cdk diff
+      run: cd infrastructure/eval && npx cdk diff
     - name: CDK Deploy
-      run: cd infra/eval && npx cdk deploy --require-approval never
+      run: cd infrastructure/eval && npx cdk deploy --require-approval never
 ```
 
 ### Docker Build + ECR Push

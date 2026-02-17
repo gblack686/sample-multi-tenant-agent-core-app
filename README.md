@@ -144,7 +144,7 @@ cd Agent-Core
 ### Step 2: Deploy AWS Infrastructure with Terraform
 
 ```bash
-cd infra/terraform
+cd infrastructure/terraform
 terraform init
 terraform plan
 terraform apply
@@ -563,7 +563,7 @@ To remove all AWS resources and avoid charges:
 
 ### Destroy Terraform Infrastructure
 ```bash
-cd infra/terraform
+cd infrastructure/terraform
 terraform destroy
 ```
 

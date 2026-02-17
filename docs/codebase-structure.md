@@ -4,7 +4,7 @@ This document describes the organization and structure of the Multi-Tenant Amazo
 
 ## Overview
 
-The codebase follows a clean, modular architecture with clear separation between frontend, backend, infrastructure, and supporting components.
+The codebase follows a clean, modular architecture with clear separation between frontend, backend, infrastructure, deployment, and supporting components.
 
 ## Root Directory Structure
 
@@ -12,16 +12,16 @@ The codebase follows a clean, modular architecture with clear separation between
 .
 ├── client/              # Next.js frontend application
 ├── server/              # FastAPI backend application
-├── infra/               # Infrastructure as Code (Terraform, CDK)
-├── scripts/             # Utility and setup scripts
-├── docs/                # Documentation
+├── infrastructure/      # Infrastructure as Code (Terraform, CDK)
+├── deployment/          # Deployment scripts, Docker files, and configs
+├── docs/                # Centralized documentation
 ├── data/                # Static data, media, and evaluation artifacts
-├── eagle-plugin/        # Claude plugin configuration
+├── eagle-plugin/        # EAGLE plugin configuration (single source of truth)
+├── tools/               # Development tools and utilities
 ├── .claude/             # Claude IDE configuration and commands
-├── notes/               # Development notes and instructions
+├── .github/             # GitHub Actions workflows
 ├── README.md            # Main project documentation
-├── docker-compose.dev.yml
-└── Dockerfile.backend
+└── .gitignore           # Git ignore rules
 ```
 
 ## Component Details
@@ -90,12 +90,12 @@ server/
 - `config.py` - Environment configuration
 - `run.py` - Development server launcher
 
-### Infrastructure (`infra/`)
+### Infrastructure (`infrastructure/`)
 
 Infrastructure as Code definitions for AWS resources.
 
 ```
-infra/
+infrastructure/
 ├── terraform/          # Terraform infrastructure definitions
 │   ├── main.tf         # Main resource definitions
 │   ├── variables.tf    # Input variables
@@ -114,27 +114,42 @@ infra/
 - CDK: Bedrock Agent definitions and Lambda deployments
 - Eval: Testing and evaluation infrastructure
 
-### Scripts (`scripts/`)
+### Deployment (`deployment/`)
 
-Utility scripts for setup, deployment, and maintenance.
+Deployment scripts, Docker configurations, and deployment orchestration.
 
 ```
-scripts/
-├── create_bedrock_agent.py      # Bedrock agent creation
-├── create_test_users_with_tiers.py  # Test user generation
-├── setup_cognito_admin_groups.py     # Cognito group setup
-├── setup_weather_api.py              # Weather API configuration
-└── deploy-lightsail.sh               # Lightsail deployment
+deployment/
+├── docker/                          # Docker files
+│   └── Dockerfile.backend           # Backend Docker image
+├── docker-compose.dev.yml           # Local development compose
+└── scripts/                         # Deployment and setup scripts
+    ├── create_bedrock_agent.py      # Bedrock agent creation
+    ├── create_test_users_with_tiers.py  # Test user generation
+    ├── setup_cognito_admin_groups.py     # Cognito group setup
+    ├── setup_weather_api.py              # Weather API configuration
+    └── deploy-lightsail.sh               # Lightsail deployment
 ```
 
 ### Documentation (`docs/`)
 
-Project documentation and guides.
+Centralized project documentation.
 
 ```
 docs/
+├── architecture/        # Architecture docs, diagrams, reference documents
+│   ├── diagrams/       # Mermaid and Excalidraw diagrams
+│   ├── orchestration/  # SDK/Bedrock orchestration docs
+│   └── reference-documents/  # AP exhibits, design docs, use cases
+├── deployment/          # Deployment guides and validation checklists
+├── development/         # Development setup, meeting transcripts
+│   ├── local-setup-20260209.md
+│   ├── meeting-transcripts/
+│   └── screenshots/
+├── api/                 # API documentation
 ├── codebase-structure.md    # This file
-└── [additional docs]        # Other documentation files
+├── restructuring-plan.md    # Restructuring plan
+└── claude-merge-analysis-workflow.md
 ```
 
 ### Data (`data/`)
@@ -143,24 +158,35 @@ Static data, media files, and evaluation artifacts.
 
 ```
 data/
-├── eval/               # Evaluation results and dashboards
+├── eval/               # Evaluation results, telemetry, dashboards, videos
 ├── media/              # Images, videos, diagrams
 └── screenshots/        # Application screenshots
 ```
 
 ### Eagle Plugin (`eagle-plugin/`)
 
-Claude IDE plugin configuration for the EAGLE acquisition assistant.
+EAGLE plugin configuration — single source of truth for agent and skill definitions.
 
 ```
 eagle-plugin/
-├── agents/             # Agent definitions
+├── agents/             # 8 agent directories with agent.md + YAML frontmatter
+├── skills/             # 5 skill directories with SKILL.md + YAML frontmatter
 ├── commands/           # Slash command definitions
-├── skills/             # Skill definitions
 ├── tools/              # Tool configurations
 ├── diagrams/           # Architecture and sequence diagrams
 ├── plugin.json         # Plugin manifest
 └── README.md           # Plugin documentation
+```
+
+### Tools (`tools/`)
+
+Development tools and utilities.
+
+```
+tools/
+├── doc-export/         # PDF and Word document export utilities
+├── scripts/            # Utility scripts
+└── configs/            # Tool configurations
 ```
 
 ### Claude Configuration (`.claude/`)
@@ -170,8 +196,9 @@ Claude IDE configuration, commands, and expert definitions.
 ```
 .claude/
 ├── commands/           # Slash commands
-│   └── experts/       # Domain expert definitions
+│   └── experts/       # Domain expert definitions (9 experts)
 ├── skills/             # Claude skills
+├── specs/              # Implementation specs
 └── settings.json       # Claude IDE settings
 ```
 
@@ -181,6 +208,7 @@ Claude IDE configuration, commands, and expert definitions.
 - **Frontend**: Client-side UI and user interactions
 - **Backend**: Business logic, API endpoints, AWS integrations
 - **Infrastructure**: Infrastructure definitions separate from application code
+- **Deployment**: Docker, scripts, and deployment configs isolated from source
 
 ### 2. Modularity
 - Components organized by feature/domain
@@ -228,6 +256,7 @@ Claude IDE configuration, commands, and expert definitions.
 1. **Local Development**
    - Frontend: `cd client && npm run dev`
    - Backend: `cd server && python run.py`
+   - Docker: `cd deployment && docker compose -f docker-compose.dev.yml up`
    - Infrastructure: Deploy via Terraform/CDK
 
 2. **Testing**
@@ -235,8 +264,8 @@ Claude IDE configuration, commands, and expert definitions.
    - Backend: `cd server && pytest`
 
 3. **Deployment**
-   - Infrastructure: `cd infra/terraform && terraform apply`
-   - Application: Use deployment scripts in `scripts/`
+   - Infrastructure: `cd infrastructure/terraform && terraform apply`
+   - Application: Use deployment scripts in `deployment/scripts/`
 
 ## File Naming Conventions
 
@@ -249,7 +278,7 @@ Claude IDE configuration, commands, and expert definitions.
 
 - **Frontend**: `client/package.json` and `package-lock.json`
 - **Backend**: `server/requirements.txt`
-- **Infrastructure**: `infra/cdk/requirements.txt` (Python CDK), `infra/eval/package.json` (TypeScript CDK)
+- **Infrastructure**: `infrastructure/cdk/requirements.txt` (Python CDK), `infrastructure/eval/package.json` (TypeScript CDK)
 
 ## Environment Variables
 
@@ -260,6 +289,7 @@ Configuration is managed through environment variables:
 
 ## Notes
 
-- The `notes/` directory contains development notes and instructions
 - The `.claude/` directory contains Claude IDE-specific configuration
-- The `eagle-plugin/` is a separate plugin project but included in this repository
+- The `eagle-plugin/` is the single source of truth for agent/skill definitions
+- The `tools/` directory contains development utilities (doc-export, configs)
+- The `data/` directory contains evaluation results and media assets (gitignored on main)

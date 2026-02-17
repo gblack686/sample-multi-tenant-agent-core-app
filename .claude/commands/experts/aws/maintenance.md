@@ -140,9 +140,9 @@ print()
 print('Infrastructure Files Check')
 print('=' * 55)
 checks = [
-    ('CDK eval stack',     'infra/eval/cdk.json'),
-    ('CDK ref stack',      'infra/cdk/cdk.json'),
-    ('Dockerfile',         'Dockerfile'),
+    ('CDK eval stack',     'infrastructure/eval/cdk.json'),
+    ('CDK ref stack',      'infrastructure/cdk/cdk.json'),
+    ('Dockerfile',         'deployment/docker/Dockerfile.backend'),
     ('GitHub Actions',     '.github/workflows/deploy.yml'),
     ('Claude Actions',     '.github/workflows/claude-merge-analysis.yml'),
 ]

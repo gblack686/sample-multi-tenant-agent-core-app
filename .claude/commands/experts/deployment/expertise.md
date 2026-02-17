@@ -17,14 +17,14 @@ last_updated: 2026-02-10T00:00:00
 
 ### Provisioning Model
 
-Core AWS resources (S3, DynamoDB, Bedrock) are **manually provisioned**. The eval observability stack (`infra/eval/`) is managed by **TypeScript CDK**.
+Core AWS resources (S3, DynamoDB, Bedrock) are **manually provisioned**. The eval observability stack (`infrastructure/eval/`) is managed by **TypeScript CDK**.
 
 ```
 Provisioning: Hybrid (Manual + CDK)
 Region: us-east-1
 Account: Accessed via ~/.aws/credentials (local profile)
 IAM: Developer credentials with broad permissions
-CDK: infra/eval/ (TypeScript, EagleEvalStack)
+CDK: infrastructure/eval/ (TypeScript, EagleEvalStack)
 CI/CD: Not configured
 Docker: Not configured
 ```
@@ -54,7 +54,7 @@ Docker: Not configured
 | DynamoDB table | Yes | `eagle`, manually created |
 | CloudWatch log group | Yes | `/eagle/test-runs`, auto-created by eval suite |
 | Bedrock model access | Yes | Anthropic models enabled in Console |
-| CDK project (eval) | Yes | `infra/eval/` — EagleEvalStack (S3, CW dashboard, alarm, SNS) |
+| CDK project (eval) | Yes | `infrastructure/eval/` — EagleEvalStack (S3, CW dashboard, alarm, SNS) |
 | Dockerfile | No | No container configuration |
 | GitHub Actions | No | No `.github/workflows/` |
 | CloudFront distribution | No | Frontend runs locally only |
@@ -294,10 +294,10 @@ The `client/` directory uses:
 
 ### Active CDK Stacks
 
-#### `infra/eval/` — EagleEvalStack (Eval Observability)
+#### `infrastructure/eval/` — EagleEvalStack (Eval Observability)
 
 ```
-infra/eval/
+infrastructure/eval/
   |-- bin/
   |     |-- eval.ts                    # CDK app entry point
   |
@@ -318,14 +318,14 @@ Resources:
 
 Outputs: EvalBucketName, EvalBucketArn, EvalAlertTopicArn, EvalDashboardName, EvalPassRateAlarmArn
 
-Deploy: cd infra/eval && npx cdk deploy
-Synth:  cd infra/eval && npx cdk synth
+Deploy: cd infrastructure/eval && npx cdk deploy
+Synth:  cd infrastructure/eval && npx cdk synth
 ```
 
-#### `infra/cdk/` — MultiTenantBedrockStack (Reference, Python)
+#### `infrastructure/cdk/` — MultiTenantBedrockStack (Reference, Python)
 
 ```
-infra/cdk/
+infrastructure/cdk/
   |-- app.py                           # Python CDK entry point
   |-- bedrock_agents.py                # Bedrock agent construct
   |-- lambda_deployment.py             # Lambda + API Gateway construct
@@ -825,25 +825,25 @@ export AWS_DEFAULT_REGION=us-east-1
 - Manual provisioning works for dev/prototyping but doesn't scale
 - boto3 inline checks (like check-aws command) give instant connectivity feedback
 - Hardcoded region `us-east-1` avoids misconfiguration across tools
-- TypeScript CDK with `commonjs` module + `node` moduleResolution works reliably with ts-node (discovered: 2026-02-10, component: infra/eval)
-- Single-stack pattern for eval observability keeps related resources together — S3, CW dashboard, alarm, SNS in one EvalObservabilityStack (discovered: 2026-02-10, component: infra/eval)
+- TypeScript CDK with `commonjs` module + `node` moduleResolution works reliably with ts-node (discovered: 2026-02-10, component: infrastructure/eval)
+- Single-stack pattern for eval observability keeps related resources together — S3, CW dashboard, alarm, SNS in one EvalObservabilityStack (discovered: 2026-02-10, component: infrastructure/eval)
 - Python publisher with lazy-loaded boto3 clients and try/except wrappers makes AWS integration non-fatal — eval suite runs fine without credentials (discovered: 2026-02-10, component: eval_aws_publisher)
 - Import-guard pattern (`try: import ... except ImportError: _HAS_FLAG = False`) keeps optional AWS modules zero-impact (discovered: 2026-02-10, component: test_eagle_sdk_eval)
-- CDK context flags copied from existing `infra/cdk/cdk.json` ensure consistent behavior across stacks (discovered: 2026-02-10, component: infra/eval)
+- CDK context flags copied from existing `infrastructure/cdk/cdk.json` ensure consistent behavior across stacks (discovered: 2026-02-10, component: infrastructure/eval)
 
 ### patterns_to_avoid
 - Don't create new CDK resources that conflict with existing manual resources
 - Don't use `Vpc.fromLookup()` in CI/CD pipelines (synthesis-time API call)
 - Don't forget HOSTNAME=0.0.0.0 for containerized Next.js
-- Don't use `NodeNext` module/moduleResolution in tsconfig when using ts-node with CDK — causes `Cannot find module '../lib/eval-stack.js'` errors; use `commonjs`/`node` instead (discovered: 2026-02-10, component: infra/eval)
-- Don't append `.js` extension to TypeScript imports in CDK projects using commonjs module — ts-node resolves `.ts` files directly (discovered: 2026-02-10, component: infra/eval)
+- Don't use `NodeNext` module/moduleResolution in tsconfig when using ts-node with CDK — causes `Cannot find module '../lib/eval-stack.js'` errors; use `commonjs`/`node` instead (discovered: 2026-02-10, component: infrastructure/eval)
+- Don't append `.js` extension to TypeScript imports in CDK projects using commonjs module — ts-node resolves `.ts` files directly (discovered: 2026-02-10, component: infrastructure/eval)
 
 ### common_issues
 - AWS credentials expire or are not configured -> all services fail
 - S3 bucket name globally unique constraint -> can't reuse names across accounts
 - CDK bootstrap missing -> deploy fails with cryptic asset error
-- `Cannot find module '../lib/eval-stack.js'`: caused by NodeNext moduleResolution + .js import extension with ts-node; fix by switching to commonjs module and removing .js extension (component: infra/eval)
-- CloudWatch log group `/eagle/test-runs` may already exist when CDK tries to create it: use `removalPolicy: RETAIN` or delete the existing group before first deploy (component: infra/eval)
+- `Cannot find module '../lib/eval-stack.js'`: caused by NodeNext moduleResolution + .js import extension with ts-node; fix by switching to commonjs module and removing .js extension (component: infrastructure/eval)
+- CloudWatch log group `/eagle/test-runs` may already exist when CDK tries to create it: use `removalPolicy: RETAIN` or delete the existing group before first deploy (component: infrastructure/eval)
 
 ### tips
 - Run `/experts:deployment:maintenance` before any deployment to verify connectivity
@@ -851,6 +851,6 @@ export AWS_DEFAULT_REGION=us-east-1
 - Tag all CDK resources with Project=eagle and ManagedBy=cdk for cost tracking
 - Use OIDC for GitHub Actions instead of static IAM keys (more secure, no rotation needed)
 - Run `npx cdk synth` before `cdk deploy` to verify CloudFormation template generates correctly
-- The eval CDK stack lives at `infra/eval/` — run `cd infra/eval && npx cdk deploy` to provision
+- The eval CDK stack lives at `infrastructure/eval/` — run `cd infrastructure/eval && npx cdk deploy` to provision
 - Before first deploy, check if `/eagle/test-runs` log group exists: `aws logs describe-log-groups --log-group-name-prefix /eagle/test-runs`
 - `put_metric_data` supports up to 1000 metrics per call — our 32 metrics per eval run are well within limits
