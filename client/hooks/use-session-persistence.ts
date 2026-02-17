@@ -32,21 +32,126 @@ interface UseSessionPersistenceReturn {
     deleteSession: (sessionId: string) => void;
     setCurrentSession: (sessionId: string) => void;
     markSessionComplete: (sessionId: string) => void;
+    renameSession: (sessionId: string, newTitle: string) => void;
 }
 
-function generateSessionTitle(messages: Message[], acquisitionData: AcquisitionData): string {
-    // Try to extract a meaningful title from the first user message or acquisition data
-    if (acquisitionData.requirement) {
-        const words = acquisitionData.requirement.split(' ').slice(0, 5).join(' ');
-        return words + (acquisitionData.requirement.length > words.length ? '...' : '');
+interface ParsedIntent {
+    projectName?: string;
+    documentType?: string;
+    action?: 'document' | 'plan' | 'intake' | 'question';
+}
+
+function parseUserIntent(message: string): ParsedIntent {
+    const result: ParsedIntent = {};
+
+    // Detect slash commands
+    if (message.startsWith('/document')) {
+        result.action = 'document';
+    } else if (message.startsWith('/plan') || message.startsWith('/quick-plan')) {
+        result.action = 'plan';
+    } else if (message.startsWith('/oa-intake')) {
+        result.action = 'intake';
     }
 
+    // Extract document type from keywords
+    const docTypePatterns: Record<string, string> = {
+        'sow|statement of work': 'SOW',
+        'igce|cost estimate': 'IGCE',
+        'acquisition plan': 'Acquisition Plan',
+        'market research': 'Market Research',
+        'justification|j&a': 'Justification',
+    };
+
+    const lowerMsg = message.toLowerCase();
+    for (const [pattern, label] of Object.entries(docTypePatterns)) {
+        if (new RegExp(pattern).test(lowerMsg)) {
+            result.documentType = label;
+            break;
+        }
+    }
+
+    // Extract project name using patterns like:
+    // "for a project called X", "for X project", "called X", "named X"
+    const projectPatterns = [
+        /(?:project|program)\s+(?:called|named)\s+["']?([^"'.,]+)["']?/i,
+        /(?:called|named)\s+["']?([^"'.,]+)["']?/i,
+        /for\s+(?:the\s+)?["']?([A-Z][A-Za-z0-9\s]+?)["']?\s+(?:project|program|initiative)/i,
+        /["']([^"']+)["']\s+(?:sow|igce|acquisition)/i,
+    ];
+
+    for (const pattern of projectPatterns) {
+        const match = message.match(pattern);
+        if (match) {
+            result.projectName = match[1].trim();
+            break;
+        }
+    }
+
+    return result;
+}
+
+function formatDocType(type: string): string {
+    const labels: Record<string, string> = {
+        'sow': 'SOW',
+        'igce': 'IGCE',
+        'acquisition_plan': 'Acquisition Plan',
+        'market_research': 'Market Research',
+        'justification': 'Justification',
+        'funding_doc': 'Funding Document',
+    };
+    return labels[type] || type.toUpperCase();
+}
+
+function generateSessionTitle(
+    messages: Message[],
+    acquisitionData: AcquisitionData,
+    documents?: Record<string, { document_type?: string; title?: string }[]>
+): string {
+    // Priority 1: If we have documents, use document metadata
+    if (documents && Object.keys(documents).length > 0) {
+        const allDocs = Object.values(documents).flat();
+        const firstDoc = allDocs[0];
+        if (firstDoc && firstDoc.document_type) {
+            const docLabel = formatDocType(firstDoc.document_type);
+            const projectName = firstDoc.title?.replace(/\s*(SOW|IGCE|Plan).*$/i, '').trim();
+            if (projectName && projectName !== docLabel) {
+                return `${projectName} - ${docLabel}`;
+            }
+            return docLabel;
+        }
+    }
+
+    // Priority 2: Parse first user message for intent
     const firstUserMessage = messages.find((m) => m.role === 'user');
     if (firstUserMessage) {
-        const words = firstUserMessage.content.split(' ').slice(0, 5).join(' ');
-        return words + (firstUserMessage.content.length > words.length ? '...' : '');
+        const parsed = parseUserIntent(firstUserMessage.content);
+
+        if (parsed.projectName && parsed.documentType) {
+            return `${parsed.projectName} - ${parsed.documentType}`;
+        }
+        if (parsed.projectName) {
+            return parsed.projectName;
+        }
+        if (parsed.documentType) {
+            return `New ${parsed.documentType}`;
+        }
     }
 
+    // Priority 3: Use acquisition requirement (cleaned)
+    if (acquisitionData.requirement) {
+        // Remove slash commands and extract meaningful content
+        const cleaned = acquisitionData.requirement
+            .replace(/^\/\w+\s*/, '')  // Remove slash command
+            .replace(/^I need (an?|the)\s*/i, '')  // Remove "I need a/an/the"
+            .trim();
+
+        if (cleaned.length > 0) {
+            const words = cleaned.split(' ').slice(0, 4).join(' ');
+            return words + (cleaned.length > words.length ? '...' : '');
+        }
+    }
+
+    // Fallback
     return `Session ${new Date().toLocaleDateString()}`;
 }
 
@@ -128,7 +233,7 @@ export function useSessionPersistence(): UseSessionPersistenceReturn {
 
             const sessionData: SessionData = {
                 id: currentSessionId,
-                title: generateSessionTitle(messages, acquisitionData),
+                title: existingSession?.title || generateSessionTitle(messages, acquisitionData, strippedDocs),
                 summary: generateSessionSummary(acquisitionData),
                 messages: messages.map((m) => ({
                     ...m,
@@ -247,6 +352,37 @@ export function useSessionPersistence(): UseSessionPersistenceReturn {
         }
     }, []);
 
+    const renameSession = useCallback((sessionId: string, newTitle: string) => {
+        try {
+            const stored = localStorage.getItem(STORAGE_KEY);
+            if (!stored) return;
+
+            const allSessions: Record<string, SessionData> = JSON.parse(stored);
+            if (allSessions[sessionId]) {
+                allSessions[sessionId].title = newTitle;
+                allSessions[sessionId].updatedAt = new Date().toISOString();
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(allSessions));
+
+                setSessions((prev) =>
+                    prev.map((s) =>
+                        s.id === sessionId
+                            ? { ...s, title: newTitle, updatedAt: new Date() }
+                            : s
+                    )
+                );
+
+                // Sync to backend if available
+                fetch(`/api/sessions/${sessionId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: newTitle }),
+                }).catch((err) => console.error('Error syncing session title to backend:', err));
+            }
+        } catch (error) {
+            console.error('Error renaming session:', error);
+        }
+    }, []);
+
     const currentSession = currentSessionId ? loadSession(currentSessionId) : null;
 
     return {
@@ -260,5 +396,6 @@ export function useSessionPersistence(): UseSessionPersistenceReturn {
         deleteSession,
         setCurrentSession: setCurrentSessionById,
         markSessionComplete,
+        renameSession,
     };
 }

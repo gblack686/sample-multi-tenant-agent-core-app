@@ -26,6 +26,7 @@ interface SessionContextValue {
     deleteSession: (sessionId: string) => void;
     setCurrentSession: (sessionId: string) => void;
     markSessionComplete: (sessionId: string) => void;
+    renameSession: (sessionId: string, newTitle: string) => void;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);

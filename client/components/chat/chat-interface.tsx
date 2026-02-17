@@ -599,7 +599,7 @@ export default function ChatInterface() {
                     {activeTab === 'current' && (
                         <>
                             <AcquisitionCard data={acquisitionData} />
-                            <DocumentChecklist messages={messages} data={acquisitionData} />
+                            <DocumentChecklist messages={messages} data={acquisitionData} sessionId={currentSessionId || undefined} />
 
                             {/* Document Upload Section */}
                             <div className="space-y-3">
