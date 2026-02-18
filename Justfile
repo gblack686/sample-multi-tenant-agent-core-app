@@ -28,7 +28,7 @@ setup: _create-bucket cdk-install _cdk-bootstrap cdk-deploy deploy create-users 
 
 # Create test + admin Cognito users with required tenant attributes
 create-users:
-    python tools/create_users.py
+    python scripts/create_users.py
 
 # ── Development ─────────────────────────────────────────────
 

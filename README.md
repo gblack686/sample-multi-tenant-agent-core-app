@@ -62,9 +62,9 @@ just ship           # lint → deploy
 
 ![Architecture Diagram](data/media/architecuture.png)
 
-> **Interactive diagrams** in [`excalidraw-diagrams/aws/`](excalidraw-diagrams/aws/) — open in [Excalidraw](https://excalidraw.com) or Obsidian:
-> - [`eagle-aws-architecture.excalidraw.md`](excalidraw-diagrams/aws/eagle-aws-architecture.excalidraw.md) (dark)
-> - [`eagle-aws-architecture-light.excalidraw.md`](excalidraw-diagrams/aws/eagle-aws-architecture-light.excalidraw.md) (light)
+> **Interactive diagrams** in [`docs/excalidraw-diagrams/aws/`](docs/excalidraw-diagrams/aws/) — open in [Excalidraw](https://excalidraw.com) or Obsidian:
+> - [`eagle-aws-architecture.excalidraw.md`](docs/excalidraw-diagrams/aws/eagle-aws-architecture.excalidraw.md) (dark)
+> - [`eagle-aws-architecture-light.excalidraw.md`](docs/excalidraw-diagrams/aws/eagle-aws-architecture-light.excalidraw.md) (light)
 
 ### Request Flow
 
@@ -139,7 +139,7 @@ All stacks in `infrastructure/cdk-eagle/`:
 ├── deployment/
 │   ├── docker/              # Dockerfile.backend + Dockerfile.frontend
 │   └── docker-compose.dev.yml
-├── excalidraw-diagrams/     # AWS architecture diagrams
+├── scripts/                 # Deployment + setup scripts
 ├── docs/                    # Architecture docs + guides
 ├── .github/workflows/       # CI/CD (deploy.yml)
 ├── Justfile                 # Unified task runner
