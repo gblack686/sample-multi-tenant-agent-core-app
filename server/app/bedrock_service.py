@@ -4,14 +4,17 @@ import uuid
 from datetime import datetime
 from typing import Dict, Any, Optional
 from .models import TenantContext, UsageMetric
+from config import Config
 
 class BedrockAgentService:
+    DEFAULT_MODEL_ID = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+
     def __init__(self, agent_id: str, agent_alias_id: str = "TSTALIASID"):
         self.bedrock_agent_runtime = boto3.client('bedrock-agent-runtime')
         self.bedrock_runtime = boto3.client('bedrock-runtime')
         self.agent_id = agent_id
         self.agent_alias_id = agent_alias_id
-        self.model_id = "anthropic.claude-3-haiku-20240307-v1:0"
+        self.model_id = Config.ANTHROPIC_MODEL or self.DEFAULT_MODEL_ID
         
     def invoke_agent(self, message: str, tenant_context: TenantContext) -> Dict[str, Any]:
         """Invoke Bedrock Agent with proper runtime context"""

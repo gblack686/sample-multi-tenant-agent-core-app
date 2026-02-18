@@ -32,8 +32,8 @@ export default function SimpleMessageList({ messages, isTyping, documents, sessi
 
     return (
         <div className="flex-1 overflow-y-auto px-6 py-5 flex flex-col gap-4">
-            {messages.map((message) => (
-                <div key={message.id}>
+            {messages.map((message, index) => (
+                <div key={`${message.id}-${index}`}>
                     <div
                         className={`max-w-[80%] msg-slide-in ${
                             message.role === 'user' ? 'self-end ml-auto' : 'self-start'
