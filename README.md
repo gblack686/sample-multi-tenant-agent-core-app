@@ -173,14 +173,13 @@ githubRepo: 'your-repo-name',
 
 ### First-Time Setup
 
-> **One-command setup**: If you have AWS credentials configured, Bedrock model access enabled, and CDK dependencies installed, you can run the entire setup with a single command:
+> **One-command setup**: If you have AWS credentials configured and Bedrock model access enabled, you can run the entire setup with a single command:
 >
 > ```bash
-> cd infrastructure/cdk-eagle && npm ci && cd ../..
 > just setup
 > ```
 >
-> This creates the S3 bucket, bootstraps CDK, deploys all stacks, builds and deploys containers, creates test users, and verifies connectivity. The steps below explain each stage if you prefer to run them individually.
+> This installs CDK dependencies, creates the S3 bucket, bootstraps CDK, deploys all stacks, builds and deploys containers, creates test users, and verifies connectivity. The steps below explain each stage if you prefer to run them individually.
 
 #### 0. Enable Bedrock Model Access (manual, one-time)
 

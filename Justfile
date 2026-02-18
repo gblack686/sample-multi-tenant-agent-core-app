@@ -19,7 +19,7 @@ COMPOSE_FILE    := "deployment/docker-compose.dev.yml"
 # ── First-Time Setup ──────────────────────────────────────
 
 # Full first-time setup: S3 bucket → CDK bootstrap → CDK deploy → containers → users → verify
-setup: _create-bucket _cdk-bootstrap cdk-deploy deploy create-users check-aws
+setup: _create-bucket cdk-install _cdk-bootstrap cdk-deploy deploy create-users check-aws
     @echo ""
     @echo "=== Setup complete! ==="
     @echo "Run 'just urls' to see your live application URLs."
@@ -122,6 +122,10 @@ deploy-frontend: _ecr-login build-frontend _push-frontend _ecs-update-frontend _
     @echo "Frontend deployed."
 
 # ── Infrastructure (CDK) ───────────────────────────────────
+
+# Install CDK dependencies
+cdk-install:
+    cd {{CDK_DIR}} && npm ci
 
 # Synthesize CDK stacks (compile check)
 cdk-synth:

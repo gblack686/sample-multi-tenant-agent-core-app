@@ -1,0 +1,26 @@
+{
+  "name": "tac-experts",
+  "version": "1.0.0",
+  "description": "Tactical Agentic Coding (TAC) methodology plugin — expert system, frameworks, and development patterns for agent-first software engineering with Claude Code",
+  "author": "Greg Black",
+  "keywords": ["tac", "agentic", "expert-system", "claude-code", "methodology"],
+  "commands": {
+    "experts/tac/question": "Query TAC methodology",
+    "experts/tac/plan": "Plan with TAC principles",
+    "experts/tac/plan_build_improve": "Full ACT-LEARN-REUSE workflow",
+    "experts/tac/self-improve": "Update TAC expertise",
+    "experts/tac/maintenance": "Validate TAC compliance"
+  },
+  "provides": {
+    "experts": ["tac"],
+    "templates": ["expert", "claude-md", "adw", "spec"],
+    "docs": ["tactics", "advanced-lessons", "adw-patterns", "frameworks", "hooks-architecture", "context-engineering", "maturity-model", "ecosystem", "agentic-prompting"]
+  },
+  "examples": {
+    "commands": ["plan", "build", "review", "fix", "install", "install-hil", "maintenance-agentic", "prime"],
+    "agents": ["hooks-expert-agent", "bowser-qa-agent", "docs-scraper"],
+    "hooks": ["session_start", "setup_init", "setup_maintenance"],
+    "experts": ["aws-expert-pattern", "hooks-expert-pattern"],
+    "justfiles": ["browser-automation", "agentic-prompting"]
+  }
+}
