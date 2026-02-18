@@ -95,7 +95,7 @@ All stacks in `infrastructure/cdk-eagle/`:
 | Stack | Resources |
 |-------|-----------|
 | **EagleCiCdStack** | GitHub OIDC provider, deploy role |
-| **EagleCoreStack** | VPC (2 AZ, 1 NAT), Cognito User Pool, IAM app role, S3/DDB imports |
+| **EagleCoreStack** | VPC (2 AZ, 1 NAT), Cognito User Pool, DynamoDB table, IAM app role, S3 import |
 | **EagleComputeStack** | ECR repos, ECS Fargate cluster, backend ALB (internal), frontend ALB (public), auto-scaling |
 | **EagleEvalStack** | S3 eval artifacts, CloudWatch dashboard + alarm, SNS alerts |
 
@@ -148,25 +148,55 @@ All stacks in `infrastructure/cdk-eagle/`:
 
 ## Deployment Guide
 
+### Requirements for a New AWS Account
+
+**AWS Credentials**: Configure the AWS CLI with an IAM user or role that has admin access (or at minimum: CloudFormation, VPC, ECS, ECR, Cognito, DynamoDB, S3, IAM, Bedrock, CloudWatch, ELB):
+
+```bash
+aws configure
+# AWS Access Key ID:     <your-key>
+# AWS Secret Access Key: <your-secret>
+# Default region name:   us-east-1
+# Default output format: json
+
+# Verify credentials
+aws sts get-caller-identity
+```
+
+**Account-specific config**: If you forked this repo, update the GitHub owner/repo in `infrastructure/cdk-eagle/config/environments.ts`:
+
+```typescript
+// Change these to match YOUR GitHub account and repo name
+githubOwner: 'your-github-username',
+githubRepo: 'your-repo-name',
+```
+
 ### First-Time Setup
+
+> **One-command setup**: If you have AWS credentials configured, Bedrock model access enabled, and CDK dependencies installed, you can run the entire setup with a single command:
+>
+> ```bash
+> cd infrastructure/cdk-eagle && npm ci && cd ../..
+> just setup
+> ```
+>
+> This creates the S3 bucket, bootstraps CDK, deploys all stacks, builds and deploys containers, creates test users, and verifies connectivity. The steps below explain each stage if you prefer to run them individually.
+
+#### 0. Enable Bedrock Model Access (manual, one-time)
+
+This cannot be automated and must be done in the AWS Console:
+
+1. Go to **AWS Console → Amazon Bedrock → Model Access**
+2. Click **Request Access** and select **Anthropic Claude 3 Haiku** and **Anthropic Claude 3.5 Sonnet**
+3. Wait for "Access granted" status before proceeding
 
 #### 1. Create Pre-requisite Resources
 
-These are imported (not created) by CDK:
+The S3 bucket is **imported** (not created) by CDK and must exist first. The DynamoDB table is **created** by CDK — do not create it manually.
 
 ```bash
-# S3 bucket for documents
+# S3 bucket for documents (must exist before CDK deploy)
 aws s3 mb s3://nci-documents --region us-east-1
-
-# DynamoDB table (single-table design)
-aws dynamodb create-table \
-  --table-name eagle \
-  --attribute-definitions AttributeName=PK,AttributeType=S AttributeName=SK,AttributeType=S \
-  --key-schema AttributeName=PK,KeyType=HASH AttributeName=SK,KeyType=RANGE \
-  --billing-mode PAY_PER_REQUEST \
-  --region us-east-1
-
-# Enable Bedrock model access (AWS Console → Bedrock → Model Access → Anthropic Claude)
 ```
 
 #### 2. Bootstrap and Deploy CDK
@@ -175,11 +205,11 @@ aws dynamodb create-table \
 cd infrastructure/cdk-eagle
 npm ci
 
-# Bootstrap (once per account/region)
+# Bootstrap CDK (once per account/region)
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 npx cdk bootstrap aws://$ACCOUNT_ID/us-east-1
 
-# Deploy all 4 stacks
+# Deploy all 4 stacks (creates VPC, Cognito, DynamoDB, ECS, ECR, etc.)
 npx cdk deploy --all --require-approval never --outputs-file outputs.json
 ```
 
@@ -196,35 +226,101 @@ just deploy-backend    # Push + ECS update
 just deploy-frontend   # Push + ECS update
 ```
 
-#### 4. Create a Cognito User
+#### 4. Create Cognito Users
+
+Users require `custom:tenant_id` and `custom:subscription_tier` custom attributes for the multi-tenant auth system. Admin users also need a Cognito group (`{tenant}-admins`).
+
+```bash
+# Automated: creates test user + admin user with all required attributes
+just create-users
+```
+
+This creates the following accounts:
+
+| User | Email | Password | Tenant | Tier | Role |
+|------|-------|----------|--------|------|------|
+| Test User | testuser@example.com | EagleTest2024! | nci | basic | user |
+| Admin User | admin@example.com | EagleAdmin2024! | nci | premium | admin |
+
+<details>
+<summary>Manual user creation (click to expand)</summary>
 
 ```bash
 USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name EagleCoreStack \
   --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text)
 
+# Create test user (basic tier)
 aws cognito-idp admin-create-user \
   --user-pool-id $USER_POOL_ID \
-  --username user@example.com \
-  --user-attributes Name=email,Value=user@example.com Name=email_verified,Value=true \
+  --username testuser@example.com \
+  --user-attributes \
+    Name=email,Value=testuser@example.com \
+    Name=email_verified,Value=true \
+    Name=given_name,Value=Test \
+    Name=family_name,Value=User \
+    Name=custom:tenant_id,Value=nci \
+    Name=custom:subscription_tier,Value=basic \
   --temporary-password 'TempPass123!' \
   --message-action SUPPRESS
 
 aws cognito-idp admin-set-user-password \
   --user-pool-id $USER_POOL_ID \
-  --username user@example.com \
-  --password 'YourPassword123!' \
+  --username testuser@example.com \
+  --password 'EagleTest2024!' \
   --permanent
+
+# Create admin user (premium tier)
+aws cognito-idp admin-create-user \
+  --user-pool-id $USER_POOL_ID \
+  --username admin@example.com \
+  --user-attributes \
+    Name=email,Value=admin@example.com \
+    Name=email_verified,Value=true \
+    Name=given_name,Value=Admin \
+    Name=family_name,Value=User \
+    Name=custom:tenant_id,Value=nci \
+    Name=custom:subscription_tier,Value=premium \
+  --temporary-password 'TempPass123!' \
+  --message-action SUPPRESS
+
+aws cognito-idp admin-set-user-password \
+  --user-pool-id $USER_POOL_ID \
+  --username admin@example.com \
+  --password 'EagleAdmin2024!' \
+  --permanent
+
+# Create admin group and add admin user
+aws cognito-idp create-group \
+  --user-pool-id $USER_POOL_ID \
+  --group-name nci-admins \
+  --description "NCI tenant administrators"
+
+aws cognito-idp admin-add-user-to-group \
+  --user-pool-id $USER_POOL_ID \
+  --username admin@example.com \
+  --group-name nci-admins
 ```
 
-#### 5. Set GitHub Secret
+</details>
 
-Add the `DEPLOY_ROLE_ARN` from the CiCd stack output as a GitHub repository secret. After this, pushes to `main` trigger automatic deployment.
+#### 5. Set GitHub Secret (for CI/CD)
+
+Get the deploy role ARN from CDK outputs and add it as a GitHub repository secret:
+
+```bash
+# Print the deploy role ARN
+aws cloudformation describe-stacks --stack-name EagleCiCdStack \
+  --query "Stacks[0].Outputs[?OutputKey=='DeployRoleArn'].OutputValue" --output text
+```
+
+Add this value as `DEPLOY_ROLE_ARN` in **GitHub → Settings → Secrets and variables → Actions → New repository secret**. After this, pushes to `main` trigger automatic deployment.
 
 #### 6. Verify
 
 ```bash
 just status     # Shows ECS health + live URLs
 just check-aws  # Verifies all AWS service connectivity
+just urls       # Print frontend + backend URLs
 ```
 
 ### CI/CD Pipeline

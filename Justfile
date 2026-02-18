@@ -16,6 +16,20 @@ FRONTEND_REPO   := "eagle-frontend-dev"
 CDK_DIR         := "infrastructure/cdk-eagle"
 COMPOSE_FILE    := "deployment/docker-compose.dev.yml"
 
+# ── First-Time Setup ──────────────────────────────────────
+
+# Full first-time setup: S3 bucket → CDK bootstrap → CDK deploy → containers → users → verify
+setup: _create-bucket _cdk-bootstrap cdk-deploy deploy create-users check-aws
+    @echo ""
+    @echo "=== Setup complete! ==="
+    @echo "Run 'just urls' to see your live application URLs."
+    @echo "Test user:  testuser@example.com / EagleTest2024!"
+    @echo "Admin user: admin@example.com / EagleAdmin2024!"
+
+# Create test + admin Cognito users with required tenant attributes
+create-users:
+    python tools/create_users.py
+
 # ── Development ─────────────────────────────────────────────
 
 # Start backend + frontend via docker compose
@@ -192,6 +206,24 @@ ci: lint test eval-aws
 ship: lint deploy
 
 # ── Internal Helpers (prefixed with _) ──────────────────────
+
+_create-bucket:
+    python -c "\
+    import boto3; \
+    s3 = boto3.client('s3', region_name='us-east-1'); \
+    try: \
+        s3.head_bucket(Bucket='nci-documents'); \
+        print('S3 bucket nci-documents already exists.'); \
+    except s3.exceptions.ClientError: \
+        s3.create_bucket(Bucket='nci-documents'); \
+        print('Created S3 bucket: nci-documents')"
+
+_cdk-bootstrap:
+    python -c "\
+    import boto3, subprocess, sys; \
+    account = boto3.client('sts', region_name='us-east-1').get_caller_identity()['Account']; \
+    print(f'Bootstrapping CDK for account {account}...'); \
+    sys.exit(subprocess.call(['npx', 'cdk', 'bootstrap', f'aws://{account}/us-east-1'], cwd='infrastructure/cdk-eagle'))"
 
 _ecr-login:
     python -c "\
