@@ -4,7 +4,7 @@ parent: "[[deployment/_index]]"
 file-type: expertise
 human_reviewed: false
 tags: [expert-file, mental-model, deployment, aws, cdk]
-last_updated: 2026-02-17T00:00:00
+last_updated: 2026-02-18T12:15:00
 ---
 
 # Deployment Expertise (Complete Mental Model)
@@ -1054,6 +1054,9 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 - Using `LogGroup.fromLogGroupName()` instead of `new LogGroup()` avoids conflicts with auto-created log groups from the eval suite (discovered: 2026-02-17, component: eval-stack)
 - Config-driven bucket names (`config.evalBucketName`) with env defaults matching the publisher means zero code changes needed for the eval suite (discovered: 2026-02-17, component: eval-stack)
 - ECS deployment takes ~41s for a lightweight stack (S3 + SNS + CW alarm + dashboard) (discovered: 2026-02-17, component: EagleEvalStack)
+- Justfile with Python boto3 for AWS operations — `aws` CLI returns exit code 1 on MSYS/Git Bash even when succeeding; boto3 is reliable cross-platform (discovered: 2026-02-18, component: Justfile)
+- `build-frontend` recipe auto-fetches Cognito config from CDK stack outputs via boto3 — no hardcoded pool IDs (discovered: 2026-02-18, component: Justfile)
+- Internal just recipes prefixed with `_` stay hidden from `just --list` — clean separation of public and private commands (discovered: 2026-02-18, component: Justfile)
 
 ### patterns_to_avoid
 - Don't create new CDK resources that conflict with existing manual resources
@@ -1064,6 +1067,8 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 - Don't use `node:20-alpine` for ECS Fargate containers with `curl` health checks without installing curl — Alpine doesn't include it. Add `RUN apk add --no-cache curl` (discovered: 2026-02-17, component: Dockerfile.frontend)
 - Don't forget Cognito `--build-arg` when building frontend Docker image — NEXT_PUBLIC_* vars are baked in at build time, not runtime (discovered: 2026-02-17, component: Dockerfile.frontend)
 - Don't keep eval observability in a standalone CDK project — it gets forgotten and never deployed. Merge into the main CDK app (discovered: 2026-02-17, component: infrastructure/eval → cdk-eagle)
+- Don't use `aws` CLI in Justfile shebang scripts on Windows/MSYS — exit code 1 even on success breaks `set -euo pipefail`. Use Python boto3 instead (discovered: 2026-02-18, component: Justfile)
+- Don't hardcode ALB URLs in task runners — they change on redeployment. Fetch dynamically from `describe_load_balancers()` (discovered: 2026-02-18, component: Justfile)
 
 ### common_issues
 - AWS credentials expire or are not configured -> all services fail
@@ -1087,3 +1092,8 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 - Use `--message-action SUPPRESS` when creating Cognito users via CLI to avoid sending emails
 - After Cognito user creation, use `admin-set-user-password --permanent` to skip the FORCE_CHANGE_PASSWORD state
 - Verify deployment with eval test 1: `python -u server/tests/test_eagle_sdk_eval.py --tests 1` — confirms S3, CloudWatch, and Bedrock connectivity
+- Use `just --list` to see all available commands — replaces scattered shell scripts with one entry point
+- `just status` / `just urls` / `just check-aws` for quick operational checks
+- `just deploy` for full deploy pipeline: ECR login → build → push → ECS update → wait → status
+- `just ci` for full CI: lint → test → eval-aws
+- `just ship` for full ship: lint → deploy
