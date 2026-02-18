@@ -5,9 +5,14 @@ WORKDIR /app
 COPY server/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install curl for ECS health checks
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 COPY server/app/ app/
 COPY server/run.py .
 COPY server/config.py .
+COPY server/eagle_skill_constants.py .
+COPY eagle-plugin/ ../eagle-plugin/
 
 EXPOSE 8000
 

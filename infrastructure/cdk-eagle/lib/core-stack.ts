@@ -22,13 +22,20 @@ export class EagleCoreStack extends cdk.Stack {
     super(scope, id, props);
     const { config } = props;
 
-    // ── Import existing resources ────────────────────────────
+    // ── Import existing S3 bucket ──────────────────────────────
     const docsBucket = s3.Bucket.fromBucketName(
       this, 'DocsBucket', config.docsBucketName,
     );
-    const eagleTable = dynamodb.Table.fromTableName(
-      this, 'EagleTable', config.eagleTableName,
-    );
+
+    // ── DynamoDB: Eagle single-table ─────────────────────────
+    const eagleTable = new dynamodb.Table(this, 'EagleTable', {
+      tableName: config.eagleTableName,
+      partitionKey: { name: 'PK', type: dynamodb.AttributeType.STRING },
+      sortKey: { name: 'SK', type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: 'ttl',
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
 
     // ── VPC ──────────────────────────────────────────────────
     this.vpc = new ec2.Vpc(this, 'Vpc', {
@@ -141,7 +148,7 @@ export class EagleCoreStack extends cdk.Stack {
       ],
     }));
 
-    // Bedrock: Invoke models
+    // Bedrock: Invoke models (foundation models + cross-region inference profiles)
     this.appRole.addToPolicy(new iam.PolicyStatement({
       sid: 'BedrockInvoke',
       actions: [
@@ -150,7 +157,8 @@ export class EagleCoreStack extends cdk.Stack {
         'bedrock:InvokeAgent',
       ],
       resources: [
-        'arn:aws:bedrock:us-east-1::foundation-model/anthropic.*',
+        'arn:aws:bedrock:*::foundation-model/anthropic.*',
+        `arn:aws:bedrock:us-east-1:${this.account}:inference-profile/us.anthropic.*`,
         `arn:aws:bedrock:us-east-1:${this.account}:agent/*`,
       ],
     }));
@@ -202,6 +210,10 @@ export class EagleCoreStack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, 'AppLogGroupName', {
       value: appLogGroup.logGroupName,
+    });
+    new cdk.CfnOutput(this, 'EagleTableName', {
+      value: eagleTable.tableName,
+      exportName: `eagle-table-name-${config.env}`,
     });
   }
 }

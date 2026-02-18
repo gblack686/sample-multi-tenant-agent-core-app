@@ -4,6 +4,7 @@ import * as cdk from 'aws-cdk-lib';
 import { EagleCoreStack } from '../lib/core-stack';
 import { EagleComputeStack } from '../lib/compute-stack';
 import { EagleCiCdStack } from '../lib/cicd-stack';
+import { EagleEvalStack } from '../lib/eval-stack';
 import { DEV_CONFIG } from '../config/environments';
 
 const app = new cdk.App();
@@ -35,8 +36,15 @@ const compute = new EagleComputeStack(app, 'EagleComputeStack', {
 });
 compute.addDependency(core);
 
+// Eval stack is independent — no cross-stack dependencies
+const evalStack = new EagleEvalStack(app, 'EagleEvalStack', {
+  env,
+  config: DEV_CONFIG,
+  description: 'EAGLE Eval — S3 artifacts, CloudWatch dashboard, SNS alerts',
+});
+
 // Tag all stacks
-for (const stack of [cicd, core, compute]) {
+for (const stack of [cicd, core, compute, evalStack]) {
   cdk.Tags.of(stack).add('Project', 'eagle');
   cdk.Tags.of(stack).add('ManagedBy', 'cdk');
   cdk.Tags.of(stack).add('Environment', DEV_CONFIG.env);

@@ -4,12 +4,12 @@ parent: "[[backend/_index]]"
 file-type: expertise
 human_reviewed: false
 tags: [expert-file, mental-model, backend, agentic-service, eagle, aws, s3, dynamodb, cloudwatch]
-last_updated: 2026-02-09T00:00:00
+last_updated: 2026-02-17T00:00:00
 ---
 
 # Backend Expertise (Complete Mental Model)
 
-> **Sources**: server/app/agentic_service.py, server/eagle_skill_constants.py
+> **Sources**: server/app/*.py, server/eagle_skill_constants.py, infrastructure/cdk-eagle/lib/*.ts
 
 ---
 
@@ -18,34 +18,99 @@ last_updated: 2026-02-09T00:00:00
 ### File Layout
 
 ```
-server/app/agentic_service.py        # 2357 lines — main backend, all handlers + dispatch
-server/eagle_skill_constants.py       # Embedded skill/prompt constants (test-only)
+server/app/
+├── main.py                  # FastAPI app (v4.0.0), CORS, all endpoints
+├── agentic_service.py       # 2357 lines — tool dispatch, handlers, stream_chat
+├── sdk_agentic_service.py   # SDK-based service with SKILL_AGENT_REGISTRY
+├── session_store.py         # Unified DynamoDB session/message/usage store (eagle table)
+├── cognito_auth.py          # Cognito JWT auth, UserContext, DEV_MODE fallback
+├── document_export.py       # DOCX/PDF/Markdown export
+├── admin_service.py         # Dashboard stats, rate limiting, cost tracking
+├── admin_auth.py            # Admin group auth (Cognito groups)
+├── admin_cost_service.py    # 4-level cost reports (tenant, user, service, comprehensive)
+├── subscription_service.py  # Tier-based limits (SubscriptionTier enum)
+├── cost_attribution.py      # Per-tenant/user cost attribution
+├── streaming_routes.py      # SSE streaming router (alternative to WebSocket)
+├── models.py                # Pydantic models (ChatMessage, TenantContext, etc.)
+├── auth.py                  # Legacy auth (get_current_user)
+├── stream_protocol.py       # Stream protocol definitions
+├── runtime_context.py       # Runtime context utilities
+├── gateway_client.py        # API gateway client
+├── bedrock_service.py       # Bedrock-specific service
+├── mcp_agent_integration.py # MCP agent integration
+├── weather_mcp_service.py   # Weather MCP compatibility endpoint
+server/
+├── eagle_skill_constants.py # Auto-discovery: walks eagle-plugin/, exports AGENTS, SKILLS
+├── config.py                # App configuration
+├── run.py                   # Uvicorn runner
+├── requirements.txt         # Python dependencies
+└── start_dev.sh             # Dev startup script
 ```
 
 ### Tech Stack
 
 | Layer | Technology | Notes |
 |-------|-----------|-------|
+| Framework | FastAPI 4.0.0 | REST + WebSocket + SSE |
 | LLM SDK | `anthropic` Python SDK | Direct API or Bedrock |
-| AWS SDK | `boto3` | S3, DynamoDB, CloudWatch Logs |
+| AWS SDK | `boto3` | S3, DynamoDB, CloudWatch, Cognito |
 | Runtime | Python 3.11+ | `str | None` union syntax used |
 | Async | `asyncio` | `stream_chat()` is async |
-| Logging | `logging` | Logger: `eagle.agent` |
+| Auth | Cognito JWT | `cognito_auth.py` with DEV_MODE fallback |
+| Persistence | DynamoDB `eagle` table | Single-table design via `session_store.py` |
+| Logging | `logging` | Logger: `eagle.agent`, `eagle.sessions` |
 
 ### Entry Points
 
-| Function | Line | Purpose |
+| Function | File | Purpose |
 |----------|------|---------|
-| `execute_tool()` | 2181 | Synchronous tool dispatch — called by test suite and chat |
-| `stream_chat()` | 2221 | Async streaming chat with tool-use loop — called by WebSocket handler |
-| `get_client()` | 2206 | Create Anthropic/AnthropicBedrock client |
+| `execute_tool()` | agentic_service.py:2181 | Synchronous tool dispatch — called by test suite and chat |
+| `stream_chat()` | agentic_service.py:2221 | Async streaming chat with tool-use loop |
+| `get_client()` | agentic_service.py:2206 | Create Anthropic/AnthropicBedrock client |
+| `api_chat()` | main.py:144 | REST chat endpoint with cost tracking |
+| `websocket_chat()` | main.py:610 | WebSocket streaming chat |
+| `api_list_sessions()` | main.py:228 | Session CRUD endpoints |
+| `api_export_document()` | main.py:337 | Document export (DOCX/PDF/MD) |
+| `api_list_documents()` | main.py:400 | S3 document browser |
 
 ### Configuration
 
 ```python
+# agentic_service.py
 _USE_BEDROCK = os.getenv("USE_BEDROCK", "false").lower() == "true"
 _BEDROCK_REGION = os.getenv("AWS_REGION", "us-east-1")
 MODEL = os.getenv("ANTHROPIC_MODEL", "us.anthropic.claude-haiku-4-5-20251001-v1:0" if _USE_BEDROCK else "claude-haiku-4-5-20251001")
+
+# main.py feature flags
+USE_PERSISTENT_SESSIONS = os.getenv("USE_PERSISTENT_SESSIONS", "true").lower() == "true"
+REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "false").lower() == "true"
+```
+
+### Deployment (ECS Fargate via CDK)
+
+```
+Dockerfile.backend: python:3.11-slim
+  COPY server/requirements.txt → pip install
+  COPY server/app/, run.py, config.py, eagle_skill_constants.py
+  COPY eagle-plugin/ → ../eagle-plugin/
+  EXPOSE 8000
+  CMD: uvicorn app.main:app --host 0.0.0.0 --port 8000
+
+ECS Service (EagleComputeStack):
+  CPU: 0.5 vCPU | Memory: 1024 MiB
+  Port: 8000
+  ALB: Internal (not internet-facing)
+  Health: /health (30s interval)
+  Scaling: 1-3 tasks, target tracking
+
+Environment Variables (from CDK):
+  ANTHROPIC_API_KEY  → Secrets Manager
+  EAGLE_TABLE        → "eagle" (DynamoDB)
+  S3_BUCKET          → "nci-documents"
+  AWS_REGION         → "us-east-1"
+  LOG_GROUP          → "/eagle/app"
+  USE_PERSISTENT_SESSIONS → "true"
+  REQUIRE_AUTH       → "false" (dev) / "true" (prod)
 ```
 
 ---
@@ -369,6 +434,96 @@ stream_chat(messages, on_text, on_tool_use, on_tool_result, session_id)
 
 ---
 
+## Part 8: Session Store (session_store.py)
+
+### Unified `eagle` Table Access
+
+All DynamoDB operations go through `session_store.py`, which implements the unified single-table design:
+
+| Operation | PK | SK | Notes |
+|-----------|----|----|-------|
+| `create_session()` | `SESSION#{tenant}#{user}` | `SESSION#{session_id}` | Auto-generates UUID if not provided |
+| `get_session()` | `SESSION#{tenant}#{user}` | `SESSION#{session_id}` | Returns None if not found |
+| `list_sessions()` | `SESSION#{tenant}#{user}` | `begins_with(SESSION#)` | Sorted by created_at desc |
+| `add_message()` | `SESSION#{tenant}#{user}` | `MSG#{session_id}#{msg_id}` | msg_id is auto-incremented |
+| `get_messages()` | `SESSION#{tenant}#{user}` | `begins_with(MSG#{session_id}#)` | Sorted by SK |
+| `record_usage()` | `USAGE#{tenant}` | `USAGE#{date}#{session}#{ts}` | Token counts, cost, model |
+
+### Caching
+
+- In-memory cache with 5-minute TTL per session
+- Write-through: updates DynamoDB + cache simultaneously
+- `_invalidate_cache()` on delete operations
+
+### Configuration
+
+```python
+TABLE_NAME = os.getenv("EAGLE_SESSIONS_TABLE", "eagle")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+SESSION_TTL_DAYS = int(os.getenv("SESSION_TTL_DAYS", "30"))
+```
+
+---
+
+## Part 9: Authentication (cognito_auth.py)
+
+### UserContext
+
+```python
+@dataclass
+class UserContext:
+    user_id: str
+    tenant_id: str
+    email: str
+    tier: str  # "free", "pro", "enterprise"
+    groups: List[str]
+```
+
+### Auth Flow
+
+1. Client sends `Authorization: Bearer <JWT>` header
+2. `extract_user_context(token)` decodes JWT (Cognito)
+3. Falls back to `DEV_MODE` if `DEV_MODE=true` env var set
+4. Dev mode returns `UserContext(user_id="dev-user", tenant_id="dev-tenant")`
+
+### Feature Flags
+
+- `REQUIRE_AUTH=false` → anonymous access allowed (dev)
+- `REQUIRE_AUTH=true` → 401 if no valid JWT (production)
+- `DEV_MODE=true` → bypass Cognito, use dev user context
+
+---
+
+## Part 10: CDK Integration Points
+
+### EagleCoreStack → Backend
+
+| Resource | CDK Reference | Backend Usage |
+|----------|---------------|---------------|
+| DynamoDB `eagle` | `Table.fromTableName()` (imported) | `session_store.py`, `agentic_service.py` |
+| S3 `nci-documents` | `Bucket.fromBucketName()` (imported) | `agentic_service.py` s3_document_ops, create_document |
+| Cognito `eagle-users-dev` | Created by Core stack | `cognito_auth.py` JWT validation |
+| IAM `eagle-app-role-dev` | Created by Core stack | ECS task role with DDB/S3/CW permissions |
+| CloudWatch `/eagle/app` | Created by Core stack | Application logging |
+
+### EagleComputeStack → Backend
+
+| Resource | CDK Config | Notes |
+|----------|-----------|-------|
+| ECR `eagle-backend-dev` | Image repository | Docker push target |
+| ECS Service | 0.5 vCPU / 1024 MiB | Fargate task definition |
+| ALB (internal) | Port 8000, /health | Not internet-accessible |
+| Auto-scaling | 1-3 tasks | CPU target tracking |
+
+### EagleCiCdStack → Backend
+
+| Resource | Purpose |
+|----------|---------|
+| OIDC Provider | GitHub Actions federation |
+| Deploy Role | `eagle-github-actions-dev` — ECR push + ECS deploy |
+
+---
+
 ## Learnings
 
 ### patterns_that_work
@@ -376,20 +531,39 @@ stream_chat(messages, on_text, on_tool_use, on_tool_result, session_id)
 - Lazy AWS client singletons work well for Lambda-style cold starts
 - Generating markdown documents with embedded FAR references gives Claude useful context
 - `_get_user_prefix()` as a single source of truth for S3 paths prevents scoping bugs
+- Unified `eagle` DynamoDB table with PK/SK patterns handles sessions, messages, usage, costs in one table (discovered: 2026-02-16, component: session_store)
+- Write-through cache in session_store.py gives fast reads without stale data (discovered: 2026-02-16, component: session_store)
+- `DEV_MODE` flag in cognito_auth.py lets backend run without Cognito configured — essential for local dev and testing (discovered: 2026-02-16, component: cognito_auth)
+- CDK `fromTableName()` / `fromBucketName()` pattern — import existing resources into stacks without recreating them (discovered: 2026-02-16, component: cdk-eagle)
+- Internal ALB for backend keeps API not internet-accessible — frontend ALB is the only public entry point (discovered: 2026-02-16, component: compute-stack)
+- Dockerfile copies `eagle-plugin/` to `../eagle-plugin/` so `eagle_skill_constants.py` can walk it at runtime (discovered: 2026-02-16, component: docker)
 
 ### patterns_to_avoid
 - Don't test document generation with empty `data` dicts — generators produce minimal stubs
 - Don't assume DynamoDB items have all fields — use `.get()` with defaults
 - Don't call `_get_s3()` at module level — fails if AWS creds aren't configured at import time
+- Don't create S3 clients inline per request (as in main.py `api_list_documents`) — use the lazy singleton from agentic_service.py instead (discovered: 2026-02-16, component: main.py)
+- Don't hardcode `"nci-documents"` bucket name — use `os.getenv("S3_BUCKET", "nci-documents")` for CDK flexibility (discovered: 2026-02-16, component: cdk-eagle)
+- Don't delete AWS resources (CF stacks, Lightsail, ECS) without confirming the new CDK stacks have images pushed and running tasks (discovered: 2026-02-16, component: aws-cleanup)
 
 ### common_issues
-- AWS credentials not configured -> all tool handlers fail with ClientError
-- S3 bucket "nci-documents" doesn't exist -> s3_document_ops and create_document fail
-- DynamoDB table "eagle" doesn't exist -> dynamodb_intake fails
-- CloudWatch log group "/eagle/test-runs" doesn't exist -> cloudwatch_logs returns empty
+- AWS credentials not configured → all tool handlers fail with ClientError
+- S3 bucket "nci-documents" doesn't exist → s3_document_ops and create_document fail
+- DynamoDB table "eagle" doesn't exist → dynamodb_intake and session_store fail
+- CloudWatch log group "/eagle/test-runs" doesn't exist → cloudwatch_logs returns empty
+- ECS services show desiredCount=1 but runningCount=0 → no Docker images pushed to ECR yet (discovered: 2026-02-16, component: compute-stack)
+- `MSYS_NO_PATHCONV=1` required on MINGW64/Git Bash when running AWS CLI with `/aws/...` paths — otherwise Git Bash converts them to `C:/Program Files/Git/aws/...` (discovered: 2026-02-16, component: aws-cli)
+- Cognito pools with custom domains require `delete-user-pool-domain` before `delete-user-pool` (discovered: 2026-02-16, component: cognito)
+- Versioned S3 buckets can't be deleted with `aws s3 rb --force` on MINGW — use Python boto3 with `bucket.object_versions.delete()` instead (discovered: 2026-02-16, component: s3)
 
 ### tips
 - Use `execute_tool()` for testing — it's synchronous and returns JSON strings
 - The `search_far` tool has no AWS dependency — good for offline testing
 - `intake_workflow` is stateless — workflow state is tracked in the response, not persisted
 - Check `EAGLE_TOOLS` list for the exact parameter schemas Claude sees
+- Backend health check is at `/health` (not `/api/health`) — the ALB uses this for target group health (discovered: 2026-02-16)
+- `main.py` version is 4.0.0 — reflects the merged multi-tenant + EAGLE architecture (discovered: 2026-02-16)
+- `session_store.py` uses `boto3.resource("dynamodb")` (high-level) while `agentic_service.py` uses `boto3.client("dynamodb")` (low-level) — both access the same `eagle` table (discovered: 2026-02-16)
+- Old infrastructure (Lightsail, old ECS clusters, old CF stacks) was cleaned up 2026-02-16 — ~$51-63/mo savings. See `.claude/specs/aws-resource-cleanup.md` for full inventory (discovered: 2026-02-16)
+- Browser smoke test command at `.claude/commands/bowser/eagle-smoke-test.md` — tests login, home, chat, documents, workflows, admin, and backend health (discovered: 2026-02-17, component: bowser)
+- Frontend auth-context.tsx auto-detects dev mode when `NEXT_PUBLIC_COGNITO_USER_POOL_ID` is empty — provides mock `dev-user` / `dev-tenant` without real Cognito (discovered: 2026-02-17, component: auth)

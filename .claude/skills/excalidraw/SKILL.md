@@ -33,11 +33,28 @@ Generates all Excalidraw element types:
 - Center-aligned compositions
 
 ### 4. **Styling & Theming**
-- Consistent color palettes (AWS colors, system colors, etc.)
-- Proper stroke widths and roughness
-- Font sizing hierarchy (titles, subtitles, labels)
-- Background colors for grouping
-- Dashed vs solid lines for different relationships
+
+**IMPORTANT**: Always follow the style guide in `docs/excalidraw-best-practices.md`. Key rules:
+- **Dark canvas background**: `#1a1a1a` (NOT white)
+- **Hachure fills**: Always use `fillStyle: "hachure"` (NOT solid) for shapes
+- **Bright borders + dark fills**: e.g. stroke `#3b82f6`, background `#1e3a8a`
+- **Hand-drawn roughness**: `roughness: 1` for organic feel
+- **Monospace headers**: `fontFamily: 3` for titles, `fontFamily: 1` for body
+- **Typography**: Title 48-60px, Section 32-36px, Body 16-20px
+- **Stroke width**: 3-4px main borders, 2px secondary
+- **Opacity**: 70-90 for subtle layering
+
+**Color Palette (bright borders / dark fills)**:
+| Role | Border | Fill |
+|------|--------|------|
+| Blue (API/Services) | `#3b82f6` | `#1e3a8a` |
+| Orange (Data) | `#f59e0b` | `#92400e` |
+| Red (Security) | `#ef4444` | `#7f1d1d` |
+| Purple (Processing) | `#8b5cf6` | `#4c1d95` |
+| Cyan (Output) | `#06b6d4` | `#164e63` |
+| Green (Success) | `#10b981` | `#064e3b` |
+
+**Text Colors**: Titles `#10b981` (green monospace), Labels `#ffffff`, Details `#6b7280`
 
 ### 5. **Advanced Features**
 - Element grouping (`groupIds`)
@@ -64,6 +81,27 @@ The skill supports sequence diagrams for multi-actor interaction flows, based on
 
 For detailed specifications, layout guidelines, and example patterns, see: `.claude/skills/excalidraw/templates/sequence-diagram.md`
 
+## Concurrent Worker Pool Templates
+
+The skill supports concurrent processing pipeline diagrams for visualizing worker pools, promise pools, and multi-step data flows.
+
+**Key Features:**
+- Zone-based layout separating Main Thread, Service Worker, and Worker areas
+- Stacked queue visualization for task/item backlogs
+- Promise Pool and Worker Pool ellipses showing concurrency
+- Detailed worker internals with JS bindings and WASM modules
+- Numbered pipeline steps (0-N) with annotations
+- Decision diamonds for loop/branching logic
+- Transfer mechanism annotations (ArrayBuffer, base64, etc.)
+
+**Common Patterns:**
+- Simple worker pipelines (Input → Queue → Pool → Worker → Output)
+- Concurrent processing with external fetch (CDN/cache integration)
+- WASM-based processing workers with subsetting
+- Loop with decision points (Done? → Take next / Continue)
+
+For detailed specifications, layout guidelines, and example patterns, see: `.claude/skills/excalidraw/templates/concurrent-worker-pool.md`
+
 ## Available Templates
 
 The skill includes detailed templates for common diagram types. Reference these when generating diagrams:
@@ -73,6 +111,12 @@ The skill includes detailed templates for common diagram types. Reference these 
 - **Use Case**: Multi-actor interaction flows, workflow sequences, system interactions
 - **Features**: Actor color palette, phase grouping, message types, layout specifications
 - **Source**: Based on EAGLE eval page diagrams (`eagle-plugin/diagrams/excalidraw/`)
+
+### Concurrent Worker Pool / Pipeline
+- **Location**: `.claude/skills/excalidraw/templates/concurrent-worker-pool.md`
+- **Use Case**: Concurrent processing pipelines, worker pools, promise pools, multi-step data flows
+- **Features**: Zone-based layout (Main Thread, Service Worker, Worker zones), stacked queue visualization, Promise/Worker pool ellipses, WASM worker internals, decision diamonds, numbered pipeline steps, transfer mechanism annotations
+- **Source**: Extracted from Excalidraw+ SVG export glyphs subsetting diagram
 
 ### Adding New Templates
 

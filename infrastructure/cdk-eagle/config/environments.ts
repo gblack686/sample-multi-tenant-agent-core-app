@@ -17,6 +17,9 @@ export interface EagleConfig {
   desiredCount: number;
   maxCount: number;
 
+  // Eval
+  evalBucketName: string;
+
   // CI/CD
   githubOwner: string;
   githubRepo: string;
@@ -29,6 +32,7 @@ export const DEV_CONFIG: EagleConfig = {
 
   eagleTableName: 'eagle',
   docsBucketName: 'nci-documents',
+  evalBucketName: 'eagle-eval-artifacts',
 
   vpcMaxAzs: 2,
   natGateways: 1,
@@ -46,6 +50,7 @@ export const DEV_CONFIG: EagleConfig = {
 export const STAGING_CONFIG: EagleConfig = {
   ...DEV_CONFIG,
   env: 'staging',
+  evalBucketName: 'eagle-eval-artifacts-staging',
   natGateways: 2,
   desiredCount: 2,
   maxCount: 6,
@@ -54,6 +59,7 @@ export const STAGING_CONFIG: EagleConfig = {
 export const PROD_CONFIG: EagleConfig = {
   ...DEV_CONFIG,
   env: 'prod',
+  evalBucketName: 'eagle-eval-artifacts-prod',
   vpcMaxAzs: 3,
   natGateways: 3,
   backendCpu: 1024,

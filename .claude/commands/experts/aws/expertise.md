@@ -4,12 +4,12 @@ parent: "[[aws/_index]]"
 file-type: expertise
 human_reviewed: false
 tags: [expert-file, mental-model, aws, cdk, dynamodb, iam, s3]
-last_updated: 2026-02-11T00:00:00
+last_updated: 2026-02-17T00:00:00
 ---
 
 # AWS Expertise (Complete Mental Model)
 
-> **Sources**: AWS Console (manual resources), infrastructure/eval/ CDK stack, nci-oa-agent CDK patterns, AWS CDK documentation, Next.js documentation
+> **Sources**: AWS Console (manual resources), infrastructure/cdk-eagle/ (3 stacks), infrastructure/eval/ CDK stack, deployment/docker/ Dockerfiles, .github/workflows/ (deploy + merge analysis), server/app/session_store.py, AWS CDK documentation, Next.js documentation
 
 ---
 
@@ -22,12 +22,15 @@ Core AWS resources (S3, DynamoDB, Bedrock) are **manually provisioned**. Platfor
 ```
 Provisioning: Hybrid (Manual + CDK)
 Region: us-east-1
-Account: Accessed via ~/.aws/credentials (local profile)
+Account: Accessed via ~/.aws/credentials (local profile) + CDK_DEFAULT_ACCOUNT env var
 IAM: Developer credentials with broad permissions
 CDK: infrastructure/cdk-eagle/ (TypeScript, 3 stacks: EagleCoreStack, EagleComputeStack, EagleCiCdStack)
-CDK: infrastructure/eval/ (TypeScript, EagleEvalStack)
-CI/CD: GitHub Actions (deploy.yml, claude-merge-analysis.yml)
-Docker: ECS Fargate (backend + frontend containers)
+CDK: infrastructure/eval/ (TypeScript, EvalObservabilityStack)
+CDK: infrastructure/cdk/ (Python, reference only — not deployed)
+CI/CD: GitHub Actions (deploy.yml: 4-job pipeline, claude-merge-analysis.yml: AI code review)
+Docker: deployment/docker/Dockerfile.backend (python:3.11-slim, single-stage)
+Docker: deployment/docker/Dockerfile.frontend (node:20-alpine, 3-stage: deps→builder→runner)
+CDK lib: aws-cdk-lib ^2.196.0 (both projects)
 ```
 
 ### Credential Configuration
@@ -59,7 +62,7 @@ Docker: ECS Fargate (backend + frontend containers)
 | SNS topic | Yes | `eagle-eval-alerts`, CDK-managed |
 | Bedrock model access | Yes | Anthropic models enabled in Console |
 | CDK project (platform) | Yes | `infrastructure/cdk-eagle/` — EagleCoreStack, EagleComputeStack, EagleCiCdStack |
-| CDK project (eval) | Yes | `infrastructure/eval/` — EagleEvalStack |
+| CDK project (eval) | Yes | `infrastructure/eval/` — EvalObservabilityStack |
 | CDK project (reference) | Yes | `infrastructure/cdk/` — Python, not deployed |
 | GitHub Actions | Yes | `deploy.yml`, `claude-merge-analysis.yml` |
 | VPC | Yes | `eagle-vpc-dev`, CDK-managed (EagleCoreStack) |
@@ -69,6 +72,25 @@ Docker: ECS Fargate (backend + frontend containers)
 | ECR Repository (frontend) | Yes | `eagle-frontend-dev`, CDK-managed (EagleComputeStack) |
 | IAM OIDC Provider | Yes | GitHub Actions federation, CDK-managed (EagleCiCdStack) |
 | CloudFront distribution | No | Frontend served via public ALB |
+
+### Deployed Resource IDs (Account 274487662938, us-east-1, 2026-02-17)
+
+| Resource | ID/ARN |
+|----------|--------|
+| VPC | `vpc-0ede565d9119f98aa` |
+| Private Subnet 1 | `subnet-00aae795ef7384f48` |
+| Private Subnet 2 | `subnet-000e29a573905817b` |
+| Public Subnet 1 | `subnet-0dafab85c993a5dd8` |
+| Public Subnet 2 | `subnet-07e67841820650b5d` |
+| Cognito User Pool | `us-east-1_fyy3Ko0tX` |
+| Cognito App Client | `7jlpjkiov7888kcbu57jcn68no` |
+| App Role | `arn:aws:iam::274487662938:role/eagle-app-role-dev` |
+| Deploy Role (GH Actions) | `arn:aws:iam::274487662938:role/eagle-github-actions-dev` |
+| ECS Cluster | `eagle-dev` |
+| Frontend ALB | `EagleC-Front-XYyWWR29wzVZ-745394335.us-east-1.elb.amazonaws.com` |
+| Backend ALB (internal) | `internal-EagleC-Backe-6OVxEGWRMzba-362151769.us-east-1.elb.amazonaws.com` |
+| Backend ECR | `274487662938.dkr.ecr.us-east-1.amazonaws.com/eagle-backend-dev` |
+| Frontend ECR | `274487662938.dkr.ecr.us-east-1.amazonaws.com/eagle-frontend-dev` |
 
 ---
 
@@ -114,21 +136,32 @@ Key Structure:
 ```
 Table: eagle
 Region: us-east-1
-Billing: Unknown (likely on-demand)
+Billing: On-demand (PAY_PER_REQUEST)
 Key Schema:
   PK (String) - Partition Key
   SK (String) - Sort Key
 
-Access Patterns:
-  PK=INTAKE#{tenant_id}, SK=INTAKE#{item_id}  ->  Intake records
-  PK=INTAKE#{tenant_id}, SK begins_with INTAKE#  ->  List by tenant
+Access Patterns (from session_store.py):
+  PK=SESSION#{tenant}#{user}, SK=SESSION#{session_id}  ->  Session record
+  PK=SESSION#{tenant}#{user}, SK=MSG#{session_id}#{msg_id}  ->  Message
+  PK=SESSION#{tenant}#{user}, SK begins_with SESSION#  ->  List user sessions
+  PK=SESSION#{tenant}#{user}, SK begins_with MSG#{session_id}#  ->  List messages
+  PK=USAGE#{tenant}, SK=USAGE#{date}#{session}#{ts}  ->  Usage record
+  PK=INTAKE#{tenant}, SK=INTAKE#{id}  ->  Intake record
+  PK=INTAKE#{tenant}, SK begins_with INTAKE#  ->  List intakes
 
-GSI: Unknown (may not have any)
+GSI1 (confirmed in session_store.py):
+  GSI1PK=TENANT#{tenant}, GSI1SK=SESSION#{timestamp}  ->  Cross-user session listing
+
+TTL: ttl field (epoch seconds, 30-day default)
 ```
 
 **Used by**:
+- `server/app/session_store.py` — All session/message/usage CRUD (unified access layer)
 - `server/app/agentic_service.py` — `_exec_dynamodb_intake()` for create/read/update/list/delete
 - `server/tests/test_eagle_sdk_eval.py` — Test 17 (with cleanup)
+
+**Caching**: In-memory write-through cache in session_store.py (5-min TTL, per session_id)
 
 ### CloudWatch Resources (CDK-managed)
 
@@ -170,44 +203,79 @@ infrastructure/cdk-eagle/
   |-- package.json
 
 EagleCoreStack:
-  - VPC: eagle-vpc-dev (2 AZ, 1 NAT, public + private subnets)
-  - Cognito User Pool: eagle-users-dev (email sign-in, tenant_id custom attr)
-  - Cognito App Client: eagle-app-client-dev
-  - IAM Role: eagle-app-role-dev (S3, DynamoDB, Bedrock, CW, Cognito)
-  - CW Log Group: /eagle/app (90-day retention)
-  - Imports: nci-documents (S3), eagle (DynamoDB)
+  - VPC: eagle-vpc-dev (2 AZ, 1 NAT, Public + PRIVATE_WITH_EGRESS subnets)
+  - Cognito User Pool: eagle-users-dev (email sign-in, tenant_id + subscription_tier custom attrs)
+  - Cognito App Client: eagle-app-client-dev (userPassword + SRP + adminUserPassword flows)
+  - Token validity: access/id 1hr, refresh 30d
+  - IAM Role: eagle-app-role-dev (assumed by ecs-tasks.amazonaws.com)
+    - S3: GetObject, PutObject, DeleteObject, ListBucket on nci-documents/eagle/*
+    - DynamoDB: GetItem, PutItem, UpdateItem, DeleteItem, Query, Scan, BatchWriteItem on eagle + /index/*
+    - Bedrock: InvokeModel, InvokeModelWithResponseStream, InvokeAgent (anthropic.* + agents)
+    - CW: CreateLogStream, PutLogEvents, GetLogEvents, DescribeLogStreams, FilterLogEvents
+    - Cognito: GetUser, AdminGetUser, CreateGroup, AdminAddUserToGroup, ListUsers
+  - CW Log Group: /eagle/app (90-day retention, RETAIN)
+  - Imports: nci-documents (S3), eagle (DynamoDB) — read-only refs
+  - Outputs: VpcId, UserPoolId, UserPoolClientId, AppRoleArn, AppLogGroupName
 
 EagleComputeStack (depends on EagleCoreStack):
-  - ECS Cluster: eagle-dev (Fargate, Container Insights)
-  - ECR: eagle-backend-dev, eagle-frontend-dev (10-image lifecycle)
-  - Backend Fargate Service: internal ALB, port 8000, auto-scale 1-4
-  - Frontend Fargate Service: public ALB, port 3000, auto-scale 1-4
-  - CW Log Groups: /eagle/ecs/backend-dev, /eagle/ecs/frontend-dev
+  - ECS Cluster: eagle-dev (Fargate, Container Insights V2)
+  - ECR: eagle-backend-dev, eagle-frontend-dev (10-image lifecycle, RETAIN)
+  - Backend Fargate Service:
+    - Internal ALB, port 8000, 512 CPU / 1024 MiB, auto-scale 1-4 (70% CPU)
+    - Health check: /api/health (curl), 30s interval, 3 retries, 60s start period
+    - Env: EAGLE_SESSIONS_TABLE, S3_BUCKET, USE_BEDROCK=true, REQUIRE_AUTH=true
+  - Frontend Fargate Service:
+    - Public ALB, port 3000, 256 CPU / 512 MiB, auto-scale 1-4 (70% CPU)
+    - Health check: / (curl), HOSTNAME=0.0.0.0
+    - Env: FASTAPI_URL=http://{backend-alb-dns}, NEXT_PUBLIC_COGNITO_*
+  - CW Log Groups: /eagle/ecs/backend-dev, /eagle/ecs/frontend-dev (30-day, DESTROY)
+  - Outputs: BackendRepoUri, FrontendRepoUri, ClusterName, FrontendUrl, BackendUrl
 
 EagleCiCdStack (independent):
   - IAM OIDC Provider: token.actions.githubusercontent.com
-  - IAM Role: eagle-github-actions-dev (CDK deploy, ECR push, ECS update)
+  - IAM Role: eagle-github-actions-dev (1hr max session)
+    - Trust: repo:gblack686/sample-multi-tenant-agent-core-app:* (wildcard branch)
+    - Permissions: CloudFormation (full stack ops), SSM GetParameter, STS AssumeRole
+    - S3: CDK asset buckets (cdk-*), ECR: full push cycle, ECS: update/describe/register
+    - IAM: CDK bootstrap role ops (cdk-* roles)
+  - Outputs: DeployRoleArn, OIDCProviderArn
+
+Environment Configs (config/environments.ts):
+  - DEV:     2 AZ, 1 NAT, 512/1024 backend, 256/512 frontend, scale 1-4
+  - STAGING: 2 AZ, 2 NAT, same CPU/mem, scale 2-6
+  - PROD:    3 AZ, 3 NAT, 1024/2048 backend, 512/1024 frontend, scale 2-10
+
+cdk.json: app: npx ts-node bin/eagle.ts (no --prefer-ts-exts)
+tsconfig: ES2020, commonjs, no explicit moduleResolution
+Tags: Project=eagle, ManagedBy=cdk, Environment={env} (applied to all stacks in eagle.ts)
 
 Deploy: cd infrastructure/cdk-eagle && npx cdk deploy --all
 Synth:  cd infrastructure/cdk-eagle && npx cdk synth
 ```
 
-#### `infrastructure/eval/` — EagleEvalStack (Eval Observability)
+#### `infrastructure/eval/` — EvalObservabilityStack (Eval Observability)
 
 ```
 infrastructure/eval/
   |-- bin/eval.ts                    # CDK app entry point
-  |-- lib/eval-stack.ts              # EvalObservabilityStack
+  |-- lib/eval-stack.ts              # EvalObservabilityStack (class name, not EagleEvalStack)
   |-- cdk.json                       # app: npx ts-node --prefer-ts-exts bin/eval.ts
-  |-- tsconfig.json                  # ES2022, commonjs, strict
-  |-- package.json                   # aws-cdk-lib 2.196.0
+  |-- tsconfig.json                  # ES2022, commonjs, moduleResolution: node
+  |-- package.json                   # aws-cdk-lib 2.196.0, aws-cdk 2.1016.1
 
 Resources:
-  - S3 Bucket: eagle-eval-artifacts (365-day lifecycle, SSE-S3)
-  - CW Log Group: /eagle/test-runs (90-day retention)
-  - SNS Topic: eagle-eval-alerts
-  - CW Alarm: EvalPassRate (< 80% -> SNS)
+  - S3 Bucket: eagle-eval-artifacts (365-day lifecycle, SSE-S3, BLOCK_ALL, RETAIN)
+  - CW Log Group: /eagle/test-runs (90-day retention, RETAIN)
+  - SNS Topic: eagle-eval-alerts (display: "EAGLE Eval Alerts")
+  - CW Alarm: EvalPassRate (< 80% -> SNS, TREAT_MISSING_DATA: NOT_BREACHING)
   - CW Dashboard: EAGLE-Eval-Dashboard
+    - Row 1: PassRate (%) graph + Test Counts (stacked: Passed/Failed/Skipped)
+    - Rows 2-6: 27 per-test SingleValueWidgets (TestStatus, 24hr max, 6 per row)
+    - Row 7: Total Cost (USD) graph
+  - Namespace: EAGLE/Eval
+  - Metrics: PassRate(Avg), TestsPassed(Sum), TestsFailed(Sum), TestsSkipped(Sum), TotalCost(Avg), TestStatus(Max per test)
+
+Dashboard tracks 27 tests (1_session_creation through 27_uc09_score_consolidation)
 
 Deploy: cd infrastructure/eval && npx cdk deploy
 Synth:  cd infrastructure/eval && npx cdk synth
@@ -297,14 +365,19 @@ table.addGlobalSecondaryIndex({
 });
 ```
 
-### Access Pattern → Key Schema Mapping
+### Access Pattern → Key Schema Mapping (from session_store.py + agentic_service.py)
 
 | Access Pattern | PK | SK | Index |
 |---------------|----|----|-------|
-| Get intake by tenant + ID | `INTAKE#{tenant}` | `INTAKE#{id}` | Table |
+| Get session | `SESSION#{tenant}#{user}` | `SESSION#{session_id}` | Table |
+| List user sessions | `SESSION#{tenant}#{user}` | begins_with `SESSION#` | Table |
+| Get message | `SESSION#{tenant}#{user}` | `MSG#{session_id}#{msg_id}` | Table |
+| List messages for session | `SESSION#{tenant}#{user}` | begins_with `MSG#{session_id}#` | Table |
+| Record usage | `USAGE#{tenant}` | `USAGE#{date}#{session}#{ts}` | Table |
+| List usage by date | `USAGE#{tenant}` | `>=` `USAGE#{start_date}` | Table |
+| Get intake by ID | `INTAKE#{tenant}` | `INTAKE#{id}` | Table |
 | List intakes for tenant | `INTAKE#{tenant}` | begins_with `INTAKE#` | Table |
-| Get document by tenant | `DOC#{tenant}` | `DOC#{type}_{ts}` | Table |
-| List all intakes (admin) | `INTAKE` | - | GSI1 |
+| List sessions by tenant | `TENANT#{tenant}` | `SESSION#{timestamp}` | GSI1 |
 
 ### Capacity Modes
 
@@ -318,7 +391,7 @@ table.addGlobalSecondaryIndex({
 
 ## Part 5: IAM Policy Patterns
 
-### Least-Privilege Service Policies
+### App Role Policies (from core-stack.ts — eagle-app-role-dev)
 
 ```json
 {
@@ -327,48 +400,37 @@ table.addGlobalSecondaryIndex({
     {
       "Sid": "S3DocumentAccess",
       "Effect": "Allow",
-      "Action": [
-        "s3:GetObject",
-        "s3:PutObject",
-        "s3:DeleteObject",
-        "s3:ListBucket"
-      ],
-      "Resource": [
-        "arn:aws:s3:::nci-documents",
-        "arn:aws:s3:::nci-documents/eagle/*"
-      ]
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:DeleteObject", "s3:ListBucket"],
+      "Resource": ["arn:aws:s3:::nci-documents", "arn:aws:s3:::nci-documents/eagle/*"]
     },
     {
       "Sid": "DynamoDBAccess",
       "Effect": "Allow",
-      "Action": [
-        "dynamodb:GetItem",
-        "dynamodb:PutItem",
-        "dynamodb:UpdateItem",
-        "dynamodb:DeleteItem",
-        "dynamodb:Query"
-      ],
-      "Resource": "arn:aws:dynamodb:us-east-1:*:table/eagle"
+      "Action": ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem",
+                 "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan", "dynamodb:BatchWriteItem"],
+      "Resource": ["arn:aws:dynamodb:us-east-1:*:table/eagle",
+                   "arn:aws:dynamodb:us-east-1:*:table/eagle/index/*"]
     },
     {
-      "Sid": "CloudWatchLogsAccess",
+      "Sid": "BedrockInvoke",
       "Effect": "Allow",
-      "Action": [
-        "logs:CreateLogStream",
-        "logs:PutLogEvents",
-        "logs:GetLogEvents",
-        "logs:DescribeLogStreams"
-      ],
-      "Resource": "arn:aws:logs:us-east-1:*:log-group:/eagle/*"
+      "Action": ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream", "bedrock:InvokeAgent"],
+      "Resource": ["arn:aws:bedrock:us-east-1::foundation-model/anthropic.*",
+                   "arn:aws:bedrock:us-east-1:{ACCOUNT}:agent/*"]
     },
     {
-      "Sid": "BedrockAccess",
+      "Sid": "CloudWatchLogs",
       "Effect": "Allow",
-      "Action": [
-        "bedrock:InvokeModel",
-        "bedrock:InvokeModelWithResponseStream"
-      ],
-      "Resource": "arn:aws:bedrock:us-east-1::foundation-model/anthropic.*"
+      "Action": ["logs:CreateLogStream", "logs:PutLogEvents", "logs:GetLogEvents",
+                 "logs:DescribeLogStreams", "logs:FilterLogEvents"],
+      "Resource": "arn:aws:logs:us-east-1:{ACCOUNT}:log-group:/eagle/*"
+    },
+    {
+      "Sid": "CognitoUserManagement",
+      "Effect": "Allow",
+      "Action": ["cognito-idp:GetUser", "cognito-idp:AdminGetUser", "cognito-idp:CreateGroup",
+                 "cognito-idp:AdminAddUserToGroup", "cognito-idp:ListUsers"],
+      "Resource": "{userPoolArn}"
     }
   ]
 }
@@ -432,34 +494,34 @@ The `client/` directory uses API routes (`app/api/prompts/`, `app/api/trace-logs
 
 ## Part 7: Docker Patterns
 
-### Multi-Stage Build for Next.js Standalone
+### Backend Dockerfile (deployment/docker/Dockerfile.backend)
 
 ```dockerfile
-FROM node:20-alpine AS deps
+FROM python:3.11-slim
 WORKDIR /app
-COPY client/package.json client/package-lock.json ./
-RUN npm ci --only=production
-
-FROM node:20-alpine AS builder
-WORKDIR /app
-COPY client/ .
-COPY --from=deps /app/node_modules ./node_modules
-RUN npm run build
-
-FROM node:20-alpine AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-ENV HOSTNAME=0.0.0.0
-ENV PORT=3000
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
-USER nextjs
-EXPOSE 3000
-CMD ["node", "server.js"]
+COPY server/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY server/app/ app/
+COPY server/run.py .
+COPY server/config.py .
+EXPOSE 8000
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
 ```
+
+### Frontend Dockerfile (deployment/docker/Dockerfile.frontend)
+
+```dockerfile
+# 3-stage: deps → builder → runner
+FROM node:20-alpine AS deps     # npm ci --production=false (dev deps needed for build)
+FROM node:20-alpine AS builder  # npm run build with NEXT_PUBLIC_COGNITO_* build-args
+FROM node:20-alpine AS runner   # Non-root user (nextjs:1001), HOSTNAME=0.0.0.0
+```
+
+Key details:
+- Build-args: `NEXT_PUBLIC_COGNITO_USER_POOL_ID`, `NEXT_PUBLIC_COGNITO_CLIENT_ID`, `NEXT_PUBLIC_COGNITO_REGION`
+- Standalone output: `.next/standalone` + `.next/static` + `public/`
+- Non-root: `nodejs:1001` group, `nextjs:1001` user
+- Docker context: repo root (both Dockerfiles use paths like `server/` and `client/`)
 
 ---
 
@@ -469,10 +531,42 @@ CMD ["node", "server.js"]
 
 | Workflow | File | Trigger | Purpose |
 |----------|------|---------|---------|
-| Deploy | `.github/workflows/deploy.yml` | push to main | CDK deploy + frontend setup |
-| Claude Merge Analysis | `.github/workflows/claude-merge-analysis.yml` | PR events | AI-powered code review |
+| Deploy | `.github/workflows/deploy.yml` | push to main, workflow_dispatch | Full CDK + container pipeline |
+| Claude Merge Analysis | `.github/workflows/claude-merge-analysis.yml` | PR, issue_comment, issues | AI-powered code review + auto-branch |
 
-### OIDC Authentication (Recommended)
+### Deploy Pipeline (deploy.yml — 4 Jobs)
+
+```
+deploy-infra (CDK deploy --all → outputs.json)
+  ├── deploy-backend (parallel: build→push→update ECS)
+  └── deploy-frontend (parallel: build→push→update ECS)
+        └── verify (health checks: /api/health + /)
+```
+
+Key patterns:
+- **Pinned action SHAs** (not tags) for security
+- **OIDC auth** via `aws-actions/configure-aws-credentials` with `secrets.DEPLOY_ROLE_ARN`
+- **workflow_dispatch** inputs: `deploy_infra` (bool) + `deploy_app` (bool)
+- **CDK outputs extraction**: `--outputs-file outputs.json` → jq to GITHUB_OUTPUT
+- **Docker builds**: `deployment/docker/Dockerfile.backend` + `Dockerfile.frontend`
+- **Frontend build-args**: NEXT_PUBLIC_COGNITO_* baked at build time from CDK outputs
+- **ECS deploy**: `aws ecs update-service --force-new-deployment` + `wait services-stable`
+- **Tags**: `${{ github.sha }}` + `latest`
+
+### Claude Merge Analysis (claude-merge-analysis.yml — 2 Jobs)
+
+```
+merge-analysis (claude-code-action@v1, claude-opus-4-6)
+  └── create-feature-branch (if has_changes=true)
+```
+
+Key patterns:
+- **anthropics/claude-code-action@v1** with structured JSON output
+- **Triggers**: PR events, `@claude` in issue comments, `claude-analyze` label
+- **Model**: claude-opus-4-6, temp 0.2 (analysis) / 0.1 (implementation)
+- **Auto-PR creation** from analysis recommendations
+
+### OIDC Authentication Pattern
 
 ```yaml
 permissions:
@@ -480,20 +574,10 @@ permissions:
   contents: read
 
 steps:
-  - uses: aws-actions/configure-aws-credentials@v4
+  - uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4.0.2
     with:
-      role-to-assume: arn:aws:iam::{ACCOUNT_ID}:role/github-actions-deploy
+      role-to-assume: ${{ secrets.DEPLOY_ROLE_ARN }}
       aws-region: us-east-1
-```
-
-### CDK Deploy Workflow
-
-```yaml
-steps:
-  - name: CDK Diff
-    run: cd infrastructure/eval && npx cdk diff
-  - name: CDK Deploy
-    run: cd infrastructure/eval && npx cdk deploy --require-approval never
 ```
 
 ---
@@ -530,6 +614,41 @@ steps:
 **Issue**: `Cannot find module '../lib/eval-stack.js'` with NodeNext moduleResolution
 **Fix**: Use `commonjs` module + `node` moduleResolution with ts-node
 
+### ECS First Deploy Chicken-and-Egg (ECR Empty)
+
+**Issue**: `ApplicationLoadBalancedFargateService` requires `desiredCount >= 1`. On first deploy, ECR repos are empty — ECS tries to launch tasks, can't pull images, CloudFormation waits ~30+ min for service stabilization then FAILS and ROLLS BACK the entire stack.
+**Root Cause**: CDK's `ecs_patterns.ApplicationLoadBalancedFargateService` validates `desiredCount > 0` at synth time. Setting `desiredCount: 0` throws `ValidationError: You must specify a desiredCount greater than 0`.
+**Fix**: Push placeholder images to ECR BEFORE first `cdk deploy`. Minimal images that pass container health checks:
+- Backend: python:3.11-slim + fastapi + uvicorn + curl, responds to `GET /api/health`
+- Frontend: node:20-alpine + express + curl, responds to `GET /` and `GET /api/health`
+**Time cost**: ~60 min wasted on first attempt (30 min waiting + 30 min rollback + troubleshooting)
+
+### ECR RETAIN Policy Blocks Re-Create
+
+**Issue**: ECR repos with `removalPolicy: RETAIN` survive stack deletion. Re-deploying the same stack fails: `Resource of type 'AWS::ECR::Repository' with identifier 'eagle-backend-dev' already exists`.
+**Fix**: Use `npx cdk deploy --import-existing-resources` to adopt the existing repos into the new stack.
+
+### ECS Image Caching After ECR Push
+
+**Issue**: After pushing a new image with the same `latest` tag, running ECS tasks continue using the OLD cached image digest. New tasks launched by service cycling may also get cached images.
+**Fix**: Run `aws ecs update-service --cluster {cluster} --service {service} --force-new-deployment` to force Fargate to pull fresh images.
+
+### Container Health Check vs ALB Health Check
+
+**Issue**: ECS has TWO separate health checks: (1) Container-level `healthCheck` in task definition (uses `CMD-SHELL curl ...` inside the container), and (2) ALB target group health check (HTTP from ALB to container). Both must pass for service stabilization. The container health check requires `curl` to be installed IN the Docker image.
+**Symptom**: CloudWatch logs show 200 OK (ALB health check passing), but ECS events show "failed container health checks" (curl not installed in image).
+**Fix**: Always include `curl` in Docker images when using `CMD-SHELL curl` health checks:
+- Debian/Ubuntu: `RUN apt-get update && apt-get install -y --no-install-recommends curl`
+- Alpine: `RUN apk add --no-cache curl`
+
+### Git Bash Path Conversion (Windows/MSYS)
+
+**Issue**: On Windows Git Bash, AWS CLI args starting with `/` get converted to Windows paths: `/eagle/ecs/backend-dev` → `C:/Program Files/Git/eagle/ecs/backend-dev`. Causes `InvalidParameterException` for CloudWatch log group names, S3 paths, etc.
+**Fix**: Prefix commands with `MSYS_NO_PATHCONV=1`:
+```bash
+MSYS_NO_PATHCONV=1 aws logs describe-log-streams --log-group-name "/eagle/ecs/backend-dev"
+```
+
 ---
 
 ## Learnings
@@ -543,6 +662,17 @@ steps:
 - Python publisher with lazy-loaded boto3 clients makes AWS integration non-fatal
 - Import-guard pattern (`try: import ... except ImportError`) keeps optional AWS modules zero-impact
 - CDK context flags copied from existing cdk.json ensure consistent behavior
+- 3-stack CDK split (Core/Compute/CiCd) with explicit dependencies keeps stacks independent and deployable (discovered: 2026-02-16, component: cdk-eagle)
+- `fromBucketName`/`fromTableName` for importing manually-created resources into CDK without conflict (discovered: 2026-02-16, component: core-stack)
+- Pinned GitHub Action SHAs (not tags) for security in deploy.yml (discovered: 2026-02-16, component: deploy.yml)
+- `--outputs-file outputs.json` with jq extraction cleanly pipes CDK outputs to downstream jobs (discovered: 2026-02-16, component: deploy.yml)
+- Write-through in-memory cache (5-min TTL) in session_store.py avoids repeated DynamoDB reads (discovered: 2026-02-16, component: session_store)
+- ECS `minHealthyPercent: 100` ensures zero-downtime rolling updates (discovered: 2026-02-16, component: compute-stack)
+- Container Insights V2 via `containerInsightsV2: ecs.ContainerInsights.ENABLED` (discovered: 2026-02-16, component: compute-stack)
+- Push placeholder images to ECR BEFORE first `cdk deploy` of ECS stacks — avoids 60+ min failed stabilization cycle (discovered: 2026-02-17, component: compute-stack)
+- `--import-existing-resources` flag when redeploying after stack deletion with RETAIN resources (discovered: 2026-02-17, component: compute-stack)
+- `aws ecs update-service --force-new-deployment` to force fresh image pulls after ECR push with same tag (discovered: 2026-02-17, component: ecs)
+- `MSYS_NO_PATHCONV=1` prefix on Windows Git Bash for AWS CLI commands with `/` paths (discovered: 2026-02-17, component: tooling)
 
 ### patterns_to_avoid
 - Don't create new CDK resources that conflict with existing manual resources
@@ -551,6 +681,13 @@ steps:
 - Don't use `NodeNext` module/moduleResolution in tsconfig with ts-node
 - Don't append `.js` extension to TypeScript imports in CDK projects using commonjs
 - Don't use static IAM keys in GitHub Actions when OIDC is available
+- Don't use `removalPolicy: DESTROY` on stateful resources (S3, DDB, Cognito) — only safe for log groups (discovered: 2026-02-16)
+- Don't use `containerInsights` (v1) — use `containerInsightsV2` for ECS clusters (discovered: 2026-02-16)
+- cdk-eagle tsconfig omits explicit moduleResolution — add `"moduleResolution": "node"` to match eval stack for consistency (discovered: 2026-02-16)
+- Don't deploy ECS Fargate services with `desiredCount >= 1` before pushing images to ECR — causes 30+ min CloudFormation timeout then full stack rollback (discovered: 2026-02-17, component: compute-stack)
+- Don't delete a CloudFormation stack with RETAIN ECR repos then re-create without `--import-existing-resources` — will fail on repo name conflict (discovered: 2026-02-17)
+- Don't rely on ECS pulling updated `latest` tag from ECR for already-running tasks — Fargate caches images per task launch, use `--force-new-deployment` (discovered: 2026-02-17)
+- Don't use `CMD-SHELL curl` in container health checks without installing curl in the image — ALB health checks may pass while container health checks fail, causing infinite task cycling (discovered: 2026-02-17)
 
 ### common_issues
 - AWS credentials expire or are not configured -> all services fail
@@ -558,6 +695,14 @@ steps:
 - CDK bootstrap missing -> deploy fails with cryptic asset error
 - `Cannot find module '../lib/eval-stack.js'`: use commonjs module, remove .js extension
 - CloudWatch log group may already exist when CDK tries to create it: use RETAIN
+- CDK account comes from `CDK_DEFAULT_ACCOUNT` env var or CLI profile — must be set for `cdk synth` (discovered: 2026-02-16)
+- `aws-cdk` CLI version (2.1016.1 in eval) vs library version (2.196.0) can diverge — watch for compatibility (discovered: 2026-02-16)
+- cdk-eagle and eval have different CDK context flags — merging stacks would require reconciling these (discovered: 2026-02-16)
+- ECS first deploy with empty ECR repos: `ApplicationLoadBalancedFargateService` requires desiredCount>=1, tasks can't pull images, CloudFormation waits 30+ min then rolls back entire stack. Fix: push placeholder images to ECR first (discovered: 2026-02-17, component: compute-stack)
+- ECR repos with RETAIN survive stack deletion — re-creating stack fails with "already exists". Fix: use `cdk deploy --import-existing-resources` (discovered: 2026-02-17)
+- ECS tasks use cached image digest even after pushing new `latest` tag to ECR. Fix: `aws ecs update-service --force-new-deployment` (discovered: 2026-02-17)
+- Container health check (`CMD-SHELL curl`) fails silently if curl not in image, while ALB health check passes — causes infinite task cycling with no obvious error (discovered: 2026-02-17)
+- Windows Git Bash converts `/eagle/ecs/...` paths to `C:/Program Files/Git/eagle/ecs/...` — use `MSYS_NO_PATHCONV=1` prefix (discovered: 2026-02-17)
 
 ### tips
 - Run `/experts:aws:maintenance` before any deployment to verify connectivity
@@ -567,3 +712,11 @@ steps:
 - Run `npx cdk synth` before `cdk deploy` to verify template generates correctly
 - The eval CDK stack lives at `infrastructure/eval/` — run `cd infrastructure/eval && npx cdk deploy`
 - `put_metric_data` supports up to 1000 metrics per call
+- Environment configs (DEV/STAGING/PROD) in `config/environments.ts` use spread to inherit defaults — override only what changes (discovered: 2026-02-16)
+- Frontend NEXT_PUBLIC_* env vars must be set as Docker build-args (baked at build time), not runtime env vars (discovered: 2026-02-16)
+- The CiCd stack OIDC trust uses wildcard branch (`repo:gblack686/sample-multi-tenant-agent-core-app:*`) — allows deploys from any branch (discovered: 2026-02-16)
+- Eval dashboard tracks 27 tests but test suite may have 28 — check if test_28 (subagent orchestration) is missing from eval-stack.ts TEST_NAMES array (discovered: 2026-02-16)
+- **ECS First Deploy Checklist**: (1) Push placeholder images to ECR, (2) `cdk deploy --all`, (3) Verify health checks pass, (4) Push real images, (5) `aws ecs update-service --force-new-deployment` (discovered: 2026-02-17)
+- Placeholder images only need to pass health checks: backend → FastAPI with `GET /api/health` + curl installed; frontend → Express with `GET /` + curl installed (discovered: 2026-02-17)
+- When redeploying after deleting a stack with RETAIN ECR repos, always use `npx cdk deploy --import-existing-resources` (discovered: 2026-02-17)
+- On Windows Git Bash, always prefix AWS CLI commands that have `/path` args with `MSYS_NO_PATHCONV=1` (discovered: 2026-02-17)

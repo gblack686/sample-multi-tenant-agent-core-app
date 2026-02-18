@@ -1,0 +1,135 @@
+---
+description: Log into the EAGLE frontend and run a smoke test across all major pages
+argument-hint: [url] [headed]
+---
+
+# EAGLE Frontend Smoke Test
+
+Log into the EAGLE frontend application and verify all major pages load correctly, the backend API responds, and the chat interface works end-to-end.
+
+## Variables
+
+| Variable | Value           | Description                                              |
+| -------- | --------------- | -------------------------------------------------------- |
+| SKILL    | `claude-bowser` | Uses your real Chrome for browser automation             |
+| MODE     | `headed`        | Visible browser (default)                                |
+| URL      | `{PROMPT}` or `http://localhost:3000` | Base URL of the EAGLE frontend |
+
+If {PROMPT} contains a URL, use that. Otherwise default to `http://localhost:3000`.
+
+## Workflow
+
+### Phase 1: Login
+
+1. Navigate to {URL}/login
+2. Verify the login page loads — look for:
+   - The EAGLE logo (blue "E" in a rounded box)
+   - "Sign in to your account" heading
+   - Email and Password input fields
+   - "Sign in" button
+   - "National Cancer Institute — Office of Acquisitions" footer text
+3. Take a screenshot of the login page
+4. **Dev mode check**: If the page auto-redirects to the home page (no Cognito configured = dev mode), skip login form and go to Phase 2
+5. If login form is present:
+   - Enter email: `dev@example.com` in the email field
+   - Enter password: `Password123!` in the password field
+   - Click "Sign in"
+   - Wait for redirect to home page (up to 10 seconds)
+   - If login fails with an error banner, report the error and try navigating directly to {URL}/ (dev mode may auto-authenticate)
+
+### Phase 2: Home Page Verification
+
+6. Verify the home page loads — look for:
+   - "EAGLE" branding in the header
+   - Four feature cards: "Chat", "Document Templates", "Acquisition Packages", "Admin"
+   - Each card should have an icon, title, description, and be clickable
+7. Take a screenshot of the home page
+8. Report: PASS or FAIL with details
+
+### Phase 3: Chat Page Test
+
+9. Click the "Chat" card or navigate to {URL}/chat
+10. Verify the chat page loads — look for:
+    - A sidebar navigation panel
+    - A chat input area / message box
+    - The EAGLE header
+11. Take a screenshot of the chat page
+12. Type a test message: "Hello, can you confirm you are the EAGLE acquisition assistant?"
+13. Wait for a response (up to 30 seconds)
+14. Verify:
+    - A response appears from the assistant
+    - No error messages displayed
+    - The response mentions EAGLE, NCI, or acquisitions
+15. Take a screenshot showing the conversation
+16. Report: PASS or FAIL with response preview
+
+### Phase 4: Documents Page Test
+
+17. Navigate to {URL}/documents
+18. Verify the documents page loads — look for:
+    - A page heading or layout for documents
+    - No error/crash screens
+19. Take a screenshot
+20. Report: PASS or FAIL
+
+### Phase 5: Workflows Page Test
+
+21. Navigate to {URL}/workflows
+22. Verify the workflows page loads — look for:
+    - Workflow-related content (package list, workflow cards, or empty state)
+    - No error/crash screens
+23. Take a screenshot
+24. Report: PASS or FAIL
+
+### Phase 6: Admin Page Test
+
+25. Navigate to {URL}/admin
+26. Verify the admin dashboard loads — look for:
+    - Dashboard statistics or admin navigation
+    - No error/crash screens or "Access Denied"
+27. Take a screenshot
+28. Report: PASS or FAIL
+
+### Phase 7: Backend Health Check
+
+29. Navigate to {URL}/api/health (or use the browser to fetch it)
+30. Verify the response contains:
+    - `"status": "healthy"`
+    - `"service": "eagle-backend"`
+    - `"version"` field present
+31. Report: PASS or FAIL with response data
+
+### Phase 8: Summary Report
+
+32. Compile the results:
+
+```
+# EAGLE Smoke Test Report
+
+**URL:** {URL}
+**Date:** {current date and time}
+**Auth Mode:** Dev Mode / Cognito
+
+## Results
+
+| # | Test                    | Status  | Notes                          |
+|---|-------------------------|---------|--------------------------------|
+| 1 | Login Page              | ✅/❌   | {details}                      |
+| 2 | Home Page               | ✅/❌   | {details}                      |
+| 3 | Chat Page Load          | ✅/❌   | {details}                      |
+| 4 | Chat Send/Receive       | ✅/❌   | {response preview}             |
+| 5 | Documents Page          | ✅/❌   | {details}                      |
+| 6 | Workflows Page          | ✅/❌   | {details}                      |
+| 7 | Admin Dashboard         | ✅/❌   | {details}                      |
+| 8 | Backend Health          | ✅/❌   | {health response}              |
+
+**Overall:** ✅ ALL PASSED / ❌ {N} FAILED
+
+## Screenshots
+(list screenshot paths if saved)
+
+## Issues Found
+(only if failures occurred — describe each issue)
+```
+
+33. STOP — report the summary to the user

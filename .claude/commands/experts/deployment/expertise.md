@@ -4,7 +4,7 @@ parent: "[[deployment/_index]]"
 file-type: expertise
 human_reviewed: false
 tags: [expert-file, mental-model, deployment, aws, cdk]
-last_updated: 2026-02-10T00:00:00
+last_updated: 2026-02-17T00:00:00
 ---
 
 # Deployment Expertise (Complete Mental Model)
@@ -17,16 +17,19 @@ last_updated: 2026-02-10T00:00:00
 
 ### Provisioning Model
 
-Core AWS resources (S3, DynamoDB, Bedrock) are **manually provisioned**. The eval observability stack (`infrastructure/eval/`) is managed by **TypeScript CDK**.
+Infrastructure is managed by **4 CDK stacks** in `infrastructure/cdk-eagle/` (TypeScript). Some resources (S3 `nci-documents`, DynamoDB `eagle`, Bedrock access) were manually provisioned and are imported by CDK.
 
 ```
-Provisioning: Hybrid (Manual + CDK)
+Provisioning: CDK-managed (4 stacks) + manually-created imported resources
 Region: us-east-1
-Account: Accessed via ~/.aws/credentials (local profile)
-IAM: Developer credentials with broad permissions
-CDK: infrastructure/eval/ (TypeScript, EagleEvalStack)
-CI/CD: Not configured
-Docker: Not configured
+Account: 274487662938
+CDK: infrastructure/cdk-eagle/ (TypeScript)
+  - EagleCiCdStack:    GitHub Actions OIDC + deploy role
+  - EagleCoreStack:    VPC, Cognito, IAM app role, imports S3/DDB
+  - EagleComputeStack: ECR repos, ECS Fargate, ALB, auto-scaling
+  - EagleEvalStack:    S3 eval artifacts, CloudWatch dashboard, SNS alerts
+CI/CD: GitHub Actions (OIDC → ECR push → ECS deploy)
+Docker: Dockerfile.backend + Dockerfile.frontend in deployment/docker/
 ```
 
 ### Credential Configuration
@@ -46,22 +49,38 @@ Docker: Not configured
 
 **Access pattern**: All code (eval suite, agentic_service, boto3 checks) uses `boto3.client('service', region_name='us-east-1')` — hardcoded region, default credential chain.
 
-### What Exists vs What Doesn't
+### What Exists (Deployed)
 
-| Component | Exists | Notes |
-|-----------|--------|-------|
-| S3 bucket | Yes | `nci-documents`, manually created |
-| DynamoDB table | Yes | `eagle`, manually created |
-| CloudWatch log group | Yes | `/eagle/test-runs`, auto-created by eval suite |
-| Bedrock model access | Yes | Anthropic models enabled in Console |
-| CDK project (eval) | Yes | `infrastructure/eval/` — EagleEvalStack (S3, CW dashboard, alarm, SNS) |
-| Dockerfile | No | No container configuration |
-| GitHub Actions | No | No `.github/workflows/` |
-| CloudFront distribution | No | Frontend runs locally only |
-| ECS cluster/service | No | No container orchestration |
-| ECR repository | No | No container registry |
-| IAM deployment role | No | No OIDC trust, no CD role |
-| VPC | No | All services use default/public endpoints |
+| Component | Resource | Managed By |
+|-----------|----------|------------|
+| VPC | `vpc-0ede565d9119f98aa` (2 AZs, 1 NAT) | CDK (EagleCoreStack) |
+| Cognito User Pool | `us-east-1_fyy3Ko0tX` | CDK (EagleCoreStack) |
+| Cognito App Client | `7jlpjkiov7888kcbu57jcn68no` | CDK (EagleCoreStack) |
+| IAM App Role | `eagle-app-role-dev` | CDK (EagleCoreStack) |
+| S3 `nci-documents` | Document storage | Manual (imported by CDK) |
+| DynamoDB `eagle` | Single-table design | Manual (imported by CDK) |
+| ECR `eagle-backend-dev` | Backend container registry | CDK (EagleComputeStack) |
+| ECR `eagle-frontend-dev` | Frontend container registry | CDK (EagleComputeStack) |
+| ECS cluster `eagle-dev` | Fargate cluster | CDK (EagleComputeStack) |
+| ECS `eagle-backend-dev` | Backend service (1 task) | CDK (EagleComputeStack) |
+| ECS `eagle-frontend-dev` | Frontend service (1 task) | CDK (EagleComputeStack) |
+| ALB (frontend) | Public-facing | CDK (EagleComputeStack) |
+| ALB (backend) | Internal | CDK (EagleComputeStack) |
+| S3 `eagle-eval-artifacts` | Eval results archive | CDK (EagleEvalStack) |
+| SNS `eagle-eval-alerts-dev` | Eval alerting | CDK (EagleEvalStack) |
+| CW Dashboard `EAGLE-Eval-Dashboard-dev` | Eval metrics | CDK (EagleEvalStack) |
+| CW Alarm `eagle-eval-pass-rate-dev` | Pass rate < 80% | CDK (EagleEvalStack) |
+| CW Log Group `/eagle/test-runs` | Eval logs | Auto-created (imported by CDK) |
+| GitHub Actions OIDC | Federation provider | CDK (EagleCiCdStack) |
+| IAM Deploy Role | `eagle-deploy-role-dev` | CDK (EagleCiCdStack) |
+| Bedrock model access | Anthropic Claude (Haiku, Sonnet, Opus) | Manual (AWS Console) |
+
+### Live URLs
+
+| Service | URL |
+|---------|-----|
+| Frontend (public) | `http://EagleC-Front-XYyWWR29wzVZ-745394335.us-east-1.elb.amazonaws.com` |
+| Backend (internal) | `http://internal-EagleC-Backe-6OVxEGWRMzba-362151769.us-east-1.elb.amazonaws.com` |
 
 ---
 
@@ -281,58 +300,72 @@ Deploy Command:
 
 ### Current Project Assessment
 
-The `client/` directory uses:
-- API routes (`app/api/prompts/`) -> Needs server
-- Auth context (`contexts/auth-context.tsx`) -> Could be client-side
-- No confirmed SSR/ISR usage
+**Active deployment: ECS Fargate Standalone** (Option B).
 
-**Recommendation**: Start with static export for speed, migrate to ECS if API routes become essential.
+The `client/` directory uses API routes (`app/api/`), SSR, and Cognito auth — all require a server. The frontend runs as a standalone Next.js server on ECS Fargate behind a public ALB.
 
 ---
 
 ## Part 4: CDK Patterns
 
-### Active CDK Stacks
+### Active CDK Stacks (infrastructure/cdk-eagle/)
 
-#### `infrastructure/eval/` — EagleEvalStack (Eval Observability)
+All 4 stacks live in `infrastructure/cdk-eagle/` and deploy from `bin/eagle.ts`.
+
+#### EagleCiCdStack (independent)
 
 ```
-infrastructure/eval/
-  |-- bin/
-  |     |-- eval.ts                    # CDK app entry point
-  |
-  |-- lib/
-  |     |-- eval-stack.ts              # EvalObservabilityStack
-  |
-  |-- cdk.json                         # app: npx ts-node --prefer-ts-exts bin/eval.ts
-  |-- tsconfig.json                    # ES2022, commonjs, strict
-  |-- package.json                     # aws-cdk-lib 2.196.0, ts-node, typescript 5.6
-  |-- .gitignore                       # *.js, *.d.ts, node_modules, cdk.out
-
+File: lib/cicd-stack.ts
 Resources:
-  - S3 Bucket: eagle-eval-artifacts (365-day lifecycle, SSE-S3)
-  - CW Log Group: /eagle/test-runs (90-day retention)
-  - SNS Topic: eagle-eval-alerts
-  - CW Alarm: EvalPassRate (< 80% -> SNS)
-  - CW Dashboard: EAGLE-Eval-Dashboard (PassRate, TestCounts, 27 per-test widgets, TotalCost)
-
-Outputs: EvalBucketName, EvalBucketArn, EvalAlertTopicArn, EvalDashboardName, EvalPassRateAlarmArn
-
-Deploy: cd infrastructure/eval && npx cdk deploy
-Synth:  cd infrastructure/eval && npx cdk synth
+  - OIDC Provider: token.actions.githubusercontent.com
+  - IAM Deploy Role: eagle-deploy-role-dev (trusted by gblack686/sample-multi-tenant-agent-core-app)
+Outputs: eagle-deploy-role-arn-dev
 ```
 
-#### `infrastructure/cdk/` — MultiTenantBedrockStack (Reference, Python)
+#### EagleCoreStack (independent)
 
 ```
-infrastructure/cdk/
-  |-- app.py                           # Python CDK entry point
-  |-- bedrock_agents.py                # Bedrock agent construct
-  |-- lambda_deployment.py             # Lambda + API Gateway construct
-  |-- requirements.txt                 # aws-cdk-lib 2.100.0
-  |-- cdk.json                         # app: python app.py
+File: lib/core-stack.ts
+Resources:
+  - VPC: 2 AZs, 1 NAT Gateway, public + private subnets
+  - Cognito User Pool + App Client
+  - IAM App Role: eagle-app-role-dev (S3, DynamoDB, Bedrock, CloudWatch, Logs)
+  - CloudWatch Log Group: /eagle/app
+  - Imports: S3 nci-documents, DynamoDB eagle (fromBucketName/fromTableName)
+Outputs: eagle-vpc-id-dev, eagle-user-pool-id-dev, eagle-user-pool-client-id-dev, eagle-app-role-arn-dev
+```
 
-Status: Reference implementation, not actively deployed
+#### EagleComputeStack (depends on Core)
+
+```
+File: lib/compute-stack.ts
+Resources:
+  - ECR: eagle-backend-dev, eagle-frontend-dev
+  - ECS Cluster: eagle-dev (Fargate)
+  - Backend Service: 512 CPU / 1024 MB, port 8000, internal ALB
+  - Frontend Service: 256 CPU / 512 MB, port 3000, public ALB
+  - Auto-scaling: 1-4 tasks (CPU target 70%)
+Outputs: eagle-backend-repo-uri-dev, eagle-frontend-repo-uri-dev, eagle-cluster-name-dev
+```
+
+#### EagleEvalStack (independent)
+
+```
+File: lib/eval-stack.ts
+Resources:
+  - S3 Bucket: eagle-eval-artifacts (365-day lifecycle, SSE-S3, RETAIN)
+  - SNS Topic: eagle-eval-alerts-dev
+  - CW Alarm: eagle-eval-pass-rate-dev (< 80% → SNS)
+  - CW Dashboard: EAGLE-Eval-Dashboard-dev (28 per-test widgets)
+  - Imports: LogGroup /eagle/test-runs (fromLogGroupName, not created)
+Outputs: eagle-eval-bucket-name-dev, eagle-eval-bucket-arn-dev, eagle-eval-alert-topic-arn-dev, etc.
+```
+
+#### Legacy Stacks (not deployed)
+
+```
+infrastructure/eval/  — Standalone EvalObservabilityStack (SUPERSEDED by EagleEvalStack above)
+infrastructure/cdk/   — Python reference stack (never deployed)
 ```
 
 ### Reference Stack Structure Convention (nci-oa-agent)
@@ -513,9 +546,11 @@ docker push {account}.dkr.ecr.us-east-1.amazonaws.com/eagle-frontend:latest
 ### Key Docker Considerations
 
 - **HOSTNAME=0.0.0.0**: Required for ECS Fargate. Without it, Next.js binds to `localhost` and is unreachable from the ALB health check.
+- **curl for health checks**: Alpine doesn't include `curl`. Add `RUN apk add --no-cache curl` in the runner stage — ECS health check uses `curl -f http://localhost:3000/`.
+- **Build args for Cognito**: Frontend needs `--build-arg NEXT_PUBLIC_COGNITO_USER_POOL_ID=... --build-arg NEXT_PUBLIC_COGNITO_CLIENT_ID=...` at build time (NEXT_PUBLIC_* are baked in by Next.js).
 - **Multi-stage builds**: Keep final image small (~150MB vs ~1GB for full node_modules).
 - **node:20-alpine**: Use Alpine for smallest base image. Match Node version to local development.
-- **.dockerignore**: Exclude `node_modules`, `.next`, `.git`, `*.md` from build context.
+- **.dockerignore**: Exclude `node_modules`, `.next`, `.git`, `*.md` from build context. Without it, Docker context transfer is ~800MB+.
 
 ---
 
@@ -819,6 +854,191 @@ export AWS_DEFAULT_REGION=us-east-1
 
 ---
 
+## Part 8: Complete Environment Setup Guide (New Account/Region)
+
+This is a step-by-step guide to deploy the full EAGLE platform from scratch in a new AWS environment.
+
+### Prerequisites
+
+```
+- AWS CLI configured with credentials for the target account
+- Node.js 20+, npm
+- Docker Desktop running
+- Python 3.11+ with pip
+- Git (clone the repo)
+```
+
+### Step 1: Bootstrap CDK
+
+```bash
+# Get your account ID
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REGION=us-east-1
+
+# Bootstrap CDK (one-time per account/region)
+npx cdk bootstrap aws://${ACCOUNT_ID}/${REGION}
+```
+
+### Step 2: Create Pre-requisite Resources (Manual)
+
+These resources are imported (not created) by CDK:
+
+```bash
+# Create S3 bucket for documents
+aws s3 mb s3://nci-documents --region us-east-1
+
+# Create DynamoDB eagle table (single-table design)
+aws dynamodb create-table \
+  --table-name eagle \
+  --attribute-definitions AttributeName=PK,AttributeType=S AttributeName=SK,AttributeType=S \
+  --key-schema AttributeName=PK,KeyType=HASH AttributeName=SK,KeyType=RANGE \
+  --billing-mode PAY_PER_REQUEST \
+  --region us-east-1
+
+# Enable Bedrock model access
+# Go to AWS Console → Amazon Bedrock → Model Access → Enable Anthropic Claude models
+```
+
+### Step 3: Update CDK Config for New Environment
+
+Edit `infrastructure/cdk-eagle/config/environments.ts`:
+
+```typescript
+export const NEW_ENV_CONFIG: EagleConfig = {
+  env: 'dev',                           // or 'staging', 'prod'
+  account: 'YOUR_ACCOUNT_ID',
+  region: 'us-east-1',
+  eagleTableName: 'eagle',
+  docsBucketName: 'nci-documents',
+  evalBucketName: 'eagle-eval-artifacts',
+  vpcMaxAzs: 2,
+  natGateways: 1,
+  backendCpu: 512,
+  backendMemory: 1024,
+  frontendCpu: 256,
+  frontendMemory: 512,
+  desiredCount: 1,
+  maxCount: 4,
+  githubOwner: 'YOUR_GITHUB_ORG',
+  githubRepo: 'YOUR_REPO_NAME',
+};
+```
+
+### Step 4: Deploy All CDK Stacks
+
+```bash
+cd infrastructure/cdk-eagle
+
+# Install dependencies
+npm install
+
+# Verify templates compile
+npx cdk synth
+
+# Deploy all 4 stacks (CiCd and Eval are independent, Core before Compute)
+npx cdk deploy EagleCiCdStack --require-approval never
+npx cdk deploy EagleCoreStack --require-approval never
+npx cdk deploy EagleComputeStack --require-approval never
+npx cdk deploy EagleEvalStack --require-approval never
+
+# Record outputs (needed for Docker build args)
+USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name EagleCoreStack \
+  --query "Stacks[0].Outputs[?OutputKey=='UserPoolId'].OutputValue" --output text)
+CLIENT_ID=$(aws cloudformation describe-stacks --stack-name EagleCoreStack \
+  --query "Stacks[0].Outputs[?OutputKey=='UserPoolClientId'].OutputValue" --output text)
+BACKEND_REPO=$(aws cloudformation describe-stacks --stack-name EagleComputeStack \
+  --query "Stacks[0].Outputs[?OutputKey=='BackendRepoUri'].OutputValue" --output text)
+FRONTEND_REPO=$(aws cloudformation describe-stacks --stack-name EagleComputeStack \
+  --query "Stacks[0].Outputs[?OutputKey=='FrontendRepoUri'].OutputValue" --output text)
+```
+
+### Step 5: Build and Push Docker Images
+
+```bash
+cd /path/to/repo
+
+# Login to ECR
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+aws ecr get-login-password --region us-east-1 | \
+  docker login --username AWS --password-stdin ${ACCOUNT_ID}.dkr.ecr.us-east-1.amazonaws.com
+
+# Build and push backend
+docker build -f deployment/docker/Dockerfile.backend \
+  -t ${BACKEND_REPO}:latest .
+docker push ${BACKEND_REPO}:latest
+
+# Build and push frontend (MUST pass Cognito build args)
+docker build -f deployment/docker/Dockerfile.frontend \
+  --build-arg NEXT_PUBLIC_COGNITO_USER_POOL_ID=${USER_POOL_ID} \
+  --build-arg NEXT_PUBLIC_COGNITO_CLIENT_ID=${CLIENT_ID} \
+  -t ${FRONTEND_REPO}:latest .
+docker push ${FRONTEND_REPO}:latest
+```
+
+**IMPORTANT**: The Dockerfile.frontend MUST include `RUN apk add --no-cache curl` in the runner stage. Without it, the ECS health check (`curl -f http://localhost:3000/`) fails and the task cycles endlessly.
+
+### Step 6: Force ECS Redeployment
+
+```bash
+aws ecs update-service --cluster eagle-dev --service eagle-backend-dev --force-new-deployment
+aws ecs update-service --cluster eagle-dev --service eagle-frontend-dev --force-new-deployment
+
+# Wait for services to stabilize (~2-5 minutes)
+aws ecs wait services-stable --cluster eagle-dev --services eagle-backend-dev eagle-frontend-dev
+```
+
+### Step 7: Create Cognito User
+
+```bash
+# Create user
+aws cognito-idp admin-create-user \
+  --user-pool-id ${USER_POOL_ID} \
+  --username user@example.com \
+  --user-attributes Name=email,Value=user@example.com Name=email_verified,Value=true \
+  --temporary-password 'TempPass123!' \
+  --message-action SUPPRESS
+
+# Set permanent password (skip FORCE_CHANGE_PASSWORD)
+aws cognito-idp admin-set-user-password \
+  --user-pool-id ${USER_POOL_ID} \
+  --username user@example.com \
+  --password 'YourPassword123!' \
+  --permanent
+```
+
+### Step 8: Verify Everything Works
+
+```bash
+# Get frontend URL
+FRONTEND_URL=$(aws cloudformation describe-stacks --stack-name EagleComputeStack \
+  --query "Stacks[0].Outputs[?OutputKey=='FrontendUrl'].OutputValue" --output text)
+echo "Frontend: ${FRONTEND_URL}"
+
+# Check ECS services are healthy
+aws ecs describe-services --cluster eagle-dev \
+  --services eagle-backend-dev eagle-frontend-dev \
+  --query "services[].{name:serviceName,running:runningCount,desired:desiredCount}" \
+  --output table
+
+# Run eval test 1 to verify S3 archive and CloudWatch
+python -u server/tests/test_eagle_sdk_eval.py --tests 1
+# Should see: "S3 Archive: uploaded results to s3://eagle-eval-artifacts/..."
+```
+
+### Deployment Timing (Observed)
+
+| Step | Time |
+|------|------|
+| CDK bootstrap | ~2 min |
+| CDK deploy (all 4 stacks) | ~5-10 min |
+| Docker build (backend) | ~30 sec (cached) |
+| Docker build (frontend) | ~60 sec (cached), ~5 min (cold) |
+| Docker push (both) | ~1-2 min |
+| ECS redeployment | ~2-5 min |
+| **Total (cold)** | **~20-25 min** |
+
+---
+
 ## Learnings
 
 ### patterns_that_work
@@ -830,6 +1050,10 @@ export AWS_DEFAULT_REGION=us-east-1
 - Python publisher with lazy-loaded boto3 clients and try/except wrappers makes AWS integration non-fatal — eval suite runs fine without credentials (discovered: 2026-02-10, component: eval_aws_publisher)
 - Import-guard pattern (`try: import ... except ImportError: _HAS_FLAG = False`) keeps optional AWS modules zero-impact (discovered: 2026-02-10, component: test_eagle_sdk_eval)
 - CDK context flags copied from existing `infrastructure/cdk/cdk.json` ensure consistent behavior across stacks (discovered: 2026-02-10, component: infrastructure/eval)
+- Merging eval stack into main CDK app (4th stack, independent, no cross-stack deps) ensures it deploys with everything else — no more orphaned standalone stacks (discovered: 2026-02-17, component: infrastructure/cdk-eagle)
+- Using `LogGroup.fromLogGroupName()` instead of `new LogGroup()` avoids conflicts with auto-created log groups from the eval suite (discovered: 2026-02-17, component: eval-stack)
+- Config-driven bucket names (`config.evalBucketName`) with env defaults matching the publisher means zero code changes needed for the eval suite (discovered: 2026-02-17, component: eval-stack)
+- ECS deployment takes ~41s for a lightweight stack (S3 + SNS + CW alarm + dashboard) (discovered: 2026-02-17, component: EagleEvalStack)
 
 ### patterns_to_avoid
 - Don't create new CDK resources that conflict with existing manual resources
@@ -837,20 +1061,29 @@ export AWS_DEFAULT_REGION=us-east-1
 - Don't forget HOSTNAME=0.0.0.0 for containerized Next.js
 - Don't use `NodeNext` module/moduleResolution in tsconfig when using ts-node with CDK — causes `Cannot find module '../lib/eval-stack.js'` errors; use `commonjs`/`node` instead (discovered: 2026-02-10, component: infrastructure/eval)
 - Don't append `.js` extension to TypeScript imports in CDK projects using commonjs module — ts-node resolves `.ts` files directly (discovered: 2026-02-10, component: infrastructure/eval)
+- Don't use `node:20-alpine` for ECS Fargate containers with `curl` health checks without installing curl — Alpine doesn't include it. Add `RUN apk add --no-cache curl` (discovered: 2026-02-17, component: Dockerfile.frontend)
+- Don't forget Cognito `--build-arg` when building frontend Docker image — NEXT_PUBLIC_* vars are baked in at build time, not runtime (discovered: 2026-02-17, component: Dockerfile.frontend)
+- Don't keep eval observability in a standalone CDK project — it gets forgotten and never deployed. Merge into the main CDK app (discovered: 2026-02-17, component: infrastructure/eval → cdk-eagle)
 
 ### common_issues
 - AWS credentials expire or are not configured -> all services fail
 - S3 bucket name globally unique constraint -> can't reuse names across accounts
 - CDK bootstrap missing -> deploy fails with cryptic asset error
 - `Cannot find module '../lib/eval-stack.js'`: caused by NodeNext moduleResolution + .js import extension with ts-node; fix by switching to commonjs module and removing .js extension (component: infrastructure/eval)
-- CloudWatch log group `/eagle/test-runs` may already exist when CDK tries to create it: use `removalPolicy: RETAIN` or delete the existing group before first deploy (component: infrastructure/eval)
+- CloudWatch log group `/eagle/test-runs` may already exist when CDK tries to create it: use `LogGroup.fromLogGroupName()` to import instead (component: eval-stack)
+- ECS frontend health check fails with `curl: not found`: Alpine-based node images don't include curl. Fix: `RUN apk add --no-cache curl` in Dockerfile runner stage (component: Dockerfile.frontend)
+- ECS service shows 2 deployments with old tasks draining after force-new-deployment: this is normal, wait 2-5 min for the old tasks to drain (component: ECS)
+- Docker context transfer is ~800MB+ without .dockerignore: ensure `.dockerignore` excludes `node_modules`, `.next`, `.git`, `data/` (component: Dockerfile.frontend)
 
 ### tips
 - Run `/experts:deployment:maintenance` before any deployment to verify connectivity
-- Start with static export (simpler) and migrate to ECS only if API routes are needed
 - Tag all CDK resources with Project=eagle and ManagedBy=cdk for cost tracking
 - Use OIDC for GitHub Actions instead of static IAM keys (more secure, no rotation needed)
 - Run `npx cdk synth` before `cdk deploy` to verify CloudFormation template generates correctly
-- The eval CDK stack lives at `infrastructure/eval/` — run `cd infrastructure/eval && npx cdk deploy` to provision
+- All 4 CDK stacks deploy from `infrastructure/cdk-eagle/`: `npx cdk deploy --all`
 - Before first deploy, check if `/eagle/test-runs` log group exists: `aws logs describe-log-groups --log-group-name-prefix /eagle/test-runs`
-- `put_metric_data` supports up to 1000 metrics per call — our 32 metrics per eval run are well within limits
+- `put_metric_data` supports up to 1000 metrics per call — our 38 metrics per eval run are well within limits
+- Use `aws ecs wait services-stable` after force-new-deployment to block until rollout completes
+- Use `--message-action SUPPRESS` when creating Cognito users via CLI to avoid sending emails
+- After Cognito user creation, use `admin-set-user-password --permanent` to skip the FORCE_CHANGE_PASSWORD state
+- Verify deployment with eval test 1: `python -u server/tests/test_eagle_sdk_eval.py --tests 1` — confirms S3, CloudWatch, and Bedrock connectivity
