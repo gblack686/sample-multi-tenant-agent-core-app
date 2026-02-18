@@ -290,6 +290,44 @@ async def api_get_session(
         return {"session_id": session_id, "message_count": len(SESSIONS[session_id])}
 
 
+class UpdateSessionRequest(BaseModel):
+    title: Optional[str] = None
+    status: Optional[str] = None
+    metadata: Optional[Dict] = None
+
+
+@app.patch("/api/sessions/{session_id}")
+async def api_update_session(
+    session_id: str,
+    req: UpdateSessionRequest,
+    user: UserContext = Depends(get_user_from_header)
+):
+    """Update session title or metadata."""
+    tenant_id, user_id, _ = get_session_context(user)
+
+    updates = {}
+    if req.title is not None:
+        updates["title"] = req.title
+    if req.status is not None:
+        updates["status"] = req.status
+    if req.metadata is not None:
+        updates["metadata"] = req.metadata
+
+    if not updates:
+        raise HTTPException(status_code=400, detail="No updates provided")
+
+    if USE_PERSISTENT_SESSIONS:
+        session = eagle_update_session(session_id, tenant_id, user_id, updates)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return session
+    else:
+        if session_id not in SESSIONS:
+            raise HTTPException(status_code=404, detail="Session not found")
+        # In-memory sessions don't have metadata, just acknowledge
+        return {"session_id": session_id, **updates}
+
+
 @app.delete("/api/sessions/{session_id}")
 async def api_delete_session(
     session_id: str,

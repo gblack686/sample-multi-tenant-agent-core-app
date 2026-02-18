@@ -2,80 +2,141 @@
 
 import { useState } from 'react';
 import { Message, AcquisitionData } from '../chat/chat-interface';
-import { CheckCircle2, AlertCircle, XCircle, FileText, Download, Eye, ChevronDown, X, Send, Loader2, Clock } from 'lucide-react';
+import { CheckCircle2, FileText, Download, Eye, ChevronDown, X, Send, Loader2, Clock, ExternalLink } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
+import { getPackage, PackageChecklist } from '@/lib/document-store';
+import { DocumentType } from '@/types/schema';
+import { useAuth } from '@/contexts/auth-context';
 
 interface DocumentChecklistProps {
     messages: Message[];
     data: AcquisitionData;
+    sessionId?: string;
 }
 
-export default function DocumentChecklist({ messages, data }: DocumentChecklistProps) {
-    const [selectedDoc, setSelectedDoc] = useState<{ id: string; name: string; content: string } | null>(null);
+// Map checklist IDs to document-store document_type keys
+const DOC_TYPE_MAP: Record<string, DocumentType> = {
+    'sow': 'sow',
+    'igce': 'igce',
+    'market-research': 'market_research',
+    'plan': 'acquisition_plan',
+    'funding': 'funding_doc',
+    'urgency': 'justification',
+};
+
+export default function DocumentChecklist({ messages, data, sessionId }: DocumentChecklistProps) {
+    const [selectedDoc, setSelectedDoc] = useState<{ id: string; name: string; content: string; isTemplate?: boolean } | null>(null);
     const [showExportMenu, setShowExportMenu] = useState(false);
+    const [isExporting, setIsExporting] = useState(false);
+    const { getToken } = useAuth();
 
     const messageCount = messages.length;
 
-    // Logic for completion
-    const isRequirementDone = !!data.requirement || !!data.equipmentType;
+    // Look up actual package state from localStorage
+    const packageData = sessionId ? getPackage(sessionId) : null;
+    const packageChecklist = packageData?.checklist || [];
+
+    // Create a map for quick lookup: document_type -> checklist item
+    const checklistMap = new Map<DocumentType, PackageChecklist>();
+    packageChecklist.forEach(item => {
+        checklistMap.set(item.document_type, item);
+    });
+
+    // Helper to check if relevant intake data exists for a doc type
+    const getRelevantDataForDoc = (docId: string): boolean => {
+        switch (docId) {
+            case 'sow': return !!(data.requirement || data.equipmentType);
+            case 'igce': return !!data.estimatedValue;
+            case 'market-research': return !!(data.requirement || data.equipmentType);
+            case 'plan': return !!(data.requirement && data.estimatedValue);
+            case 'funding': return !!data.funding;
+            case 'urgency': return !!data.urgency;
+            default: return false;
+        }
+    };
+
+    // Derive status from actual package state (document_id presence = completed)
+    const getDocStatus = (docId: string): 'pending' | 'in-progress' | 'completed' => {
+        const docType = DOC_TYPE_MAP[docId];
+        const checklistItem = checklistMap.get(docType);
+
+        // If document_id exists in checklist, it's actually completed
+        if (checklistItem?.document_id) {
+            return 'completed';
+        }
+
+        // Otherwise, use intake fields to determine in-progress vs pending
+        const hasStartedIntake = messageCount > 0;
+        const hasRelevantData = getRelevantDataForDoc(docId);
+
+        if (hasRelevantData) return 'in-progress';
+        if (hasStartedIntake) return 'in-progress';
+        return 'pending';
+    };
+
+    // Get document_id from checklist if it exists
+    const getDocumentId = (docId: string): string | undefined => {
+        const docType = DOC_TYPE_MAP[docId];
+        return checklistMap.get(docType)?.document_id;
+    };
+
+    const hasStartedIntake = messageCount > 0;
+    const isRequirementDone = !!(data.requirement || data.equipmentType);
     const isSpecsDone = !!data.equipmentType;
     const isFundingDone = !!data.funding;
-    const isUrgencyDone = !!data.urgency;
-    const isValueDone = !!data.estimatedValue;
-    const isAllDone = isRequirementDone && isSpecsDone && isFundingDone && isUrgencyDone;
 
-    if (messageCount === 0 && !isAllDone) {
-        return null;
-    }
-
-    // Determine progress states based on conversation context
-    const hasStartedIntake = messageCount > 0;
-    const isGatheringInfo = hasStartedIntake && !isAllDone;
-
+    // Build documents array with actual status from document-store
     const documents = [
         {
             id: 'sow',
             name: 'Statement of Work (SOW)',
-            status: isSpecsDone ? 'completed' : (isRequirementDone ? 'in-progress' : 'pending'),
+            status: getDocStatus('sow'),
             description: 'Equipment specs, installation, training',
-            progress: isSpecsDone ? 100 : (isRequirementDone ? 50 : 0),
+            documentId: getDocumentId('sow'),
         },
         {
             id: 'igce',
             name: 'Independent Government Cost Estimate (IGCE)',
-            status: isValueDone ? 'completed' : (isRequirementDone ? 'in-progress' : 'pending'),
+            status: getDocStatus('igce'),
             description: 'Market research, vendor quotes',
-            progress: isValueDone ? 100 : (isRequirementDone ? 30 : 0),
+            documentId: getDocumentId('igce'),
         },
         {
             id: 'market-research',
             name: 'Market Research Report',
-            status: isSpecsDone ? 'completed' : (isRequirementDone ? 'in-progress' : 'pending'),
+            status: getDocStatus('market-research'),
             description: 'Identify capable vendors',
-            progress: isSpecsDone ? 100 : (isRequirementDone ? 40 : 0),
+            documentId: getDocumentId('market-research'),
         },
         {
             id: 'plan',
             name: 'Acquisition Plan',
-            status: isAllDone ? 'completed' : (isRequirementDone && isValueDone ? 'in-progress' : 'pending'),
+            status: getDocStatus('plan'),
             description: 'Strategy, milestones',
-            progress: isAllDone ? 100 : ((isRequirementDone ? 25 : 0) + (isValueDone ? 25 : 0) + (isFundingDone ? 25 : 0) + (isUrgencyDone ? 25 : 0)),
+            documentId: getDocumentId('plan'),
         },
         {
             id: 'funding',
             name: 'Funding Documentation',
-            status: isFundingDone ? 'completed' : (hasStartedIntake ? 'in-progress' : 'pending'),
+            status: getDocStatus('funding'),
             description: 'Grant number, balance, expiration',
-            progress: isFundingDone ? 100 : (hasStartedIntake ? 20 : 0),
+            documentId: getDocumentId('funding'),
         },
         {
             id: 'urgency',
             name: 'Urgency Justification',
-            status: isUrgencyDone ? 'completed' : (hasStartedIntake ? 'in-progress' : 'pending'),
+            status: getDocStatus('urgency'),
             description: 'Grant expiration date, impact',
-            progress: isUrgencyDone ? 100 : (hasStartedIntake ? 10 : 0),
+            documentId: getDocumentId('urgency'),
         },
     ];
+
+    // Check if all documents are actually generated
+    const isAllDone = documents.every(d => d.status === 'completed');
+
+    if (messageCount === 0 && !isAllDone && !hasStartedIntake) {
+        return null;
+    }
 
     // Calculate overall progress
     const completedCount = documents.filter(d => d.status === 'completed').length;
@@ -97,29 +158,61 @@ export default function DocumentChecklist({ messages, data }: DocumentChecklistP
         return contents[docId] || 'Content not yet generated.';
     };
 
+    // Handle document click - navigate to viewer for completed, show preview for others
+    const handleDocClick = (doc: typeof documents[0]) => {
+        if (doc.status === 'completed' && doc.documentId) {
+            // Open actual document in viewer page (new tab)
+            const params = new URLSearchParams();
+            if (sessionId) params.set('session', sessionId);
+            window.open(`/documents/${doc.documentId}?${params.toString()}`, '_blank');
+        } else {
+            // Show inline preview (template) for non-completed docs
+            setSelectedDoc({
+                id: doc.id,
+                name: doc.name,
+                content: getDocContent(doc.id),
+                isTemplate: true,
+            });
+        }
+    };
+
     const handleDownload = async (format: 'pdf' | 'docx') => {
         setShowExportMenu(false);
+        setIsExporting(true);
         try {
-            const response = await fetch('/api/export', {
+            const token = await getToken();
+            const headers: Record<string, string> = {
+                'Content-Type': 'application/json',
+            };
+            if (token) headers['Authorization'] = `Bearer ${token}`;
+
+            // Generate combined markdown content from all documents
+            const packageTitle = data.requirement || 'Acquisition Package';
+            const allDocContent = documents
+                .map(doc => getDocContent(doc.id))
+                .join('\n\n---\n\n');
+
+            const content = `# ${packageTitle}\n\n**Generated:** ${new Date().toLocaleDateString()}\n**Session:** ${sessionId || 'N/A'}\n\n---\n\n${allDocContent}`;
+
+            const response = await fetch('/api/documents', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
+                headers,
                 body: JSON.stringify({
+                    content,
+                    title: packageTitle,
                     format,
-                    data: data
                 }),
             });
 
             if (!response.ok) {
-                throw new Error('Export failed');
+                throw new Error(`Export failed: ${response.status}`);
             }
 
             const blob = await response.blob();
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `Acquisition_Package_${(data.requirement || 'Package').replace(/\s+/g, '_')}.${format}`;
+            a.download = `Acquisition_Package_${packageTitle.replace(/[^a-z0-9]/gi, '_')}.${format}`;
             document.body.appendChild(a);
             a.click();
             window.URL.revokeObjectURL(url);
@@ -127,6 +220,8 @@ export default function DocumentChecklist({ messages, data }: DocumentChecklistP
         } catch (error) {
             console.error('Download error:', error);
             alert('Failed to download the package. Please try again.');
+        } finally {
+            setIsExporting(false);
         }
     };
 
@@ -159,7 +254,7 @@ export default function DocumentChecklist({ messages, data }: DocumentChecklistP
                 {documents.map((doc, idx) => (
                     <div
                         key={idx}
-                        onClick={() => setSelectedDoc({ id: doc.id, name: doc.name, content: getDocContent(doc.id) })}
+                        onClick={() => handleDocClick(doc)}
                         className={`flex items-start gap-3 p-3 rounded-lg transition-all cursor-pointer group border ${
                             doc.status === 'completed'
                                 ? 'bg-green-50 border-green-200 hover:bg-green-100'
@@ -188,7 +283,11 @@ export default function DocumentChecklist({ messages, data }: DocumentChecklistP
                                         ? 'text-blue-900'
                                         : 'text-gray-900'
                                 }`}>{doc.name}</div>
-                                <Eye className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                {doc.status === 'completed' && doc.documentId ? (
+                                    <ExternalLink className="w-4 h-4 text-green-600 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                ) : (
+                                    <Eye className="w-4 h-4 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                                )}
                             </div>
                             <div className={`text-xs mt-1 ${
                                 doc.status === 'completed'
@@ -197,16 +296,6 @@ export default function DocumentChecklist({ messages, data }: DocumentChecklistP
                                     ? 'text-blue-700'
                                     : 'text-gray-500'
                             }`}>{doc.description}</div>
-                            {doc.status === 'in-progress' && doc.progress > 0 && (
-                                <div className="mt-2">
-                                    <div className="h-1 bg-blue-100 rounded-full overflow-hidden">
-                                        <div
-                                            className="h-full bg-blue-500 rounded-full transition-all duration-500"
-                                            style={{ width: `${doc.progress}%` }}
-                                        />
-                                    </div>
-                                </div>
-                            )}
                         </div>
                     </div>
                 ))}
@@ -236,11 +325,21 @@ export default function DocumentChecklist({ messages, data }: DocumentChecklistP
                         )}
                         <button
                             onClick={() => setShowExportMenu(!showExportMenu)}
-                            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium shadow-md shadow-blue-100 group"
+                            disabled={isExporting}
+                            className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-all font-medium shadow-md shadow-blue-100 group disabled:opacity-70 disabled:cursor-not-allowed"
                         >
-                            <Download className="w-5 h-5 group-hover:translate-y-0.5 transition-transform" />
-                            Export Package
-                            <ChevronDown className={`w-4 h-4 ml-1 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
+                            {isExporting ? (
+                                <>
+                                    <Loader2 className="w-5 h-5 animate-spin" />
+                                    Exporting...
+                                </>
+                            ) : (
+                                <>
+                                    <Download className="w-5 h-5 group-hover:translate-y-0.5 transition-transform" />
+                                    Export Package
+                                    <ChevronDown className={`w-4 h-4 ml-1 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
+                                </>
+                            )}
                         </button>
                     </div>
                 </div>
@@ -278,7 +377,12 @@ export default function DocumentChecklist({ messages, data }: DocumentChecklistP
                             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/50">
                                 <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
                                     <FileText className="w-5 h-5 text-blue-600" />
-                                    Preview: {selectedDoc.name}
+                                    {selectedDoc.isTemplate ? 'Preview: ' : ''}{selectedDoc.name}
+                                    {selectedDoc.isTemplate && (
+                                        <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full ml-2">
+                                            Template
+                                        </span>
+                                    )}
                                 </h3>
                                 <div className="flex items-center gap-2">
                                     <button

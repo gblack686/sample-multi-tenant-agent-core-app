@@ -1,5 +1,6 @@
 'use client';
 
+import { useState, useRef, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
@@ -12,6 +13,7 @@ import {
   LayoutDashboard,
   FlaskConical,
   GitBranch,
+  Pencil,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/auth-context';
 import { useSession } from '@/contexts/session-context';
@@ -38,7 +40,43 @@ export default function SidebarNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, signOut } = useAuth();
-  const { sessions, currentSessionId, isLoading, createNewSession, setCurrentSession } = useSession();
+  const { sessions, currentSessionId, isLoading, createNewSession, setCurrentSession, renameSession } = useSession();
+
+  // Inline rename state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Focus input when editing starts
+  useEffect(() => {
+    if (editingId && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingId]);
+
+  const handleStartEdit = (sessionId: string, currentTitle: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditingId(sessionId);
+    setEditTitle(currentTitle);
+  };
+
+  const handleSaveEdit = () => {
+    if (editingId && editTitle.trim()) {
+      renameSession(editingId, editTitle.trim());
+    }
+    setEditingId(null);
+    setEditTitle('');
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSaveEdit();
+    } else if (e.key === 'Escape') {
+      setEditingId(null);
+      setEditTitle('');
+    }
+  };
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -123,10 +161,15 @@ export default function SidebarNav() {
             ) : (
               <div className="space-y-0.5">
                 {sortedSessions.map((session) => (
-                  <button
+                  <div
                     key={session.id}
-                    onClick={() => { setCurrentSession(session.id); router.push('/chat'); }}
-                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors ${
+                    onClick={() => {
+                      if (editingId !== session.id) {
+                        setCurrentSession(session.id);
+                        router.push('/chat');
+                      }
+                    }}
+                    className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left transition-colors cursor-pointer group ${
                       session.id === currentSessionId
                         ? 'bg-blue-50 text-blue-700'
                         : 'text-gray-600 hover:bg-gray-50'
@@ -136,12 +179,40 @@ export default function SidebarNav() {
                       session.id === currentSessionId ? 'text-blue-500' : 'text-gray-300'
                     }`} />
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate">{session.title}</p>
+                      {editingId === session.id ? (
+                        <input
+                          ref={inputRef}
+                          type="text"
+                          value={editTitle}
+                          onChange={(e) => setEditTitle(e.target.value)}
+                          onBlur={handleSaveEdit}
+                          onKeyDown={handleKeyDown}
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-xs font-medium w-full bg-white border border-blue-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <p
+                            className="text-xs font-medium truncate flex-1"
+                            onDoubleClick={(e) => handleStartEdit(session.id, session.title, e)}
+                            title="Double-click to rename"
+                          >
+                            {session.title}
+                          </p>
+                          <button
+                            onClick={(e) => handleStartEdit(session.id, session.title, e)}
+                            className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-gray-200 rounded transition-opacity shrink-0"
+                            title="Rename chat"
+                          >
+                            <Pencil className="w-2.5 h-2.5 text-gray-400" />
+                          </button>
+                        </div>
+                      )}
                       <p className="text-[10px] text-gray-400 truncate">
                         {formatDate(session.updatedAt)} {session.messageCount > 0 && `• ${session.messageCount} msgs`}
                       </p>
                     </div>
-                  </button>
+                  </div>
                 ))}
               </div>
             )}

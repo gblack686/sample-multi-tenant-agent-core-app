@@ -350,7 +350,7 @@ def markdown_to_pdf(content: str, title: str = "Document") -> bytes:
 
 def _add_table_to_pdf(story, table_data: list, styles):
     """Add a table to the PDF story."""
-    from reportlab.platypus import Table, TableStyle
+    from reportlab.platypus import Table, TableStyle, Paragraph
     from reportlab.lib import colors
     
     if not table_data:

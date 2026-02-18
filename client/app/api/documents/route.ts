@@ -17,12 +17,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const FASTAPI_URL = process.env.FASTAPI_URL || 'http://localhost:8000';
+const DEV_MODE = process.env.DEV_MODE === 'true' || process.env.NODE_ENV === 'development';
 
 export async function GET(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
 
-    if (!authHeader) {
+    // In dev mode, allow requests without auth (backend has its own DEV_MODE bypass)
+    if (!authHeader && !DEV_MODE) {
       return NextResponse.json(
         { error: 'Missing Authorization header' },
         { status: 401 }
@@ -36,12 +38,17 @@ export async function GET(request: NextRequest) {
       ? `${FASTAPI_URL}/api/documents?${queryString}`
       : `${FASTAPI_URL}/api/documents`;
 
+    // Build headers - only include Authorization if present
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+
     const response = await fetch(url, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeader,
-      },
+      headers,
     });
 
     if (!response.ok) {
@@ -79,7 +86,8 @@ export async function POST(request: NextRequest) {
   try {
     const authHeader = request.headers.get('authorization');
 
-    if (!authHeader) {
+    // In dev mode, allow requests without auth (backend has its own DEV_MODE bypass)
+    if (!authHeader && !DEV_MODE) {
       return NextResponse.json(
         { error: 'Missing Authorization header' },
         { status: 401 }
@@ -88,12 +96,17 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json();
 
+    // Build headers - only include Authorization if present
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    if (authHeader) {
+      headers['Authorization'] = authHeader;
+    }
+
     const response = await fetch(`${FASTAPI_URL}/api/documents/export`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeader,
-      },
+      headers,
       body: JSON.stringify(body),
     });
 

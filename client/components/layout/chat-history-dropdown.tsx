@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { ChevronDown, MessageSquare, Plus, Clock, CheckCircle2, Loader2 } from 'lucide-react';
+import { ChevronDown, MessageSquare, Plus, Clock, CheckCircle2, Loader2, Pencil } from 'lucide-react';
 
 export interface ChatSession {
     id: string;
@@ -18,6 +18,7 @@ interface ChatHistoryDropdownProps {
     currentSessionId?: string;
     onSessionSelect: (sessionId: string) => void;
     onNewChat: () => void;
+    onRenameSession?: (sessionId: string, newTitle: string) => void;
     isLoading?: boolean;
 }
 
@@ -26,22 +27,58 @@ export default function ChatHistoryDropdown({
     currentSessionId,
     onSessionSelect,
     onNewChat,
+    onRenameSession,
     isLoading = false,
 }: ChatHistoryDropdownProps) {
     const [isOpen, setIsOpen] = useState(false);
+    const [editingId, setEditingId] = useState<string | null>(null);
+    const [editTitle, setEditTitle] = useState('');
     const dropdownRef = useRef<HTMLDivElement>(null);
+    const inputRef = useRef<HTMLInputElement>(null);
 
     // Close dropdown on outside click
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
             if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
                 setIsOpen(false);
+                setEditingId(null);
             }
         };
 
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    // Focus input when editing starts
+    useEffect(() => {
+        if (editingId && inputRef.current) {
+            inputRef.current.focus();
+            inputRef.current.select();
+        }
+    }, [editingId]);
+
+    const handleStartEdit = (session: ChatSession, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setEditingId(session.id);
+        setEditTitle(session.title);
+    };
+
+    const handleSaveEdit = () => {
+        if (editingId && editTitle.trim() && onRenameSession) {
+            onRenameSession(editingId, editTitle.trim());
+        }
+        setEditingId(null);
+        setEditTitle('');
+    };
+
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === 'Enter') {
+            handleSaveEdit();
+        } else if (e.key === 'Escape') {
+            setEditingId(null);
+            setEditTitle('');
+        }
+    };
 
     const getStatusIcon = (status: ChatSession['status']) => {
         switch (status) {
@@ -114,27 +151,57 @@ export default function ChatHistoryDropdown({
                         ) : (
                             <div className="py-1">
                                 {sortedSessions.map((session) => (
-                                    <button
+                                    <div
                                         key={session.id}
                                         onClick={() => {
-                                            onSessionSelect(session.id);
-                                            setIsOpen(false);
+                                            if (editingId !== session.id) {
+                                                onSessionSelect(session.id);
+                                                setIsOpen(false);
+                                            }
                                         }}
-                                        className={`w-full flex items-start gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors ${
+                                        className={`w-full flex items-start gap-3 px-3 py-2.5 text-left hover:bg-gray-50 transition-colors cursor-pointer group ${
                                             session.id === currentSessionId ? 'bg-blue-50' : ''
                                         }`}
                                     >
-                                        <MessageSquare className={`w-4 h-4 mt-0.5 ${
+                                        <MessageSquare className={`w-4 h-4 mt-0.5 flex-shrink-0 ${
                                             session.id === currentSessionId ? 'text-blue-600' : 'text-gray-400'
                                         }`} />
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-2">
-                                                <p className={`text-sm font-medium truncate ${
-                                                    session.id === currentSessionId ? 'text-blue-600' : 'text-gray-900'
-                                                }`}>
-                                                    {session.title}
-                                                </p>
-                                                {getStatusIcon(session.status)}
+                                                {editingId === session.id ? (
+                                                    <input
+                                                        ref={inputRef}
+                                                        type="text"
+                                                        value={editTitle}
+                                                        onChange={(e) => setEditTitle(e.target.value)}
+                                                        onBlur={handleSaveEdit}
+                                                        onKeyDown={handleKeyDown}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        className="text-sm font-medium w-full bg-white border border-blue-300 rounded px-1.5 py-0.5 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                                    />
+                                                ) : (
+                                                    <>
+                                                        <p
+                                                            className={`text-sm font-medium truncate flex-1 ${
+                                                                session.id === currentSessionId ? 'text-blue-600' : 'text-gray-900'
+                                                            }`}
+                                                            onDoubleClick={(e) => onRenameSession && handleStartEdit(session, e)}
+                                                            title="Double-click to rename"
+                                                        >
+                                                            {session.title}
+                                                        </p>
+                                                        {onRenameSession && (
+                                                            <button
+                                                                onClick={(e) => handleStartEdit(session, e)}
+                                                                className="opacity-0 group-hover:opacity-100 p-0.5 hover:bg-gray-200 rounded transition-opacity"
+                                                                title="Rename chat"
+                                                            >
+                                                                <Pencil className="w-3 h-3 text-gray-400" />
+                                                            </button>
+                                                        )}
+                                                    </>
+                                                )}
+                                                {editingId !== session.id && getStatusIcon(session.status)}
                                             </div>
                                             {session.summary && (
                                                 <p className="text-xs text-gray-500 truncate mt-0.5">
@@ -145,7 +212,7 @@ export default function ChatHistoryDropdown({
                                                 {formatDate(session.updatedAt)} • {session.messageCount} messages
                                             </p>
                                         </div>
-                                    </button>
+                                    </div>
                                 ))}
                             </div>
                         )}
