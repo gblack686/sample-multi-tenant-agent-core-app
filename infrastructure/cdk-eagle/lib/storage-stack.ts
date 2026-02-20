@@ -58,7 +58,7 @@ export class EagleStorageStack extends cdk.Stack {
       tableName: config.documentMetadataTableName,
       partitionKey: { name: 'document_id', type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecovery: true,
+      pointInTimeRecoverySpecification: { pointInTimeRecoveryEnabled: true },
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
@@ -158,12 +158,30 @@ export class EagleStorageStack extends cdk.Stack {
     }));
 
     // ── Cross-stack IAM: Backend (appRole) reads ────────────
-    this.documentBucket.grantRead(appRole);
-    this.metadataTable.grantReadData(appRole);
+    // Construct ARNs from config values to avoid cyclic cross-stack references.
+    // Using CDK construct refs (bucketArn/tableArn) would create CloudFormation
+    // exports from StorageStack referenced by CoreStack, causing a cycle.
+    const bucketArn = `arn:aws:s3:::${config.documentBucketName}`;
+    const tableArn = `arn:aws:dynamodb:${this.region}:${this.account}:table/${config.documentMetadataTableName}`;
+
+    appRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'DocumentBucketRead',
+      actions: ['s3:GetObject', 's3:GetBucketLocation', 's3:ListBucket'],
+      resources: [bucketArn, `${bucketArn}/*`],
+    }));
+
+    appRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'MetadataTableRead',
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+        'dynamodb:BatchGetItem',
+      ],
+      resources: [tableArn, `${tableArn}/index/*`],
+    }));
 
     // ── CloudWatch Alarms ───────────────────────────────────
-    const fnMetric = this.metadataExtractorFn.metric.bind(this.metadataExtractorFn);
-
     new cloudwatch.Alarm(this, 'LambdaErrorAlarm', {
       alarmName: `eagle-metadata-extractor-errors-${config.env}`,
       metric: this.metadataExtractorFn.metricErrors({
