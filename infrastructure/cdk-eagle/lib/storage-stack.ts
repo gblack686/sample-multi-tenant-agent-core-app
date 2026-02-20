@@ -7,13 +7,13 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import { execSync } from 'child_process';
+import * as fs from 'fs';
 import * as path from 'path';
 import { Construct } from 'constructs';
 import { EagleConfig } from '../config/environments';
 
 export interface EagleStorageStackProps extends cdk.StackProps {
   config: EagleConfig;
-  appRole: iam.Role;
 }
 
 export class EagleStorageStack extends cdk.Stack {
@@ -23,7 +23,7 @@ export class EagleStorageStack extends cdk.Stack {
 
   constructor(scope: Construct, id: string, props: EagleStorageStackProps) {
     super(scope, id, props);
-    const { config, appRole } = props;
+    const { config } = props;
 
     // ── S3 Document Bucket ──────────────────────────────────
     this.documentBucket = new s3.Bucket(this, 'DocumentBucket', {
@@ -105,13 +105,16 @@ export class EagleStorageStack extends cdk.Stack {
           local: {
             tryBundle(outputDir: string) {
               try {
-                execSync('pip3 --version');
+                execSync('pip3 --version', { stdio: 'ignore' });
               } catch {
                 return false; // pip not available, fall back to Docker
               }
               const lambdaDir = path.join(__dirname, '..', 'lambda', 'metadata-extraction');
-              execSync(`pip3 install -r ${path.join(lambdaDir, 'requirements.txt')} -t ${outputDir}`);
-              execSync(`cp -r ${lambdaDir}/*.py ${outputDir}`);
+              execSync(`pip3 install -r "${path.join(lambdaDir, 'requirements.txt')}" -t "${outputDir}"`, { stdio: 'inherit' });
+              // Use fs.copyFileSync to avoid Windows shell glob expansion issues with cp -r *.py
+              fs.readdirSync(lambdaDir)
+                .filter((f: string) => f.endsWith('.py'))
+                .forEach((f: string) => fs.copyFileSync(path.join(lambdaDir, f), path.join(outputDir, f)));
               return true;
             },
           },
@@ -156,10 +159,6 @@ export class EagleStorageStack extends cdk.Stack {
         `arn:aws:bedrock:*::foundation-model/google.*`,
       ],
     }));
-
-    // ── Cross-stack IAM: Backend (appRole) reads ────────────
-    this.documentBucket.grantRead(appRole);
-    this.metadataTable.grantReadData(appRole);
 
     // ── CloudWatch Alarms ───────────────────────────────────
     const fnMetric = this.metadataExtractorFn.metric.bind(this.metadataExtractorFn);
