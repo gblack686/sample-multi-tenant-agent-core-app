@@ -139,6 +139,10 @@ cdk-diff:
 cdk-deploy:
     cd {{CDK_DIR}} && npx cdk deploy --all --require-approval never
 
+# Deploy storage stack only (EagleStorageStack)
+cdk-deploy-storage:
+    cd {{CDK_DIR}} && npx cdk deploy EagleStorageStack --require-approval never
+
 # ── Operations ──────────────────────────────────────────────
 
 # Show ECS service health and running task counts
@@ -183,23 +187,9 @@ urls:
     print(f'Frontend: http://{front}'); \
     print(f'Backend:  http://{back}')"
 
-# Verify AWS credentials and service connectivity
+# Verify AWS credentials and service connectivity (all EAGLE resources)
 check-aws:
-    python -c "\
-    import boto3; \
-    sts = boto3.client('sts', region_name='us-east-1'); \
-    identity = sts.get_caller_identity(); \
-    print(f'Identity OK: Account {identity[\"Account\"]}'); \
-    s3 = boto3.client('s3', region_name='us-east-1'); \
-    s3.head_bucket(Bucket='nci-documents'); \
-    print('S3 nci-documents: OK'); \
-    ddb = boto3.client('dynamodb', region_name='us-east-1'); \
-    resp = ddb.describe_table(TableName='eagle'); \
-    print(f'DynamoDB eagle: {resp[\"Table\"][\"TableStatus\"]}'); \
-    ecs = boto3.client('ecs', region_name='us-east-1'); \
-    resp = ecs.describe_services(cluster='eagle-dev', services=['eagle-backend-dev','eagle-frontend-dev']); \
-    [print(f'ECS {s[\"serviceName\"]}: {s[\"runningCount\"]}/{s[\"desiredCount\"]} running') for s in resp['services']]; \
-    print('All checks passed.')"
+    python scripts/check_aws.py
 
 # ── Composite Workflows ────────────────────────────────────
 

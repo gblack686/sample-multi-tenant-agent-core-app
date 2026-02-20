@@ -7,7 +7,6 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import { execSync } from 'child_process';
-import * as fs from 'fs';
 import * as path from 'path';
 import { Construct } from 'constructs';
 import { EagleConfig } from '../config/environments';
@@ -104,18 +103,39 @@ export class EagleStorageStack extends cdk.Stack {
           ],
           local: {
             tryBundle(outputDir: string) {
-              try {
-                execSync('pip3 --version', { stdio: 'ignore' });
-              } catch {
-                return false; // pip not available, fall back to Docker
-              }
+              // Use bundle-lambda.py for cross-platform compatibility.
+              // On Windows, pip installs Windows binary wheels by default — Lambda needs Linux
+              // manylinux wheels. The bundler script detects the host OS and uses
+              // `pip --platform manylinux2014_x86_64 --only-binary :all:` on Windows to ensure
+              // native C extensions (numpy, cryptography, etc.) are Linux-compatible.
+              // See: infrastructure/cdk-eagle/scripts/bundle-lambda.py
+              const bundlerScript = path.join(__dirname, '..', 'scripts', 'bundle-lambda.py');
               const lambdaDir = path.join(__dirname, '..', 'lambda', 'metadata-extraction');
-              execSync(`pip3 install -r "${path.join(lambdaDir, 'requirements.txt')}" -t "${outputDir}"`, { stdio: 'inherit' });
-              // Use fs.copyFileSync to avoid Windows shell glob expansion issues with cp -r *.py
-              fs.readdirSync(lambdaDir)
-                .filter((f: string) => f.endsWith('.py'))
-                .forEach((f: string) => fs.copyFileSync(path.join(lambdaDir, f), path.join(outputDir, f)));
-              return true;
+              const reqsFile = path.join(lambdaDir, 'requirements.txt');
+
+              // Detect Python executable (Windows may not have 'python3' in PATH)
+              let pythonExe = 'python3';
+              try {
+                execSync('python3 --version', { stdio: 'ignore' });
+              } catch {
+                try {
+                  execSync('python --version', { stdio: 'ignore' });
+                  pythonExe = 'python';
+                } catch {
+                  return false; // No Python available, fall back to Docker
+                }
+              }
+
+              try {
+                execSync(
+                  `"${pythonExe}" "${bundlerScript}" "${reqsFile}" "${outputDir}" "${lambdaDir}"`,
+                  { stdio: 'inherit' },
+                );
+                return true;
+              } catch (err) {
+                console.error('[storage-stack] bundle-lambda.py failed:', err);
+                return false; // Fall back to Docker bundling
+              }
             },
           },
         },
@@ -152,11 +172,13 @@ export class EagleStorageStack extends cdk.Stack {
 
     // ── Lambda IAM: Bedrock Marketplace invoke ──────────────
     this.metadataExtractorFn.addToRolePolicy(new iam.PolicyStatement({
-      sid: 'BedrockMarketplaceInvoke',
+      sid: 'BedrockInvoke',
       actions: ['bedrock:InvokeModel'],
       resources: [
-        `arn:aws:bedrock:${this.region}:${this.account}:marketplace-model/*`,
-        `arn:aws:bedrock:*::foundation-model/google.*`,
+        // Cross-region inference profiles (required for Claude 3.5+ on-demand)
+        `arn:aws:bedrock:${this.region}:${this.account}:inference-profile/us.anthropic.*`,
+        // Underlying foundation models (Bedrock routes to these across regions)
+        `arn:aws:bedrock:*::foundation-model/anthropic.*`,
       ],
     }));
 
