@@ -1,18 +1,18 @@
-# EAGLE — Multi-Tenant Amazon Bedrock Agent Core Application
+# EAGLE — Multi-Tenant AI Acquisition Assistant
 
-A multi-tenant AI platform demonstrating **Amazon Bedrock Agent Core Runtime**, **Cognito JWT authentication**, **DynamoDB session storage**, and **granular cost attribution**. Built for the NCI Office of Acquisitions, this application serves as a reference implementation for multi-tenant AI applications on AWS.
+A multi-tenant AI platform built for the **NCI Office of Acquisitions**, using the **Anthropic Python SDK** (routed through **Amazon Bedrock** for model inference), **Cognito JWT authentication**, **DynamoDB session storage**, and **granular cost attribution**. This application serves as a reference implementation for multi-tenant AI applications on AWS.
 
 ## Core Concept
 
-This application demonstrates how to leverage **Amazon Bedrock Agent Core Runtime** to serve multiple tenants from a single agent deployment by passing **tenant IDs at runtime**:
+EAGLE (Enhanced Acquisition Guidance & Lifecycle Engine) uses a **supervisor + subagent architecture** to guide contracting officers through the federal acquisition lifecycle. The backend has two orchestration modes:
 
-1. **Dynamic Tenant Routing**: Pass tenant_id and subscription_tier to Bedrock Agent Core Runtime during each invocation
-2. **Subscription-Based Access Control**: Control feature access based on subscription tier passed in session attributes
-3. **Granular Cost Attribution**: Track and attribute costs per tenant and user
-4. **Multi-Tenant Isolation**: Ensure complete data separation while sharing the same infrastructure
+1. **Anthropic SDK** (`agentic_service.py`): Single system prompt with all skills injected — currently active in `main.py`
+2. **Claude Agent SDK** (`sdk_agentic_service.py`): Supervisor delegates to skill subagents via the `Task` tool, each with a fresh context window — the target architecture
+
+Both modes use **Claude on Amazon Bedrock** for model inference (not Amazon Bedrock AgentCore).
 
 ```
-User Login -> JWT with tenant_id -> Session Attributes -> Bedrock Agent Core Runtime
+User Login -> JWT with tenant_id -> Session Attributes -> Anthropic SDK (via Bedrock)
                                                                |
                                     Tenant-specific response + cost tracking
 ```
@@ -37,12 +37,12 @@ User Login -> JWT with tenant_id -> Session Attributes -> Bedrock Agent Core Run
 ```
 .
 ├── client/                  # Next.js 14+ frontend (App Router, TypeScript, Tailwind)
-├── server/                  # FastAPI backend (Python 3.11+, Bedrock SDK)
+├── server/                  # FastAPI backend (Python 3.11+, Anthropic SDK)
 │   ├── app/                 # Application modules
 │   │   ├── main.py          # FastAPI entry point
 │   │   ├── session_store.py # Unified DynamoDB access layer
-│   │   ├── bedrock_service.py
-│   │   ├── sdk_agentic_service.py  # Agent orchestration with EAGLE plugin
+│   │   ├── agentic_service.py      # Anthropic SDK orchestration (active)
+│   │   ├── sdk_agentic_service.py  # Claude Agent SDK orchestration (subagent target)
 │   │   ├── cognito_auth.py
 │   │   ├── streaming_routes.py
 │   │   ├── cost_attribution.py
@@ -60,8 +60,10 @@ User Login -> JWT with tenant_id -> Session Attributes -> Bedrock Agent Core Run
 │   ├── cdk-eagle/           # Primary CDK stacks (TypeScript)
 │   │   ├── lib/
 │   │   │   ├── core-stack.ts      # VPC, Cognito, IAM, S3/DDB imports
+│   │   │   ├── storage-stack.ts   # Document S3 bucket, metadata DDB, Lambda
 │   │   │   ├── compute-stack.ts   # ECS Fargate, ECR, ALB
-│   │   │   └── cicd-stack.ts      # OIDC + GitHub Actions role
+│   │   │   ├── cicd-stack.ts      # OIDC + GitHub Actions role
+│   │   │   └── eval-stack.ts      # CloudWatch dashboards, alarms, eval metrics
 │   │   ├── config/environments.ts # Per-env config (dev, staging, prod)
 │   │   └── bin/eagle.ts           # CDK app entry point
 │   ├── eval/                # Eval observability CDK stack
@@ -73,6 +75,9 @@ User Login -> JWT with tenant_id -> Session Attributes -> Bedrock Agent Core Run
 │   ├── docker-compose.dev.yml     # Local development
 │   └── scripts/                   # Setup and deployment scripts
 ├── docs/                    # Architecture docs, diagrams, guides
+│   ├── architecture/        # Architecture analysis, reference documents
+│   └── development/
+│       └── meeting-transcripts/   # Meeting notes (Jan-Feb 2026)
 ├── .github/workflows/       # CI/CD (deploy.yml, tests)
 └── .claude/                 # Claude IDE config, experts, specs
 ```
@@ -89,29 +94,37 @@ User Login -> JWT with tenant_id -> Session Attributes -> Bedrock Agent Core Run
 
 ### EAGLE Plugin Architecture
 
-The **EAGLE plugin** (`eagle-plugin/`) defines a supervisor agent with 12 specialist subagents:
+The **EAGLE plugin** (`eagle-plugin/`) defines a supervisor agent with 7 specialist subagents and 5 skills:
 
-| Type | Agents |
-|------|--------|
+| Type | Agents / Skills |
+|------|-----------------|
 | **Supervisor** | Orchestrator — routes queries to appropriate specialists |
 | **Specialist Agents** | legal-counsel, market-intelligence, tech-translator, public-interest, policy-supervisor, policy-librarian, policy-analyst |
 | **Skills** | oa-intake, document-generator, compliance, knowledge-retrieval, tech-review |
 
 Agent definitions use YAML frontmatter in `agent.md` / `SKILL.md` files, auto-discovered by `server/eagle_skill_constants.py` at runtime.
 
+### AI Orchestration
+
+The backend uses the **Anthropic Python SDK** (`anthropic>=0.40.0`) for all LLM interactions. When deployed on AWS, requests are routed through **Amazon Bedrock** for model inference via the `USE_BEDROCK=true` environment variable — this uses Bedrock's model access, not a separate agent service.
+
+The advanced orchestration path (`sdk_agentic_service.py`) uses the **Claude Agent SDK** to implement a supervisor/subagent pattern where each skill gets its own context window, enabling better separation of concerns for complex multi-step acquisition workflows.
+
 ### AWS Infrastructure (CDK)
 
-Three CDK stacks manage all AWS resources:
+Five CDK stacks manage all AWS resources:
 
 | Stack | Resources |
 |-------|-----------|
 | **EagleCoreStack** | VPC (2 AZ, NAT), Cognito User Pool, IAM app role, S3/DDB imports, CloudWatch |
+| **EagleStorageStack** | Document S3 bucket, metadata DynamoDB table, Lambda metadata extractor |
 | **EagleComputeStack** | ECR repos, ECS Fargate cluster, backend ALB (internal), frontend ALB (public), auto-scaling |
 | **EagleCiCdStack** | GitHub OIDC provider, deploy role with scoped IAM policies |
+| **EagleEvalStack** | CloudWatch dashboards, alarms, SNS alerts, eval metrics namespace |
 
 ### System Flow
 ```
-JWT Token -> Tenant Context -> Session Attributes -> Bedrock Agent Core -> Supervisor -> Subagent
+JWT Token -> Tenant Context -> Session Attributes -> Anthropic SDK (Bedrock) -> Supervisor -> Subagent
                                                           |
                                                    Observability Traces -> DynamoDB + CloudWatch
 ```
@@ -122,17 +135,18 @@ JWT Token -> Tenant Context -> Session Attributes -> Bedrock Agent Core -> Super
 1. **AWS Account** with appropriate permissions
 2. **AWS CLI** installed and configured (`aws configure`)
 3. **AWS CDK CLI** installed (`npm install -g aws-cdk`)
-4. **Bedrock Model Access**: Request access to foundation models in AWS Console
-5. **Bedrock Agent Core Runtime**: Ensure Bedrock Agent features are enabled in your region
+4. **Bedrock Model Access**: Request access to Anthropic Claude models in the AWS Console (Bedrock → Model access)
 
 ### Required AWS Services
-- **Amazon Bedrock**: Agent Core Runtime with foundation model access
+- **Amazon Bedrock**: Foundation model access (Claude via Anthropic provider)
 - **Amazon Cognito**: User Pool with custom attributes (`tenant_id`, `subscription_tier`)
-- **Amazon DynamoDB**: Unified `eagle` table (single-table design)
+- **Amazon DynamoDB**: Unified `eagle` table (single-table design) + document metadata table
 - **Amazon ECS Fargate**: Container compute for backend and frontend
 - **Amazon ECR**: Container image registries
-- **Amazon S3**: Document storage (`nci-documents` bucket)
+- **Amazon S3**: Document storage (`nci-documents` bucket + `eagle-documents` bucket)
+- **AWS Lambda**: Document metadata extraction (triggered by S3 events)
 - **AWS IAM**: OIDC federation for GitHub Actions CI/CD
+- **Amazon CloudWatch**: Eval dashboards, alarms, custom metrics
 
 ### Development Tools
 - **Node.js 20+** (frontend, CDK)
@@ -162,7 +176,9 @@ This creates:
 - ECS Fargate cluster with backend and frontend services
 - ECR repositories for container images
 - Internal ALB (backend) and public ALB (frontend)
+- Document storage bucket with Lambda metadata extractor
 - GitHub Actions OIDC federation for CI/CD
+- CloudWatch eval dashboards and alarms
 - IAM roles with least-privilege policies
 
 #### Step 3: Build and Push Container Images
@@ -270,7 +286,7 @@ Authentication uses GitHub OIDC federation (no static IAM keys).
 ### Tenant Isolation
 - **Session IDs**: `{tenant_id}-{subscription_tier}-{user_id}-{session_id}`
 - **DynamoDB Partitioning**: All data partitioned by tenant_id via PK/SK patterns
-- **Bedrock Agent Core Context**: Tenant information passed in session attributes
+- **Runtime Context**: Tenant information passed as session attributes to the Anthropic SDK
 - **Admin Access**: Cognito Groups for tenant-specific admin privileges
 
 ## Data Storage
@@ -302,7 +318,7 @@ All data stored in the unified `eagle` table using PK/SK composite keys:
 
 ### Authentication Required
 ```
-POST /api/chat                                    # Chat with Bedrock Agent Core
+POST /api/chat                                    # Chat with EAGLE agent
 POST /api/sessions                                # Create session
 GET  /api/tenants/{tenant_id}/sessions            # List sessions
 GET  /api/tenants/{tenant_id}/usage               # Usage metrics
@@ -353,3 +369,4 @@ terraform destroy
 - **Cognito**: Free for first 50,000 monthly active users
 - **EAGLE Plugin**: Agent/skill definitions in `eagle-plugin/` are the single source of truth
 - **CDK Stacks**: Deploy via `infrastructure/cdk-eagle/` — the old Python CDK (`infrastructure/cdk/`) is deprecated
+- **Meeting Notes**: Available in `docs/development/meeting-transcripts/` (Jan–Feb 2026)
