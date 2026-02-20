@@ -1,8 +1,21 @@
-# EAGLE — Multi-Tenant AI Agent Platform
+# EAGLE — Multi-Tenant AI Acquisition Assistant
 
-A multi-tenant AI platform built on **Claude SDK**, **Amazon Bedrock**, **Cognito JWT authentication**, **DynamoDB single-table design**, and **ECS Fargate**. Built for the NCI Office of Acquisitions as a reference implementation for multi-tenant AI applications on AWS.
+A multi-tenant AI platform built for the **NCI Office of Acquisitions**, using the **Anthropic Python SDK** (routed through **Amazon Bedrock** for model inference), **Cognito JWT authentication**, **DynamoDB session storage**, and **granular cost attribution**. This application serves as a reference implementation for multi-tenant AI applications on AWS.
 
 ## Quick Start
+
+EAGLE (Enhanced Acquisition Guidance & Lifecycle Engine) uses a **supervisor + subagent architecture** to guide contracting officers through the federal acquisition lifecycle. The backend has two orchestration modes:
+
+1. **Anthropic SDK** (`agentic_service.py`): Single system prompt with all skills injected — currently active in `main.py`
+2. **Claude Agent SDK** (`sdk_agentic_service.py`): Supervisor delegates to skill subagents via the `Task` tool, each with a fresh context window — the target architecture
+
+Both modes use **Claude on Amazon Bedrock** for model inference (not Amazon Bedrock AgentCore).
+
+```
+User Login -> JWT with tenant_id -> Session Attributes -> Anthropic SDK (via Bedrock)
+                                                               |
+                                    Tenant-specific response + cost tracking
+```
 
 ### Prerequisites
 
@@ -88,16 +101,55 @@ The **EAGLE plugin** (`eagle-plugin/`) is the single source of truth for all age
 | **Specialist Agents** | 7 | legal-counsel, market-intelligence, tech-translator, public-interest, policy-supervisor, policy-librarian, policy-analyst |
 | **Skills** | 5 | oa-intake, document-generator, compliance, knowledge-retrieval, tech-review |
 
-### AWS Infrastructure (4 CDK Stacks)
+### AI Orchestration
 
-All stacks in `infrastructure/cdk-eagle/`:
+The backend uses the **Anthropic Python SDK** (`anthropic>=0.40.0`) for all LLM interactions. When deployed on AWS, requests are routed through **Amazon Bedrock** for model inference via the `USE_BEDROCK=true` environment variable — this uses Bedrock's model access, not a separate agent service.
+
+The advanced orchestration path (`sdk_agentic_service.py`) uses the **Claude Agent SDK** to implement a supervisor/subagent pattern where each skill gets its own context window, enabling better separation of concerns for complex multi-step acquisition workflows.
+
+### AWS Infrastructure (CDK)
+
+Five CDK stacks manage all AWS resources:
 
 | Stack | Resources |
 |-------|-----------|
-| **EagleCiCdStack** | GitHub OIDC provider, deploy role |
-| **EagleCoreStack** | VPC (2 AZ, 1 NAT), Cognito User Pool, DynamoDB table, IAM app role, S3 import |
+| **EagleCoreStack** | VPC (2 AZ, NAT), Cognito User Pool, IAM app role, S3/DDB imports, CloudWatch |
+| **EagleStorageStack** | Document S3 bucket, metadata DynamoDB table, Lambda metadata extractor |
 | **EagleComputeStack** | ECR repos, ECS Fargate cluster, backend ALB (internal), frontend ALB (public), auto-scaling |
-| **EagleEvalStack** | S3 eval artifacts, CloudWatch dashboard + alarm, SNS alerts |
+| **EagleCiCdStack** | GitHub OIDC provider, deploy role with scoped IAM policies |
+| **EagleEvalStack** | CloudWatch dashboards, alarms, SNS alerts, eval metrics namespace |
+
+### System Flow
+```
+JWT Token -> Tenant Context -> Session Attributes -> Anthropic SDK (Bedrock) -> Supervisor -> Subagent
+                                                          |
+                                                   Observability Traces -> DynamoDB + CloudWatch
+```
+
+## Prerequisites
+
+### AWS Account Requirements
+1. **AWS Account** with appropriate permissions
+2. **AWS CLI** installed and configured (`aws configure`)
+3. **AWS CDK CLI** installed (`npm install -g aws-cdk`)
+4. **Bedrock Model Access**: Request access to Anthropic Claude models in the AWS Console (Bedrock → Model access)
+
+### Required AWS Services
+- **Amazon Bedrock**: Foundation model access (Claude via Anthropic provider)
+- **Amazon Cognito**: User Pool with custom attributes (`tenant_id`, `subscription_tier`)
+- **Amazon DynamoDB**: Unified `eagle` table (single-table design) + document metadata table
+- **Amazon ECS Fargate**: Container compute for backend and frontend
+- **Amazon ECR**: Container image registries
+- **Amazon S3**: Document storage (`nci-documents` bucket + `eagle-documents` bucket)
+- **AWS Lambda**: Document metadata extraction (triggered by S3 events)
+- **AWS IAM**: OIDC federation for GitHub Actions CI/CD
+- **Amazon CloudWatch**: Eval dashboards, alarms, custom metrics
+
+### Development Tools
+- **Node.js 20+** (frontend, CDK)
+- **Python 3.11+** (backend)
+- **Docker** (container builds)
+- **Git**
 
 ### Environment Tiers
 
@@ -112,41 +164,147 @@ All stacks in `infrastructure/cdk-eagle/`:
 
 ```
 .
-├── client/                  # Next.js 14+ frontend (App Router, Tailwind, standalone output)
-├── server/                  # FastAPI backend (Python 3.11+, Claude SDK)
-│   ├── app/
-│   │   ├── main.py          # FastAPI routes + middleware
-│   │   ├── sdk_agentic_service.py  # Claude SDK agent orchestration
-│   │   ├── session_store.py # Unified DynamoDB access (eagle table)
-│   │   ├── cognito_auth.py  # JWT → tenant context
-│   │   ├── streaming_routes.py  # SSE streaming
-│   │   ├── cost_attribution.py  # Per-tenant cost tracking
-│   │   └── document_export.py   # PDF/Word export
-│   ├── tests/
-│   │   ├── test_eagle_sdk_eval.py   # Eval suite (28 tests)
-│   │   └── eval_aws_publisher.py    # CloudWatch/S3 publish
-│   └── eagle_skill_constants.py     # Auto-discovery from plugin
-├── eagle-plugin/            # Agent/skill source of truth
-│   ├── plugin.json          # Manifest
-│   ├── agents/              # 8 agents (supervisor + 7 specialists)
-│   ├── skills/              # 5 skills with YAML frontmatter
-│   └── diagrams/            # Use case flow diagrams
+├── client/                  # Next.js 14+ frontend (App Router, TypeScript, Tailwind)
+├── server/                  # FastAPI backend (Python 3.11+, Anthropic SDK)
+│   ├── app/                 # Application modules
+│   │   ├── main.py          # FastAPI entry point
+│   │   ├── session_store.py # Unified DynamoDB access layer
+│   │   ├── agentic_service.py      # Anthropic SDK orchestration (active)
+│   │   ├── sdk_agentic_service.py  # Claude Agent SDK orchestration (subagent target)
+│   │   ├── cognito_auth.py
+│   │   ├── streaming_routes.py
+│   │   ├── cost_attribution.py
+│   │   └── subscription_service.py
+│   ├── tests/               # Eval suite (28 tests)
+│   ├── config.py
+│   ├── run.py
+│   └── requirements.txt
+├── eagle-plugin/            # EAGLE plugin (single source of truth)
+│   ├── agents/              # 8 agent directories with YAML frontmatter
+│   ├── skills/              # 5 skill directories with YAML frontmatter
+│   ├── plugin.json          # Plugin manifest
+│   └── diagrams/            # Architecture diagrams
 ├── infrastructure/
-│   └── cdk-eagle/           # CDK stacks (TypeScript)
-│       ├── lib/             # core, compute, cicd, eval stacks
-│       ├── config/environments.ts
-│       └── bin/eagle.ts
+│   ├── cdk-eagle/           # Primary CDK stacks (TypeScript)
+│   │   ├── lib/
+│   │   │   ├── core-stack.ts      # VPC, Cognito, IAM, S3/DDB imports
+│   │   │   ├── storage-stack.ts   # Document S3 bucket, metadata DDB, Lambda
+│   │   │   ├── compute-stack.ts   # ECS Fargate, ECR, ALB
+│   │   │   ├── cicd-stack.ts      # OIDC + GitHub Actions role
+│   │   │   └── eval-stack.ts      # CloudWatch dashboards, alarms, eval metrics
+│   │   ├── config/environments.ts # Per-env config (dev, staging, prod)
+│   │   └── bin/eagle.ts           # CDK app entry point
+│   ├── eval/                # Eval observability CDK stack
+│   └── terraform/           # Legacy Terraform reference
 ├── deployment/
-│   ├── docker/              # Dockerfile.backend + Dockerfile.frontend
-│   └── docker-compose.dev.yml
-├── scripts/                 # Deployment + setup scripts
-├── docs/                    # Architecture docs + guides
-├── .github/workflows/       # CI/CD (deploy.yml)
-├── Justfile                 # Unified task runner
-└── .claude/                 # Expert system, specs, commands
+│   ├── docker/
+│   │   ├── Dockerfile.backend     # Python backend container
+│   │   └── Dockerfile.frontend    # Next.js standalone container
+│   ├── docker-compose.dev.yml     # Local development
+│   └── scripts/                   # Setup and deployment scripts
+├── docs/                    # Architecture docs, diagrams, guides
+│   ├── architecture/        # Architecture analysis, reference documents
+│   └── development/
+│       └── meeting-transcripts/   # Meeting notes (Jan-Feb 2026)
+├── .github/workflows/       # CI/CD (deploy.yml, tests)
+└── .claude/                 # Claude IDE config, experts, specs
 ```
 
 ## Deployment Guide
+
+### Option A: CDK Infrastructure Deployment (Recommended)
+
+#### Step 1: Bootstrap CDK
+```bash
+cd infrastructure/cdk-eagle
+npm ci
+npx cdk bootstrap aws://ACCOUNT_ID/us-east-1
+```
+
+#### Step 2: Deploy All Stacks
+```bash
+npx cdk deploy --all --outputs-file outputs.json
+```
+
+This creates:
+- VPC with public and private subnets
+- Cognito User Pool (`eagle-users-dev`) with custom attributes
+- ECS Fargate cluster with backend and frontend services
+- ECR repositories for container images
+- Internal ALB (backend) and public ALB (frontend)
+- Document storage bucket with Lambda metadata extractor
+- GitHub Actions OIDC federation for CI/CD
+- CloudWatch eval dashboards and alarms
+- IAM roles with least-privilege policies
+
+#### Step 3: Build and Push Container Images
+```bash
+# Login to ECR
+aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
+
+# Build and push backend
+docker build -f deployment/docker/Dockerfile.backend -t ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/eagle-backend-dev:latest .
+docker push ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/eagle-backend-dev:latest
+
+# Build and push frontend
+docker build -f deployment/docker/Dockerfile.frontend \
+  --build-arg NEXT_PUBLIC_COGNITO_USER_POOL_ID=<from-outputs> \
+  --build-arg NEXT_PUBLIC_COGNITO_CLIENT_ID=<from-outputs> \
+  -t ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/eagle-frontend-dev:latest .
+docker push ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com/eagle-frontend-dev:latest
+```
+
+#### Step 4: Force New ECS Deployment
+```bash
+aws ecs update-service --cluster eagle-dev --service eagle-backend-dev --force-new-deployment
+aws ecs update-service --cluster eagle-dev --service eagle-frontend-dev --force-new-deployment
+```
+
+After the first manual deploy, subsequent pushes to `main` trigger the GitHub Actions pipeline automatically.
+
+#### Step 5: Set GitHub Secret
+Add the `DEPLOY_ROLE_ARN` output from the CiCd stack as a GitHub repository secret for CI/CD.
+
+### Option B: Local Development
+
+```bash
+# Backend
+cd server
+python -m venv venv
+source venv/bin/activate  # Windows: venv\Scripts\activate
+pip install -r requirements.txt
+
+# Create .env
+cat > .env << EOF
+COGNITO_USER_POOL_ID=<your-pool-id>
+COGNITO_CLIENT_ID=<your-client-id>
+EAGLE_SESSIONS_TABLE=eagle
+AWS_REGION=us-east-1
+DEV_MODE=true
+EOF
+
+python run.py
+# Backend available at http://localhost:8000
+
+# Frontend (separate terminal)
+cd client
+npm install
+npm run dev
+# Frontend available at http://localhost:3000
+```
+
+### Option C: Docker Compose (Local)
+
+```bash
+cd deployment
+docker compose -f docker-compose.dev.yml up
+# Backend: http://localhost:8000
+# Frontend: http://localhost:3000
+```
+
+## CDK Environment Configuration
+
+Environments are defined in `infrastructure/cdk-eagle/config/environments.ts`.
 
 ### Requirements for a New AWS Account
 
@@ -335,7 +493,29 @@ Authentication uses GitHub OIDC federation — no static IAM keys.
 
 ## Data Model
 
-### DynamoDB Single-Table Design (`eagle`)
+### JWT Token Structure
+```json
+{
+  "sub": "user-uuid",
+  "email": "user@company.com",
+  "custom:tenant_id": "acme-corp",
+  "custom:subscription_tier": "premium",
+  "cognito:groups": ["acme-corp-admins"],
+  "exp": 1703123456
+}
+```
+
+### Tenant Isolation
+- **Session IDs**: `{tenant_id}-{subscription_tier}-{user_id}-{session_id}`
+- **DynamoDB Partitioning**: All data partitioned by tenant_id via PK/SK patterns
+- **Runtime Context**: Tenant information passed as session attributes to the Anthropic SDK
+- **Admin Access**: Cognito Groups for tenant-specific admin privileges
+
+## Data Storage
+
+### DynamoDB Single-Table Design
+
+All data stored in the unified `eagle` table using PK/SK composite keys:
 
 | Entity | PK Pattern | SK Pattern |
 |--------|-----------|------------|
@@ -370,6 +550,17 @@ Session IDs encode tenant context: `{tenant_id}-{tier}-{user_id}-{session_id}`
 | Session Duration | 30 min | 60 min | 240 min |
 
 ## API Reference
+
+### Authentication Required
+```
+POST /api/chat                                    # Chat with EAGLE agent
+POST /api/sessions                                # Create session
+GET  /api/tenants/{tenant_id}/sessions            # List sessions
+GET  /api/tenants/{tenant_id}/usage               # Usage metrics
+GET  /api/tenants/{tenant_id}/subscription        # Subscription info
+GET  /api/tenants/{tenant_id}/costs               # Cost reports
+GET  /api/health                                  # Health check
+```
 
 ### Core
 
@@ -454,3 +645,7 @@ aws ecr delete-repository --repository-name eagle-frontend-dev --force
 | ECS Fargate | Per vCPU + memory per second |
 | Cognito | Free for first 50K MAU |
 | S3 | Standard storage + requests |
+
+- **EAGLE Plugin**: Agent/skill definitions in `eagle-plugin/` are the single source of truth
+- **CDK Stacks**: Deploy via `infrastructure/cdk-eagle/` — the old Python CDK (`infrastructure/cdk/`) is deprecated
+- **Meeting Notes**: Available in `docs/development/meeting-transcripts/` (Jan-Feb 2026)
