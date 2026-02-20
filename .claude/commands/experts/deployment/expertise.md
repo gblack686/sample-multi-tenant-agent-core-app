@@ -4,7 +4,7 @@ parent: "[[deployment/_index]]"
 file-type: expertise
 human_reviewed: false
 tags: [expert-file, mental-model, deployment, aws, cdk]
-last_updated: 2026-02-18T12:15:00
+last_updated: 2026-02-20T16:30:00
 ---
 
 # Deployment Expertise (Complete Mental Model)
@@ -17,15 +17,16 @@ last_updated: 2026-02-18T12:15:00
 
 ### Provisioning Model
 
-Infrastructure is managed by **4 CDK stacks** in `infrastructure/cdk-eagle/` (TypeScript). Some resources (S3 `nci-documents`, DynamoDB `eagle`, Bedrock access) were manually provisioned and are imported by CDK.
+Infrastructure is managed by **5 CDK stacks** in `infrastructure/cdk-eagle/` (TypeScript). Some resources (S3 `nci-documents`, DynamoDB `eagle`, Bedrock access) were manually provisioned and are imported by CDK.
 
 ```
-Provisioning: CDK-managed (4 stacks) + manually-created imported resources
+Provisioning: CDK-managed (5 stacks) + manually-created imported resources
 Region: us-east-1
 Account: 274487662938
 CDK: infrastructure/cdk-eagle/ (TypeScript)
   - EagleCiCdStack:    GitHub Actions OIDC + deploy role
   - EagleCoreStack:    VPC, Cognito, IAM app role, imports S3/DDB
+  - EagleStorageStack: Document S3 bucket, metadata DynamoDB, Lambda extractor  ← NEW
   - EagleComputeStack: ECR repos, ECS Fargate, ALB, auto-scaling
   - EagleEvalStack:    S3 eval artifacts, CloudWatch dashboard, SNS alerts
 CI/CD: GitHub Actions (OIDC → ECR push → ECS deploy)
@@ -66,6 +67,9 @@ Docker: Dockerfile.backend + Dockerfile.frontend in deployment/docker/
 | ECS `eagle-frontend-dev` | Frontend service (1 task) | CDK (EagleComputeStack) |
 | ALB (frontend) | Public-facing | CDK (EagleComputeStack) |
 | ALB (backend) | Internal | CDK (EagleComputeStack) |
+| S3 `eagle-documents-dev` | Document storage (new) | CDK (EagleStorageStack) |
+| DynamoDB `eagle-document-metadata-dev` | Document metadata (3 GSIs) | CDK (EagleStorageStack) |
+| Lambda `eagle-metadata-extractor-dev` | S3 event → Bedrock extraction | CDK (EagleStorageStack) |
 | S3 `eagle-eval-artifacts` | Eval results archive | CDK (EagleEvalStack) |
 | SNS `eagle-eval-alerts-dev` | Eval alerting | CDK (EagleEvalStack) |
 | CW Dashboard `EAGLE-Eval-Dashboard-dev` | Eval metrics | CDK (EagleEvalStack) |
@@ -310,7 +314,7 @@ The `client/` directory uses API routes (`app/api/`), SSR, and Cognito auth — 
 
 ### Active CDK Stacks (infrastructure/cdk-eagle/)
 
-All 4 stacks live in `infrastructure/cdk-eagle/` and deploy from `bin/eagle.ts`.
+All 5 stacks live in `infrastructure/cdk-eagle/` and deploy from `bin/eagle.ts`.
 
 #### EagleCiCdStack (independent)
 
@@ -346,6 +350,21 @@ Resources:
   - Frontend Service: 256 CPU / 512 MB, port 3000, public ALB
   - Auto-scaling: 1-4 tasks (CPU target 70%)
 Outputs: eagle-backend-repo-uri-dev, eagle-frontend-repo-uri-dev, eagle-cluster-name-dev
+```
+
+#### EagleStorageStack (independent — no cross-stack deps)
+
+```
+File: lib/storage-stack.ts
+Resources:
+  - S3 Bucket: eagle-documents-dev (versioned, SSE-S3, CORS, lifecycle rules, RETAIN)
+  - DynamoDB: eagle-document-metadata-dev (3 GSIs: primary_topic, primary_agent, document_type)
+  - Lambda: eagle-metadata-extractor-dev (Python 3.12, 512MB, 120s, X-Ray tracing)
+  - S3 Event Notifications: .txt/.md/.pdf/.doc/.docx → Lambda
+  - CW Alarms: errors >= 3 / p99 duration >= 80% timeout / throttles >= 1
+  - Lambda Log Group: /eagle/lambda/metadata-extraction-dev
+Outputs: eagle-document-bucket-name-dev, eagle-metadata-table-name-dev, eagle-metadata-extractor-fn-dev
+Note: appRole access granted via static ARNs in EagleCoreStack (no cross-stack token cycle)
 ```
 
 #### EagleEvalStack (independent)
@@ -935,9 +954,10 @@ npm install
 # Verify templates compile
 npx cdk synth
 
-# Deploy all 4 stacks (CiCd and Eval are independent, Core before Compute)
+# Deploy all 5 stacks (CiCd, Storage, Eval are independent; Core before Compute)
 npx cdk deploy EagleCiCdStack --require-approval never
 npx cdk deploy EagleCoreStack --require-approval never
+npx cdk deploy EagleStorageStack --require-approval never
 npx cdk deploy EagleComputeStack --require-approval never
 npx cdk deploy EagleEvalStack --require-approval never
 
@@ -1042,6 +1062,11 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 ## Learnings
 
 ### patterns_that_work
+- Cherry-picking from a separate GitHub repo: accept invitation via `gh api user/repository_invitations` (no leading slash on Windows), add remote, `git fetch`, then `git cherry-pick {sha}` (discovered: 2026-02-20, component: git workflow)
+- CDK Lambda local bundler with `fs.readdirSync().filter().forEach(fs.copyFileSync)` is fully cross-platform — avoids shell glob expansion failures on Windows/MSYS (discovered: 2026-02-20, component: EagleStorageStack Lambda bundler)
+- Granting cross-stack IAM access via **static ARN strings from config** (e.g., `arn:aws:s3:::${config.documentBucketName}`) in the role's own stack keeps IAM policy self-contained and avoids cross-stack token references entirely (discovered: 2026-02-20, component: EagleCoreStack/EagleStorageStack)
+- Making a new CDK stack independent (no `addDependency`, no cross-stack props) eliminates all cyclic dependency risk — `EagleStorageStack` deploys standalone with no deps on Core (discovered: 2026-02-20, component: EagleStorageStack)
+- CDK `npm run build && npx cdk synth --quiet` as a two-step gate: TypeScript compiler catches type errors first, then synth validates CloudFormation template generation (discovered: 2026-02-20, component: infrastructure/cdk-eagle)
 - Manual provisioning works for dev/prototyping but doesn't scale
 - boto3 inline checks (like check-aws command) give instant connectivity feedback
 - Hardcoded region `us-east-1` avoids misconfiguration across tools
@@ -1059,6 +1084,9 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 - Internal just recipes prefixed with `_` stay hidden from `just --list` — clean separation of public and private commands (discovered: 2026-02-18, component: Justfile)
 
 ### patterns_to_avoid
+- Don't call `bucket.grantRead(role)` or `table.grantReadData(role)` when the role is in a different stack that the current stack depends on — this creates a circular dependency (role's stack → resource's stack implicitly, while resource's stack → role's stack explicitly). Use static ARN strings in the role's stack instead (discovered: 2026-02-20, component: EagleStorageStack/EagleCoreStack)
+- Don't use `cp -r path/*.py outputDir` in CDK Lambda local bundlers on Windows — the shell glob fails in MSYS/Git Bash. Use `fs.readdirSync().filter().forEach(fs.copyFileSync)` instead (discovered: 2026-02-20, component: EagleStorageStack Lambda bundler)
+- Don't use leading slash in `gh api` calls on Windows/Git Bash — MSYS rewrites `/user/...` as `C:/Program Files/Git/user/...`. Use `gh api user/repository_invitations` (no leading slash) (discovered: 2026-02-20, component: GitHub CLI)
 - Don't create new CDK resources that conflict with existing manual resources
 - Don't use `Vpc.fromLookup()` in CI/CD pipelines (synthesis-time API call)
 - Don't forget HOSTNAME=0.0.0.0 for containerized Next.js
@@ -1071,6 +1099,9 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 - Don't hardcode ALB URLs in task runners — they change on redeployment. Fetch dynamically from `describe_load_balancers()` (discovered: 2026-02-18, component: Justfile)
 
 ### common_issues
+- CDK circular dependency `Stack A depends on Stack B, Stack B depends on Stack A`: caused by cross-stack `grantRead(role)` where the role is in the other stack. Fix: use `addToPolicy` with static ARN strings in the role's own stack (component: EagleCoreStack/EagleStorageStack, 2026-02-20)
+- CDK Lambda local bundler `cp -r path/*.py outputDir` fails on Windows with `cannot stat '/*.py'`: MSYS path rewriting mangles the glob. Fix: use Node.js `fs.readdirSync().copyFileSync()` (component: EagleStorageStack, 2026-02-20)
+- `gh api /user/repository_invitations` fails on Windows with `invalid API endpoint "C:/Program Files/Git/..."`: MSYS rewrites leading slash. Fix: drop the leading slash → `gh api user/repository_invitations` (component: GitHub CLI, 2026-02-20)
 - AWS credentials expire or are not configured -> all services fail
 - S3 bucket name globally unique constraint -> can't reuse names across accounts
 - CDK bootstrap missing -> deploy fails with cryptic asset error
@@ -1081,6 +1112,10 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 - Docker context transfer is ~800MB+ without .dockerignore: ensure `.dockerignore` excludes `node_modules`, `.next`, `.git`, `data/` (component: Dockerfile.frontend)
 
 ### tips
+- When cherry-picking from a separate org's repo: `gh api user/repository_invitations` (no leading slash) → `git remote add {name} {url}` → `git fetch {name}` → `git cherry-pick {sha}` → `git push`
+- New CDK stacks: design as independent first (no cross-stack props). Add dependency props only when truly needed, and always check if the grant direction creates a cycle before adding them
+- For cross-stack IAM access where a cycle would form: put the policy in the **role's stack** using static `config.*Name` ARN strings — no tokens, no cycle, no `addDependency` needed
+- `npx cdk synth --quiet` suppresses template output for cleaner synth validation; omit `--quiet` to see full template
 - Run `/experts:deployment:maintenance` before any deployment to verify connectivity
 - Tag all CDK resources with Project=eagle and ManagedBy=cdk for cost tracking
 - Use OIDC for GitHub Actions instead of static IAM keys (more secure, no rotation needed)
