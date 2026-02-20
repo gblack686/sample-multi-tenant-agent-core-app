@@ -14,6 +14,8 @@ export interface EagleComputeStackProps extends cdk.StackProps {
   appRole: iam.Role;
   userPoolId: string;
   userPoolClientId: string;
+  documentBucketName: string;
+  metadataTableName: string;
 }
 
 export class EagleComputeStack extends cdk.Stack {
@@ -74,6 +76,8 @@ export class EagleComputeStack extends cdk.Stack {
         DEV_MODE: 'false',
         COGNITO_USER_POOL_ID: props.userPoolId,
         COGNITO_CLIENT_ID: props.userPoolClientId,
+        DOCUMENT_BUCKET: props.documentBucketName,
+        METADATA_TABLE: props.metadataTableName,
         APP_HOST: '0.0.0.0',
         APP_PORT: '8000',
       },
