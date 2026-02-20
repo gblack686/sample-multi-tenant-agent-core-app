@@ -3,6 +3,7 @@ import 'source-map-support/register';
 import * as cdk from 'aws-cdk-lib';
 import { EagleCoreStack } from '../lib/core-stack';
 import { EagleComputeStack } from '../lib/compute-stack';
+import { EagleStorageStack } from '../lib/storage-stack';
 import { EagleCiCdStack } from '../lib/cicd-stack';
 import { EagleEvalStack } from '../lib/eval-stack';
 import { DEV_CONFIG } from '../config/environments';
@@ -24,7 +25,16 @@ const core = new EagleCoreStack(app, 'EagleCoreStack', {
   description: 'EAGLE Core — VPC, Cognito, IAM, storage imports',
 });
 
-// Compute stack depends on Core for VPC, IAM role, Cognito IDs
+// Storage stack depends on Core for appRole
+const storage = new EagleStorageStack(app, 'EagleStorageStack', {
+  env,
+  config: DEV_CONFIG,
+  appRole: core.appRole,
+  description: 'EAGLE Storage — Document bucket, metadata DynamoDB, extraction Lambda',
+});
+storage.addDependency(core);
+
+// Compute stack depends on Core for VPC, IAM role, Cognito IDs + Storage for bucket/table names
 const compute = new EagleComputeStack(app, 'EagleComputeStack', {
   env,
   config: DEV_CONFIG,
@@ -32,9 +42,12 @@ const compute = new EagleComputeStack(app, 'EagleComputeStack', {
   appRole: core.appRole,
   userPoolId: core.userPool.userPoolId,
   userPoolClientId: core.userPoolClient.userPoolClientId,
+  documentBucketName: storage.documentBucket.bucketName,
+  metadataTableName: storage.metadataTable.tableName,
   description: 'EAGLE Compute — ECS Fargate, ECR, ALB',
 });
 compute.addDependency(core);
+compute.addDependency(storage);
 
 // Eval stack is independent — no cross-stack dependencies
 const evalStack = new EagleEvalStack(app, 'EagleEvalStack', {
@@ -44,7 +57,7 @@ const evalStack = new EagleEvalStack(app, 'EagleEvalStack', {
 });
 
 // Tag all stacks
-for (const stack of [cicd, core, compute, evalStack]) {
+for (const stack of [cicd, core, storage, compute, evalStack]) {
   cdk.Tags.of(stack).add('Project', 'eagle');
   cdk.Tags.of(stack).add('ManagedBy', 'cdk');
   cdk.Tags.of(stack).add('Environment', DEV_CONFIG.env);

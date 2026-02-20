@@ -1,0 +1,123 @@
+# Agentic Jira commits sync: uses Claude Code (anthropics/claude-code-action) to run the sync
+# and semantically match unkeyed commits to open Jira issues via Claude.
+#
+# Triggers:
+#   - Nightly cron (6 AM UTC)
+#   - Manual workflow_dispatch
+#   - @claude mention in any issue/PR comment
+#
+# Required secrets: JIRA_BASE_URL, JIRA_API_TOKEN, ANTHROPIC_API_KEY
+# Optional: JIRA_COMMIT_AUTHOR, JIRA_WEEKLY_SUMMARY
+#
+# Ref: https://github.com/anthropics/claude-code-action | https://code.claude.com/docs/en/github-actions
+
+name: Jira Commits Sync (Agentic)
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  sync-agentic:
+    runs-on: ubuntu-latest
+    if: |
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude'))
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          fetch-depth: 0
+
+      - name: Restore last synced SHA
+        id: last
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/jira-sync
+          key: jira-commits-sync-${{ github.ref }}
+
+      - name: Compute SINCE for sync
+        id: since
+        run: |
+          if [ "${{ steps.last.outputs.cache-hit }}" == "true" ] && [ -f .cache/jira-sync/last_sha.txt ]; then
+            echo "since=$(cat .cache/jira-sync/last_sha.txt)" >> $GITHUB_OUTPUT
+            echo "Syncing commits since cached SHA"
+          else
+            echo "since=7 days ago" >> $GITHUB_OUTPUT
+            echo "Syncing commits in last 7 days (no previous run)"
+          fi
+
+      - name: Install Python deps
+        run: pip install requests python-dotenv
+
+      - name: Run Claude Code – Jira semantic sync
+        id: claude
+        uses: anthropics/claude-code-action@v1
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_PROJECT: EAGLE
+          JIRA_COMMIT_AUTHOR: ${{ secrets.JIRA_COMMIT_AUTHOR }}
+          JIRA_WEEKLY_SUMMARY: ${{ secrets.JIRA_WEEKLY_SUMMARY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+          SYNC_SINCE: ${{ steps.since.outputs.since }}
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            You are syncing this repo's git commits to Jira (EAGLE project) using semantic matching.
+
+            **Environment (already set):**
+            - JIRA_BASE_URL, JIRA_API_TOKEN, JIRA_PROJECT (= EAGLE)
+            - JIRA_COMMIT_AUTHOR (optional, comma-separated authors to include)
+            - JIRA_WEEKLY_SUMMARY (optional, e.g. "greg dev" -> weekly issue "yyyyww greg dev")
+            - SYNC_SINCE: either a git SHA, "24h", or "7 days ago"
+            - GITHUB_REPOSITORY, GITHUB_SERVER_URL (for commit links)
+
+            **Task — Two-phase sync:**
+
+            **Phase 1: Direct key matching (existing behavior)**
+            1. Build the sync command from env:
+               - Base: python scripts/jira_commits_sync.py --since "$SYNC_SINCE" --project "$JIRA_PROJECT"
+               - If JIRA_COMMIT_AUTHOR is set, add: --author "$JIRA_COMMIT_AUTHOR"
+               - If JIRA_WEEKLY_SUMMARY is set, add: --weekly-summary "$JIRA_WEEKLY_SUMMARY"
+            2. Run the sync. Commits with explicit EAGLE-XXX keys get posted to those issues.
+
+            **Phase 2: Semantic matching (new)**
+            3. Run: python scripts/jira_scan_issues.py --project "$JIRA_PROJECT" --assignees "blackga,Greg Black" --since "$SYNC_SINCE"
+            4. Read the skill file: .claude/skills/jira-commit-matcher/SKILL.md
+            5. Follow the skill instructions to semantically match unmatched commits to open issues.
+            6. For each high-confidence match, post a comment to the issue using:
+               python -c "from scripts.jira_connect import add_comment; add_comment('EAGLE-XX', '''comment body''')"
+            7. Commits with no confident match go to the weekly catch-all issue (Phase 1 already handles this).
+
+            **Safety rules:**
+            - Never create new issues — only comment on existing ones
+            - Never touch issues not assigned to blackga or Greg Black
+            - If in doubt about a match, skip it — false positives are worse than missed matches
+
+            Do not modify repo code unless needed to fix a transient script error. Do not commit or push.
+          claude_args: |
+            --max-turns 8
+            --allowedTools Read,Bash
+
+      - name: Save current SHA for next run
+        run: |
+          mkdir -p .cache/jira-sync
+          git rev-parse HEAD > .cache/jira-sync/last_sha.txt
+
+      - name: Cache last synced SHA
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/jira-sync
+          key: jira-commits-sync-${{ github.ref }}

@@ -28,7 +28,7 @@ MFA: Optional TOTP
 Stack: EagleCoreStack ^text_cognito
 
 GitHub Actions CI/CD
-gblack686/sample-multi-tenant-agent-core-app
+blackga-nih/eagle-multi-agent-orchestrator
 
 Trigger: push to main
 OIDC Federation (no static keys)
