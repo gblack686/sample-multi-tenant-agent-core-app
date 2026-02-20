@@ -448,20 +448,20 @@ pipeline *steps:
     echo "Pipeline complete: $((step_num - 1)) steps executed."
 
 # ═══════════════════════════════════════════════════════════
-# ADW OPERATIONS (Agentic Development Workflows)
+# WORKFLOW OPERATIONS (Agent Team Workflows)
 # ═══════════════════════════════════════════════════════════
 
-# Create an ADW document from template
-create-adw name domain pattern="plan_build_review":
+# Create a workflow document from template
+create-workflow name domain pattern="plan_build_review":
     #!/usr/bin/env bash
     set -euo pipefail
-    output="{{specs_dir}}/{{ts}}-adw-{{name}}.md"
+    output="{{specs_dir}}/{{ts}}-workflow-{{name}}.md"
     sed -e "s/{{{{title}}}}/{{name}}/g" \
         -e "s/{{{{DATE}}}}/{{date}}/g" \
         -e "s/{{{{domain}}}}/{{domain}}/g" \
         -e "s/plan_build_review/{{pattern}}/g" \
-        "{{plugin_dir}}/templates/adw-template.md" > "$output"
-    echo "ADW created: $output"
+        "{{plugin_dir}}/templates/workflow-template.md" > "$output"
+    echo "Workflow created: $output"
     echo "Pattern: {{pattern}}"
     echo "Edit the file to add agents, I/O schemas, and triggers."
 
@@ -543,7 +543,7 @@ maturity:
     echo ""
     echo "Graduation path:"
     echo "  In-Loop (3+ successes) → Template as command"
-    echo "  → Add validation hooks → Out-Loop ADW"
+    echo "  → Add validation hooks → Out-Loop workflow"
     echo "  → CI/CD integration → Zero-Touch"
     echo ""
     echo "Anti-patterns:"
@@ -567,7 +567,7 @@ ecosystem:
     echo "  experts/        Domain experts (7-file pattern)"
     echo ""
     echo "Class 3 — Orchestration"
-    echo "  ADWs            Multi-step workflows (plan_build_review)"
+    echo "  Workflows       Multi-step agent teams (plan_build_review)"
     echo "  hooks/          Event handlers (PreToolUse, PostToolUse, Stop)"
     echo "  skills/         Packaged capabilities"
     echo "  justfile        Layer 4 reusability + composition"
@@ -738,13 +738,13 @@ list-templates:
     done
     echo ""
     echo "Other Templates:"
-    echo "  adw-template.md       Agentic Development Workflow"
+    echo "  workflow-template.md   Agent Team Workflow"
     echo "  spec-template.md      Implementation specification"
     echo ""
     echo "Usage:"
     echo "  just scaffold-expert <domain> <title> <description>"
     echo "  just install-claude-md"
-    echo "  just create-adw <name> <domain>"
+    echo "  just create-workflow <name> <domain>"
     echo "  just create-spec <name>"
 
 # Show placeholders in expert template
@@ -902,10 +902,10 @@ validate-plugin:
     check "templates/claude-md/option-a-enterprise.md"
     check "templates/claude-md/option-b-mission-control.md"
     check "templates/claude-md/option-c-fullstack-blueprint.md"
-    check "templates/adw-template.md"
+    check "templates/workflow-template.md"
     check "templates/spec-template.md"
     # Docs (9)
-    for doc in tactics advanced-lessons adw-patterns frameworks hooks-architecture context-engineering maturity-model ecosystem agentic-prompting; do
+    for doc in tactics advanced-lessons workflow-patterns frameworks hooks-architecture context-engineering maturity-model ecosystem agentic-prompting; do
         check "docs/$doc.md"
     done
     # Example Commands
@@ -977,46 +977,55 @@ expertise-status:
 sync-expertise-to-project:
     #!/usr/bin/env bash
     set -euo pipefail
-    src="{{plugin_dir}}/commands/experts/tac/expertise.md"
-    dst="{{experts_dir}}/tac/expertise.md"
-    if [ ! -f "$src" ]; then
-        echo "Plugin expertise not found: $src"
-        exit 1
-    fi
-    if [ ! -d "$(dirname $dst)" ]; then
+    tac_dir="{{experts_dir}}/tac"
+    if [ ! -d "$tac_dir" ]; then
         echo "Project TAC expert not found. Run: just install"
         exit 1
     fi
-    cp "$src" "$dst"
-    echo "Synced: plugin → project"
-    echo "  $src → $dst"
+    for f in expertise.md tac-learning-expertise.md; do
+        src="{{plugin_dir}}/commands/experts/tac/$f"
+        dst="$tac_dir/$f"
+        if [ -f "$src" ]; then
+            cp "$src" "$dst"
+            echo "Synced: $f (plugin → project)"
+        fi
+    done
 
 # Sync project TAC expertise back to plugin (project → plugin)
 sync-expertise-to-plugin:
     #!/usr/bin/env bash
     set -euo pipefail
-    src="{{experts_dir}}/tac/expertise.md"
-    dst="{{plugin_dir}}/commands/experts/tac/expertise.md"
-    if [ ! -f "$src" ]; then
-        echo "Project TAC expertise not found: $src"
+    tac_dir="{{experts_dir}}/tac"
+    if [ ! -d "$tac_dir" ]; then
+        echo "Project TAC expertise not found"
         exit 1
     fi
-    cp "$src" "$dst"
-    echo "Synced: project → plugin"
-    echo "  $src → $dst"
+    for f in expertise.md tac-learning-expertise.md; do
+        src="$tac_dir/$f"
+        dst="{{plugin_dir}}/commands/experts/tac/$f"
+        if [ -f "$src" ]; then
+            cp "$src" "$dst"
+            echo "Synced: $f (project → plugin)"
+        fi
+    done
 
 # Diff plugin vs project TAC expertise
 diff-expertise:
     #!/usr/bin/env bash
-    src="{{plugin_dir}}/commands/experts/tac/expertise.md"
-    dst="{{experts_dir}}/tac/expertise.md"
-    if [ -f "$src" ] && [ -f "$dst" ]; then
-        diff --color "$src" "$dst" || true
-    else
-        echo "Cannot diff: one or both files missing"
-        [ -f "$src" ] || echo "  Missing: $src"
-        [ -f "$dst" ] || echo "  Missing: $dst"
-    fi
+    for f in expertise.md tac-learning-expertise.md; do
+        src="{{plugin_dir}}/commands/experts/tac/$f"
+        dst="{{experts_dir}}/tac/$f"
+        if [ -f "$src" ] && [ -f "$dst" ]; then
+            echo "=== $f ==="
+            diff --color "$src" "$dst" || true
+            echo ""
+        else
+            echo "=== $f ==="
+            [ -f "$src" ] || echo "  Missing (plugin): $src"
+            [ -f "$dst" ] || echo "  Missing (project): $dst"
+            echo ""
+        fi
+    done
 
 # ═══════════════════════════════════════════════════════════
 # CONTEXT ENGINEERING
@@ -1252,3 +1261,212 @@ cheatsheet:
     echo "  just diff-expertise               Plugin vs project diff"
     echo "  just sync-expertise-to-project    Plugin → project"
     echo "  just sync-expertise-to-plugin     Project → plugin"
+    echo ""
+    echo "ECOSYSTEM INTEGRATION"
+    echo "  just archive-repo <path> [lesson] Archive TAC repo to catalog"
+    echo "  just sync-to-obsidian <source>    Sync component to AI-Agent-KB"
+    echo "  just sync-all-to-obsidian         Sync all examples to KB"
+
+# ═══════════════════════════════════════════════════════════
+# ECOSYSTEM INTEGRATION (AI-Agent-KB + YouTube Pipeline)
+# ═══════════════════════════════════════════════════════════
+
+# Archive a new TAC repo into the plugin catalog
+archive-repo path lesson="auto":
+    python "{{plugin_dir}}/scripts/archive-repo.py" "{{path}}" --lesson "{{lesson}}"
+
+# Archive a repo (dry run — show what would change)
+archive-repo-dry path lesson="auto":
+    python "{{plugin_dir}}/scripts/archive-repo.py" "{{path}}" --lesson "{{lesson}}" --dry-run
+
+# Sync a single component to Obsidian AI-Agent-KB
+sync-to-obsidian source:
+    python "{{plugin_dir}}/scripts/sync-to-obsidian.py" "{{source}}"
+
+# Sync all plugin examples to Obsidian AI-Agent-KB
+sync-all-to-obsidian:
+    python "{{plugin_dir}}/scripts/sync-to-obsidian.py" --all
+
+# Sync all examples (dry run)
+sync-all-to-obsidian-dry:
+    python "{{plugin_dir}}/scripts/sync-to-obsidian.py" --all --dry-run
+
+# Pipeline hook — called by youtube-tac-extract Step 5.5
+pipeline-archive repo_path lesson="auto":
+    bash "{{plugin_dir}}/scripts/tac-pipeline-hook.sh" "{{repo_path}}" "{{lesson}}"
+
+# ═══════════════════════════════════════════════════════════
+# Publishing — Official Claude Code Plugin Format
+# ═══════════════════════════════════════════════════════════
+# See PUBLISHING.md for full guide
+
+# Initialize official plugin structure (.claude-plugin/)
+plugin-init:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p "{{plugin_dir}}/.claude-plugin"
+    if [ -f "{{plugin_dir}}/.claude-plugin/plugin.json" ]; then
+        echo "[plugin-init] .claude-plugin/plugin.json already exists"
+        cat "{{plugin_dir}}/.claude-plugin/plugin.json"
+    else
+        # Extract name/version/description from current plugin.json
+        python3 -c "
+import json, sys
+with open('{{plugin_dir}}/plugin.json') as f:
+    src = json.load(f)
+official = {
+    'name': src.get('name', 'tac-experts'),
+    'description': src.get('description', ''),
+    'version': src.get('version', '1.0.0'),
+    'author': {'name': src.get('author', 'Unknown')},
+    'repository': 'https://github.com/gblack686-openclaw/tac-experts-plugin',
+    'license': 'MIT',
+    'keywords': src.get('keywords', [])
+}
+with open('{{plugin_dir}}/.claude-plugin/plugin.json', 'w') as f:
+    json.dump(official, f, indent=2)
+print('[plugin-init] Created .claude-plugin/plugin.json')
+print(json.dumps(official, indent=2))
+" 2>/dev/null || echo "[plugin-init] ERROR: python3 not found or plugin.json parse failed"
+    fi
+    # Create marketplace.json if missing
+    if [ ! -f "{{plugin_dir}}/.claude-plugin/marketplace.json" ]; then
+        python3 -c "
+import json
+with open('{{plugin_dir}}/.claude-plugin/plugin.json') as f:
+    p = json.load(f)
+mkt = {
+    'name': 'tac-marketplace',
+    'owner': {'name': p.get('author', {}).get('name', 'Unknown')},
+    'metadata': {'description': 'TAC plugins for Claude Code', 'version': '1.0.0'},
+    'plugins': [{
+        'name': p['name'],
+        'source': './',
+        'description': p.get('description', ''),
+        'version': p.get('version', '1.0.0'),
+        'category': 'methodology',
+        'tags': ['tac', 'agentic', 'expert-system', 'hooks', 'ssva']
+    }]
+}
+with open('{{plugin_dir}}/.claude-plugin/marketplace.json', 'w') as f:
+    json.dump(mkt, f, indent=2)
+print('[plugin-init] Created .claude-plugin/marketplace.json')
+"
+    fi
+
+# Validate plugin structure (requires claude CLI)
+plugin-validate:
+    @echo "[plugin-validate] Checking structure..."
+    @test -f "{{plugin_dir}}/.claude-plugin/plugin.json" \
+        && echo "  ✓ .claude-plugin/plugin.json exists" \
+        || echo "  ✗ .claude-plugin/plugin.json MISSING — run: just plugin-init"
+    @test -f "{{plugin_dir}}/.claude-plugin/marketplace.json" \
+        && echo "  ✓ .claude-plugin/marketplace.json exists" \
+        || echo "  ✗ .claude-plugin/marketplace.json MISSING — run: just plugin-init"
+    @test -d "{{plugin_dir}}/commands" \
+        && echo "  ✓ commands/ directory exists" \
+        || echo "  ✗ commands/ directory MISSING"
+    @test -d "{{plugin_dir}}/examples" \
+        && echo "  ✓ examples/ directory exists" \
+        || echo "  ✗ examples/ directory MISSING"
+    @test -d "{{plugin_dir}}/docs" \
+        && echo "  ✓ docs/ directory exists" \
+        || echo "  ✗ docs/ directory MISSING"
+    @echo ""
+    @echo "[plugin-validate] Checking plugin.json schema..."
+    @python3 -c "
+import json, sys
+with open('{{plugin_dir}}/.claude-plugin/plugin.json') as f:
+    p = json.load(f)
+required = ['name', 'description', 'version']
+for field in required:
+    if field in p:
+        print(f'  ✓ {field}: {p[field]}')
+    else:
+        print(f'  ✗ {field}: MISSING')
+        sys.exit(1)
+print()
+print('[plugin-validate] All checks passed')
+" 2>/dev/null || echo "[plugin-validate] Validation failed"
+
+# Build distributable copy (resolves symlinks)
+plugin-build:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    dist="{{plugin_dir}}/dist/tac-experts"
+    rm -rf "$dist"
+    mkdir -p "$dist"
+    echo "[plugin-build] Copying plugin to dist/ (resolving symlinks)..."
+    # Copy with -L to follow symlinks
+    cp -rL "{{plugin_dir}}/.claude-plugin" "$dist/"
+    cp -rL "{{plugin_dir}}/commands" "$dist/" 2>/dev/null || true
+    cp -rL "{{plugin_dir}}/templates" "$dist/" 2>/dev/null || true
+    cp -rL "{{plugin_dir}}/docs" "$dist/" 2>/dev/null || true
+    cp -rL "{{plugin_dir}}/examples" "$dist/" 2>/dev/null || true
+    cp -rL "{{plugin_dir}}/apps" "$dist/" 2>/dev/null || true
+    cp -rL "{{plugin_dir}}/scripts" "$dist/" 2>/dev/null || true
+    cp -rL "{{plugin_dir}}/data" "$dist/" 2>/dev/null || true
+    cp "{{plugin_dir}}/README.md" "$dist/" 2>/dev/null || true
+    cp "{{plugin_dir}}/PUBLISHING.md" "$dist/" 2>/dev/null || true
+    cp "{{plugin_dir}}/plugin.json" "$dist/" 2>/dev/null || true
+    echo "[plugin-build] Built to: $dist"
+    echo "[plugin-build] Files:"
+    find "$dist" -type f | wc -l | xargs -I{} echo "  {} files"
+
+# Test plugin locally with Claude Code
+plugin-test:
+    @echo "[plugin-test] Launching Claude Code with --plugin-dir..."
+    @echo "  Plugin: {{plugin_dir}}"
+    @echo "  Commands will be namespaced as /tac-experts:*"
+    @echo ""
+    claude --plugin-dir "{{plugin_dir}}"
+
+# Tag a new version and push
+plugin-release version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "[plugin-release] Releasing v{{version}}..."
+    # Update version in both plugin.json files
+    python3 -c "
+import json
+for path in ['{{plugin_dir}}/plugin.json', '{{plugin_dir}}/.claude-plugin/plugin.json']:
+    try:
+        with open(path) as f:
+            data = json.load(f)
+        data['version'] = '{{version}}'
+        with open(path, 'w') as f:
+            json.dump(data, f, indent=2)
+            f.write('\n')
+        print(f'  Updated {path} -> {{version}}')
+    except FileNotFoundError:
+        pass
+# Update marketplace.json plugin version
+try:
+    mkt_path = '{{plugin_dir}}/.claude-plugin/marketplace.json'
+    with open(mkt_path) as f:
+        mkt = json.load(f)
+    for p in mkt.get('plugins', []):
+        p['version'] = '{{version}}'
+    with open(mkt_path, 'w') as f:
+        json.dump(mkt, f, indent=2)
+        f.write('\n')
+    print(f'  Updated marketplace.json -> {{version}}')
+except FileNotFoundError:
+    pass
+"
+    cd "{{plugin_dir}}" && git add -A && git commit -m "release: v{{version}}" && git tag "v{{version}}"
+    echo "[plugin-release] Tagged v{{version}}. Push with: git push && git push --tags"
+
+# Full publish: validate → build → tag → push
+plugin-publish version:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "═══════════════════════════════════════"
+    echo " Publishing tac-experts v{{version}}"
+    echo "═══════════════════════════════════════"
+    just plugin-validate
+    just plugin-build
+    just plugin-release "{{version}}"
+    echo ""
+    echo "[plugin-publish] Ready to push. Run:"
+    echo "  cd {{plugin_dir}} && git push && git push --tags"

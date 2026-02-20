@@ -36,11 +36,16 @@ Generate a plan for building features, creating new experts, designing hooks, or
 
 ### Phase 1: Load Context
 
-1. Read `.claude/commands/experts/tac/expertise.md` for:
-   - Applicable tactics
-   - Framework selection (PITER, R&D, ACT-LEARN-REUSE)
-   - Relevant patterns from the pattern index
-   - Hook architecture if applicable
+1. Read `.claude/commands/experts/tac/tac-learning-expertise.md` for:
+   - Applicable tactics (Part 1)
+   - Framework selection (Part 4: PITER, R&D, ACT-LEARN-REUSE)
+   - Maturity level target (Part 5)
+
+2. Read `.claude/commands/experts/tac/expertise.md` for:
+   - Relevant patterns from the pattern index (Part 4)
+   - Hook architecture if applicable (Part 1)
+   - Agent team workflow patterns (Part 5)
+   - SSVA patterns if applicable (Part 2)
 
 2. Scan project structure:
    ```
@@ -63,7 +68,7 @@ Generate a plan for building features, creating new experts, designing hooks, or
    - Does it include Feedback Loops? (Validation built in)
    - Is it Template Engineering? (Reusable patterns)
 
-2. Identify the ADW pattern:
+2. Identify the workflow pattern:
    - Plan-Build-Validate?
    - Expert Bootstrap?
    - Hook-Driven Development?
@@ -88,7 +93,7 @@ Create a TAC-informed plan:
 |-----------|------------|
 | Agentic Layer | Class {1/2/3}: {layer name} |
 | Primary Framework | {PITER / R&D / ACT-LEARN-REUSE} |
-| ADW Pattern | {pattern name} |
+| Workflow Pattern | {pattern name} |
 | Key Tactics | {list of applicable tactics} |
 | Anti-patterns to avoid | {list} |
 
@@ -133,7 +138,7 @@ Create a TAC-informed plan:
 
 ## Instructions
 
-1. **Always read expertise.md first** - Contains TAC principles that inform the plan
+1. **Read both expertise files** - Theory in `tac-learning-expertise.md`, patterns in `expertise.md`
 2. **Map to tactics** - Every plan step should reference the TAC tactic it follows
 3. **Include validation** - Every plan must have built-in feedback loops
 4. **Classify the layer** - Identify if work is Class 1, 2, or 3

@@ -38,16 +38,21 @@ Execute the complete TAC development workflow:
 
 ### Step 1: PLAN (Context Loading + TAC Analysis)
 
-1. Read `.claude/commands/experts/tac/expertise.md` for:
+1. Read `.claude/commands/experts/tac/tac-learning-expertise.md` for:
    - Applicable tactics (Part 1)
    - Framework selection (Part 4)
-   - Pattern references (Part 7)
-   - Hook architecture if relevant (Parts 5-6)
+   - Post-14 lesson patterns (Part 3)
+
+2. Read `.claude/commands/experts/tac/expertise.md` for:
+   - Pattern references (Part 4: Ecosystem Graph)
+   - Hook architecture if relevant (Part 1)
+   - SSVA patterns if applicable (Part 2)
+   - Agent team workflow patterns (Part 5)
 
 2. Analyze the TASK:
    - Classify the agentic layer (Class 1, 2, or 3)
    - Select the framework (PITER, R&D, or ACT-LEARN-REUSE)
-   - Identify applicable ADW pattern
+   - Identify applicable workflow pattern
    - Map TAC tactics to implementation steps
 
 3. Scan existing project structure:
@@ -235,7 +240,7 @@ flowchart TD
 |-----------|-------|
 | Agentic Layer | Class {N}: {name} |
 | Framework | {PITER / R&D / ACT-LEARN-REUSE} |
-| ADW Pattern | {pattern} |
+| Workflow Pattern | {pattern} |
 | Tactics Applied | {list} |
 
 ### Files Created/Modified

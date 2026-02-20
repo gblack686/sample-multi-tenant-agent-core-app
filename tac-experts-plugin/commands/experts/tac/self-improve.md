@@ -41,7 +41,8 @@ This is the **LEARN** step in ACT-LEARN-REUSE.
 
 ### Phase 1: Gather Information
 
-1. Read current `.claude/commands/experts/tac/expertise.md`
+1. Read current `.claude/commands/experts/tac/expertise.md` (practical patterns file)
+   - Note: `tac-learning-expertise.md` (theory) is a stable reference and is NOT updated by self-improve. Only `expertise.md` accumulates learnings.
 2. Scan for recent changes:
    ```
    Glob: .claude/commands/experts/**/*.md
@@ -98,9 +99,10 @@ Add entries to the appropriate subsection:
 
 #### Optionally update other sections:
 
-- **Part 3 (Reference Catalogs)**: Add new ADW patterns, agent types, or hooks discovered
-- **Part 5-6 (Hook Architecture)**: Document new hook patterns or filtering strategies
-- **Part 7 (Ecosystem Graph)**: Update pattern index with new patterns
+- **Part 1 (Hook Architecture)**: Document new hook patterns or filtering strategies
+- **Part 2 (SSVA)**: Add new self-validation or block/retry patterns
+- **Part 4 (Ecosystem Graph)**: Update pattern index with new patterns
+- **Part 5 (Agent Team Patterns)**: Add new workflow patterns, agent types, or catalogs
 
 ### Phase 4: Update timestamp
 
@@ -156,7 +158,8 @@ Update the `last_updated` field in the frontmatter of expertise.md.
 
 | Source | Location | Content |
 |--------|----------|---------|
-| TAC Expertise | `.claude/commands/experts/tac/expertise.md` | Current TAC mental model |
+| TAC Theory | `.claude/commands/experts/tac/tac-learning-expertise.md` | TAC methodology reference (read-only) |
+| TAC Patterns | `.claude/commands/experts/tac/expertise.md` | Practical patterns (updated by self-improve) |
 | Expert Files | `.claude/commands/experts/*/` | Expert structures to analyze |
 | Hook Files | `.claude/hooks/` | Hook patterns to evaluate |
 | Git History | `git log` | Recent changes and context |

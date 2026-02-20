@@ -1,12 +1,12 @@
-# ADW (Agentic Development Workflow) Patterns
+# Workflow (Agent Team Workflow) Patterns
 
-> ADWs are standardized workflows that combine TAC tactics into repeatable processes.
+> Workflows are standardized workflows that combine TAC tactics into repeatable processes.
 
 ---
 
-## The 7 Canonical ADWs
+## The 7 Canonical Workflows
 
-| ADW | Description | Key Tactics | When to Use |
+| Workflow | Description | Key Tactics | When to Use |
 |-----|-------------|-------------|-------------|
 | Plan-Build-Validate | Design, implement, test in sequence | 4, 5, 8 | New features, standard development |
 | ACT-LEARN-REUSE | Do work, capture learnings, apply patterns | 5, 3, 8 | Every task (default cycle) |
@@ -20,7 +20,7 @@
 
 ## Plan-Build-Validate
 
-The workhorse ADW for standard development.
+The workhorse Workflow for standard development.
 
 ```
 PLAN      →  Write spec to .claude/specs/
@@ -205,4 +205,4 @@ VALIDATE  →  Verify all experts are current
 | Commands per Expert | 5-7 | Standard set + domain-specific |
 | Hooks | 5-15 | Flat structure, one file per hook |
 | Skills/Prompts | 5-20 | One per agent role |
-| ADW Patterns | 5-10 | Reusable across experts |
+| Workflow Patterns | 5-10 | Reusable across experts |

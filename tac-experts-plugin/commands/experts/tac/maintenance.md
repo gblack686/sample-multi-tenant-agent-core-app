@@ -40,6 +40,7 @@ Run TAC compliance checks to verify that experts, hooks, commands, and project s
    ```
    Glob: .claude/commands/experts/*/_index.md
    Glob: .claude/commands/experts/*/expertise.md
+   Glob: .claude/commands/experts/tac/tac-learning-expertise.md
    Glob: .claude/commands/experts/*/*.md
    Glob: .claude/commands/*.md
    Glob: .claude/hooks/*
@@ -63,6 +64,7 @@ For each expert directory found:
 |------|----------|-------|
 | `_index.md` | Yes | Exists, has `type: expert-file` and `file-type: index` frontmatter |
 | `expertise.md` | Yes | Exists, has `type: expert-file` and `file-type: expertise` frontmatter |
+| `tac-learning-expertise.md` | TAC only | Theory file (unique to TAC expert — other experts have one expertise file) |
 | `question.md` | Recommended | Has `allowed-tools:` frontmatter |
 | `plan.md` | Recommended | Has `allowed-tools:` frontmatter |
 | `self-improve.md` | Recommended | Has `allowed-tools:` with Edit |

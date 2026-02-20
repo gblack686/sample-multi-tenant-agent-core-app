@@ -14,7 +14,8 @@ tac-experts-plugin/
 ├── justfile                             ← Master recipes (60+ commands)
 ├── commands/experts/tac/                ← TAC methodology expert (ready to use)
 │   ├── _index.md                        Expert overview
-│   ├── expertise.md                     Complete TAC mental model (575 lines, 7 parts)
+│   ├── expertise.md                     Practical patterns (hooks, SSVA, agent teams)
+│   ├── tac-learning-expertise.md        Theory (8 tactics, lessons 9-27, frameworks)
 │   ├── question.md                      Query TAC concepts (read-only)
 │   ├── plan.md                          Plan with TAC principles
 │   ├── plan_build_improve.md            Full ACT-LEARN-REUSE workflow
@@ -26,12 +27,12 @@ tac-experts-plugin/
 │   │   ├── option-a-enterprise.md       Identity-first, formal teams
 │   │   ├── option-b-mission-control.md  Domain-first, regulated projects
 │   │   └── option-c-fullstack-blueprint.md  Composable, multi-stack
-│   ├── adw-template.md                  ← ADW documentation template
+│   ├── workflow-template.md             ← Agent Team Workflow template
 │   └── spec-template.md                 ← Implementation spec template
 ├── docs/                                ← TAC reference documentation (9 docs)
 │   ├── tactics.md                       The 8 Fundamental Tactics + memory aid
-│   ├── advanced-lessons.md              Lessons 9-14 (Context → Singularity)
-│   ├── adw-patterns.md                  7 ADW patterns + catalogs
+│   ├── advanced-lessons.md              Lessons 9-27 (Context → Domain Agents)
+│   ├── workflow-patterns.md             7 workflow patterns + catalogs
 │   ├── frameworks.md                    PITER, R&D, ACT-LEARN-REUSE, Core Four
 │   ├── hooks-architecture.md            12 hook events, 7 patterns, dispatcher
 │   ├── context-engineering.md           Context hierarchy, CLAUDE.md guidelines
@@ -51,16 +52,37 @@ tac-experts-plugin/
 │   ├── agents/                          ← Real agent definitions
 │   │   ├── hooks-expert-agent.md        Hooks specialist agent
 │   │   ├── bowser-qa-agent.md           Browser QA agent
-│   │   └── docs-scraper.md             Documentation scraping specialist
-│   ├── hooks/                           ← Example hook scripts (Python)
+│   │   ├── docs-scraper.md             Documentation scraping specialist
+│   │   └── ssva-csv-agent.md           SSVA with scoped hooks (block/retry)
+│   ├── hooks/                           ← Hook scripts (all 4 event types)
+│   │   ├── pretooluse_guard.py          PreToolUse: block dangerous commands
+│   │   ├── posttooluse_validator.py     PostToolUse: CSV validation + block/retry
+│   │   ├── stop_dispatcher.sh           Stop: dispatcher → domain handlers
+│   │   ├── stop_test.sh                Stop handler: test file validation
+│   │   ├── stop_memory.sh              Stop handler: turn-by-turn memory
 │   │   ├── session_start.py             SessionStart: env var loading
 │   │   ├── setup_init.py               Setup init: deterministic install
 │   │   └── setup_maintenance.py        Setup maintenance: dep upgrades + DB
-│   ├── experts/README.md               ← Expert pattern guide (AWS, hooks, eval, git)
+│   ├── experts/                         ← Domain expert extensions
+│   │   ├── README.md                    Expert pattern guide
+│   │   ├── aws/cdk-scaffold.md          5 CDK stack templates (core/compute/cicd/data/monitoring)
+│   │   └── eval/add-test.md            8-registration checklist for new tests
+│   ├── sdk/                             ← Claude Agent SDK examples
+│   │   ├── orchestrator.py              Multi-agent supervisor + subagents + sessions
+│   │   └── custom_tools.py             @tool decorator + MCP server + tier-gating
 │   ├── justfile                         ← 4-layer browser automation recipes
 │   └── agentic-prompting-justfile       ← SSVA pipeline recipes (finance review)
+├── apps/
+│   └── README.md                        ← Catalog of 44 reference apps (symlink to Desktop/tac/)
+├── scripts/
+│   ├── archive-repo.py                  ← Archive TAC repos into plugin catalog
+│   ├── sync-to-obsidian.py              ← Sync components to AI-Agent-KB with MTG cards
+│   ├── tac-pipeline-hook.sh             ← YouTube-TAC pipeline integration (Step 5.5)
+│   └── agent-sync-hook.sh              ← PostToolUse hook for auto-sync to Obsidian
 └── data/
-    └── frontmatter-schemas.md           ← All YAML frontmatter schemas
+    ├── frontmatter-schemas.md           ← All YAML frontmatter schemas
+    ├── tags.md                          ← Canonical tag taxonomy
+    └── kb-crossref.md                   ← AI-Agent-KB cross-reference mapping
 ```
 
 ---
@@ -215,6 +237,89 @@ Every domain expert has 7 standard files:
 | `maintenance.md` | Health validation | — |
 
 Plus optional domain-specific extensions (e.g., `cdk-scaffold.md`, `add-test.md`).
+
+**Note**: The TAC expert uniquely has TWO expertise files: `expertise.md` (practical patterns) and `tac-learning-expertise.md` (methodology theory). Other experts have one.
+
+---
+
+## Ecosystem Integration
+
+The plugin integrates with the broader TAC ecosystem:
+
+### Repo Archival (`scripts/archive-repo.py`)
+
+Process new TAC repos into the plugin catalog:
+
+```bash
+# Archive a repo (auto-detects lesson number)
+just archive-repo /path/to/tac/repo
+
+# Dry run to preview changes
+just archive-repo-dry /path/to/tac/repo
+
+# Override lesson number
+just archive-repo /path/to/tac/repo 28
+```
+
+Updates: `apps/README.md`, `docs/advanced-lessons.md`, `data/tags.md`, TAC expertise.
+
+### AI-Agent-KB Sync (`scripts/sync-to-obsidian.py`)
+
+Sync agents, commands, hooks, and experts to the Obsidian vault with MTG card assignment:
+
+```bash
+# Sync a single component
+just sync-to-obsidian examples/agents/hooks-expert-agent.md
+
+# Sync all plugin examples
+just sync-all-to-obsidian
+
+# Preview what would sync
+just sync-all-to-obsidian-dry
+```
+
+### YouTube-TAC Pipeline
+
+The plugin integrates with `consulting-co`'s youtube-tac-extract command as Step 5.5. When new repos are cloned from disler/IndyDevDan, the pipeline hook automatically archives them into the plugin catalog.
+
+### Auto-Sync Hook
+
+Configure `agent-sync-hook.sh` as a PostToolUse hook to automatically sync new agents/skills/hooks to Obsidian when they're created:
+
+```json
+{
+  "hooks": {
+    "PostToolUse": [{
+      "matcher": "Write|Edit",
+      "hooks": [{
+        "type": "command",
+        "command": "bash Desktop/tac/tac-experts-plugin/scripts/agent-sync-hook.sh"
+      }]
+    }]
+  }
+}
+```
+
+---
+
+## Publishing as Official Claude Code Plugin
+
+See **[PUBLISHING.md](PUBLISHING.md)** for the complete guide:
+
+- Converting to official `.claude-plugin/` format
+- Creating a marketplace (`marketplace.json`)
+- Publishing to GitHub (public or private)
+- Team auto-install via `extraKnownMarketplaces`
+- Justfile recipes: `just plugin-init`, `just plugin-validate`, `just plugin-publish 1.2.0`
+
+Quick start:
+
+```bash
+just plugin-init       # Create .claude-plugin/ with official manifests
+just plugin-validate   # Check structure
+just plugin-test       # Launch Claude Code with --plugin-dir
+just plugin-publish 1.2.0  # Full pipeline: validate → build → tag
+```
 
 ---
 

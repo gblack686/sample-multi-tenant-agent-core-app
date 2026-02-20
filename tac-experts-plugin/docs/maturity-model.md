@@ -65,7 +65,7 @@ Template as command
 Add validation (feedback loops)
     │
     ▼
-Out-Loop ADW
+Out-Loop workflow
     │
     ▼
 Zero-Touch

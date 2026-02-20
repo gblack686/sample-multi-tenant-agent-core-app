@@ -249,4 +249,4 @@ Level 6 — Eval          CloudWatch dashboard post-deploy metrics
 | Bug fixes | Out-Loop | Zero-Touch |
 | Eval runs | Out-Loop | Zero-Touch |
 
-**Graduation path**: In-Loop (3+ successes) → Template as command → Add validation → Out-Loop ADW → Zero-Touch
+**Graduation path**: In-Loop (3+ successes) → Template as command → Add validation → Out-Loop workflow → Zero-Touch

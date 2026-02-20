@@ -1,6 +1,6 @@
-# Advanced Lessons (9-14)
+# Advanced Lessons (9-27)
 
-> Building on the 8 tactics, these lessons cover the meta-skills of agentic development.
+> Building on the 8 tactics, these lessons cover the meta-skills of agentic development (9-14) and applied project patterns (15-27).
 
 ---
 
@@ -124,3 +124,165 @@ Expert Invocation (Class 3)
 - **Self-extending**: The agent can add new experts, commands, and tests using existing patterns as templates.
 - **Convergence**: As the codebase becomes more self-describing, agent performance asymptotically approaches human-level on all tasks.
 - **Key insight**: The codebase singularity is not a destination, it's a direction. Every improvement moves you closer.
+
+---
+
+# Post-14 Project Lessons (15-27)
+
+> Applied patterns from real projects that extend TAC beyond the foundational 14 lessons.
+
+---
+
+## Lesson 15: Hooks Mastery
+
+**Deterministic hook lifecycle control + sub-agents.**
+
+Master Claude Code's 13 hook lifecycle events to add deterministic or non-deterministic control over agent behavior. Orchestrate teams with meta-agents that use hooks as their coordination layer.
+
+- **Key pattern**: Hook lifecycle events (PreToolUse, PostToolUse, Stop, etc.) as control points
+- **Application**: Build deterministic guardrails that fire before/after every tool call
+- **Insight**: Hooks are the bridge between "agent does whatever" and "agent does exactly what's allowed"
+
+---
+
+## Lesson 16: Multi-Agent Observability
+
+**Real-time hook event tracking and visualization.**
+
+Capture all Claude Code hook events across multiple concurrent agents and stream them via HTTP/WebSocket into SQLite for live dashboarding and observability.
+
+- **Key pattern**: Event capture → stream → store → visualize pipeline
+- **Application**: Monitor parallel agent teams in real-time
+- **Insight**: You can't improve what you can't observe — observability is the prerequisite for agent team optimization
+
+---
+
+## Lesson 17: Damage Control
+
+**PreToolUse hook defense-in-depth.**
+
+Block dangerous bash/edit/write commands and protect sensitive files using pattern-based rules in PreToolUse hooks that exit with 0 (allow), 2 (block), or JSON (ask).
+
+- **Key pattern**: Exit code protocol — 0=allow, 2=block, JSON=ask-user
+- **Application**: Protect production configs, credentials, and critical paths
+- **Insight**: Defense-in-depth means multiple layers of protection, not one big wall
+
+---
+
+## Lesson 18: Install and Maintain
+
+**Deterministic + Agentic + Interactive (DAI) pattern.**
+
+Combine deterministic hooks (fast/predictable), agentic prompts (supervised/diagnostic), and interactive prompts (asks/adapts) to create living documentation that executes.
+
+- **Key pattern**: DAI — three execution modes for different reliability needs
+- **Application**: Self-installing projects, maintenance runbooks that actually run
+- **Insight**: The best documentation is documentation that can execute itself
+
+---
+
+## Lesson 19: Specialized Self-Validating Agents (SSVA)
+
+**Agent + scoped hook = trusted automation.**
+
+Build hyper-focused agents that autonomously validate their own work using specialized hooks embedded in prompts, subagents, and skills. Block/retry self-correction increases trust enough for zero-touch operation.
+
+- **Key pattern**: Agent + hook = SSVA with block/retry self-correction
+- **Application**: Finance review, compliance checking, any domain needing verified output
+- **Insight**: Self-validation is what separates "useful assistant" from "trusted autonomous agent"
+
+---
+
+## Lesson 20: Beyond MCP
+
+**MCP vs. CLI vs. File System Scripts vs. Skills trade-offs.**
+
+Explore 4 concrete approaches to building reusable, context-preserving toolsets for AI agents. MCP's context-loss cost becomes a bottleneck at scale; alternatives may serve better.
+
+- **Key pattern**: Four-way comparison of tool delivery mechanisms
+- **Application**: Choose the right tool delivery for each use case
+- **Insight**: MCP isn't always the answer — CLI tools, file scripts, and skills each have sweet spots
+
+---
+
+## Lesson 21: Browser Automation (Bowser)
+
+**Four-layer composable stack: Just → Command → Subagent → Skill.**
+
+Build repeatable agentic browser automation by layering justfile recipes (reusability), commands (orchestration), subagents (parallel execution), and skills (capability).
+
+- **Key pattern**: Four composable layers, each adding capability
+- **Application**: QA testing, web scraping, UI validation, smoke tests
+- **Insight**: Browser automation becomes reliable when you compose simple layers, not build monoliths
+
+---
+
+## Lesson 22: Agent Sandboxes
+
+**E2B isolated sandbox forks for parallel agents.**
+
+Achieve isolation, scale, and agency by running parallel agent forks in fully isolated, gated E2B sandboxes where agents have full control over their environment.
+
+- **Key pattern**: Fork-and-gate — each agent gets a full isolated environment
+- **Application**: Parallel experimentation, safe code execution, multi-variant testing
+- **Insight**: True agent autonomy requires true isolation — sandboxes make fearless delegation possible
+
+---
+
+## Lesson 23: Fork Repository Skill
+
+**Skill auto-discovery + multi-terminal parallelization.**
+
+Create Claude Code skills that automatically spawn parallel terminal windows to delegate work, branch execution, or run the same command against multiple tools/models in isolation.
+
+- **Key pattern**: One skill → N parallel terminals → aggregated results
+- **Application**: Multi-model comparison, parallel builds, distributed testing
+- **Insight**: Skills that can fork themselves create multiplicative productivity gains
+
+---
+
+## Lesson 24: R&D Framework — Context Window Mastery
+
+**Reduce & Delegate (R&D) context engineering.**
+
+Master the 4-level R&D framework (Measure → Reduce → Delegate → Agentic) to find the optimal context sweet spot where your agent performs at maximum capability.
+
+- **Key pattern**: Four levels of context optimization, each building on the last
+- **Application**: Any project where agent performance degrades with context bloat
+- **Insight**: Context engineering is a continuous optimization, not a one-time setup
+
+---
+
+## Lesson 25: Seven Levels of Agentic Prompt Formats
+
+**Hierarchical prompt escalation (Level 1-7).**
+
+Build prompts across 7 levels of escalating complexity — from static high-level prompts through workflow/control-flow/state-machine to goal-oriented and agentic orchestration patterns.
+
+- **Key pattern**: Level 1 (static) → Level 7 (fully agentic orchestration)
+- **Application**: Match prompt complexity to task complexity
+- **Insight**: Most tasks need Level 2-3 prompts; Level 6-7 are for true orchestration challenges
+
+---
+
+## Lesson 26: Multi-Agent Orchestration — The O-Agent
+
+**Web-based orchestration platform with full observability.**
+
+Deploy a production PostgreSQL-backed platform where a natural-language orchestrator agent manages multiple specialized agents with real-time streaming, cost tracking, and full observability.
+
+- **Key pattern**: Central orchestrator + specialized workers + shared state store
+- **Application**: Complex multi-domain tasks requiring coordination
+- **Insight**: Production agent orchestration needs the same infrastructure as production services — persistence, observability, cost tracking
+
+---
+
+## Lesson 27: Building Domain-Specific Agents
+
+**Custom Agent SDK specialization (Pong → Echo → Calculator).**
+
+Start with basic Claude SDK setup (Pong Agent), add custom tools with parameters (Echo Agent), then build interactive REPLs with multi-tool orchestration and conversation memory (Calculator Agent).
+
+- **Key pattern**: Progressive specialization — start simple, add tools, add memory
+- **Application**: Any new agent domain — start with a ping, add tools, add state
+- **Insight**: The best way to learn agent building is progressive complexity, not big-bang architecture

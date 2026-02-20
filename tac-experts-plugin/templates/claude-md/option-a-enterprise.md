@@ -108,7 +108,7 @@ Each expert accumulates domain knowledge. Never edit expertise files manually â€
 | `/experts:eval:*` | CloudWatch, dashboards, alarms, evals | Observability, testing |
 | `/experts:cloudwatch:*` | Metrics, logs, enriched events | Monitoring |
 | `/experts:git:*` | Branching, PRs, workflow | Version control |
-| `/experts:tac:*` | TAC methodology, ADW design | Meta-agentic planning |
+| `/experts:tac:*` | TAC methodology, workflow design | Meta-agentic planning |
 
 ### Expert Lifecycle
 ```

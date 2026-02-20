@@ -1,5 +1,5 @@
 ---
-type: adw
+type: workflow
 name: "{{title}}"
 status: development
 pattern: plan_build | plan_build_review | plan_build_review_fix | custom
@@ -8,13 +8,13 @@ created: {{DATE}}
 updated: {{DATE}}
 human_reviewed: false
 tac_original: false
-tags: [adw, workflow]
+tags: [workflow]
 ---
 
 # {{title}}
 
 ## Overview
-Brief description of this Agentic Development Workflow.
+Brief description of this Agent Team Workflow.
 
 ## Pattern
 > **Type**: `plan_build_review`
@@ -58,7 +58,7 @@ graph LR
 ```
 
 ## Triggers
-- Manual: `start adw: {{title}}: <prompt>`
+- Manual: `start workflow: {{title}}: <prompt>`
 - Command: `/experts:{{domain}}:plan_build_improve "{{prompt}}"`
 
 ## Related

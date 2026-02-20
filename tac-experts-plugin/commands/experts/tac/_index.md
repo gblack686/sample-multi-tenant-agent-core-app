@@ -17,7 +17,8 @@ This expert covers:
 - **Core Frameworks** - PITER, R&D, ACT-LEARN-REUSE, Core Four, 8 Tactics Memory Aid
 - **Agentic Layer Classification** - Class 1 (Foundation), Class 2 (Out-Loop), Class 3 (Orchestration)
 - **Hook Architecture** - Flat structure, dispatcher pattern, domain handlers, stop hook filtering, hook chaining
-- **Claude Code Ecosystem** - ADW patterns, agents, commands, hooks, skills, component graph
+- **Claude Code Ecosystem** - Agent team patterns, agents, commands, hooks, skills, component graph
+- **Post-14 Project Lessons** - Hooks mastery, observability, damage control, SSVA, browser automation, sandboxes, and more
 
 ## Available Commands
 
@@ -33,7 +34,8 @@ This expert covers:
 
 | File | Purpose |
 |------|---------|
-| `expertise.md` | Complete mental model for TAC methodology |
+| `tac-learning-expertise.md` | TAC methodology theory (8 tactics, lessons 9-27, frameworks, maturity) |
+| `expertise.md` | Practical coding patterns (hooks, SSVA, ecosystem, agent teams) |
 | `question.md` | Query command for read-only questions |
 | `plan.md` | Planning command using TAC principles |
 | `self-improve.md` | Expertise update command |
@@ -44,9 +46,10 @@ This expert covers:
 
 ```
 .claude/commands/experts/tac/
-  |-- _index.md           # This file - expert overview
-  |-- expertise.md        # Complete TAC mental model (Parts 1-7)
-  |-- question.md         # Read-only Q&A about TAC
+  |-- _index.md                  # This file - expert overview
+  |-- tac-learning-expertise.md  # TAC theory (tactics, lessons 1-27, frameworks)
+  |-- expertise.md               # Practical patterns (hooks, SSVA, ecosystem, agent teams)
+  |-- question.md                # Read-only Q&A about TAC
   |-- plan.md             # Plan using TAC principles
   |-- self-improve.md     # Update expertise with learnings
   |-- plan_build_improve.md  # Full ACT-LEARN-REUSE workflow

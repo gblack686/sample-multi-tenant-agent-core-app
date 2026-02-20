@@ -133,4 +133,4 @@ my-project/
 | Setting up a new project | Core Four | Establish the foundation first |
 | Unfamiliar codebase | R&D → ACT-LEARN-REUSE | Research first, then iterate |
 | Optimizing performance | R&D → PITER | Profile first, then structured fix |
-| Adding a new domain | Expert Bootstrap ADW | From templates, structured creation |
+| Adding a new domain | Expert Bootstrap workflow | From templates, structured creation |

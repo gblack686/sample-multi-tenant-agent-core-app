@@ -21,6 +21,15 @@ Answer questions about Tactical Agentic Coding (TAC) -- tactics, frameworks, hoo
 
 `Read`, `Glob`, `Grep` (read-only only)
 
+## Expertise Files
+
+The TAC expert has TWO expertise files:
+
+| File | Covers | Use For |
+|------|--------|---------|
+| `tac-learning-expertise.md` | Theory: 8 tactics, lessons 9-27, frameworks, maturity model | Tactic questions, lesson questions, framework questions |
+| `expertise.md` | Practice: hooks, SSVA, prompting patterns, ecosystem, agent teams, learnings | Hook questions, pattern questions, ecosystem questions |
+
 ## Question Categories
 
 ### Category 1: Tactic Questions
@@ -33,7 +42,7 @@ Questions about specific TAC tactics or the 8 fundamentals.
 - "What's the difference between Stop Coding and Stay Out Loop?"
 
 **Resolution**:
-1. Read `.claude/commands/experts/tac/expertise.md` -> Part 1
+1. Read `.claude/commands/experts/tac/tac-learning-expertise.md` -> Part 1
 2. Provide formatted answer with tactic details
 
 ---
@@ -48,7 +57,7 @@ Questions about PITER, R&D, ACT-LEARN-REUSE, or Core Four.
 - "What are the Core Four files?"
 
 **Resolution**:
-1. Read `.claude/commands/experts/tac/expertise.md` -> Part 4
+1. Read `.claude/commands/experts/tac/tac-learning-expertise.md` -> Part 4
 2. Provide framework description with usage guidance
 
 ---
@@ -63,7 +72,7 @@ Questions about TAC-compliant hook design.
 - "How does hook chaining work?"
 
 **Resolution**:
-1. Read `.claude/commands/experts/tac/expertise.md` -> Parts 5 and 6
+1. Read `.claude/commands/experts/tac/expertise.md` -> Part 1
 2. Provide architecture description with code examples
 
 ---
@@ -78,9 +87,9 @@ Questions about the expert pattern and command structure.
 - "What commands are standard for every expert?"
 
 **Resolution**:
-1. Read `.claude/commands/experts/tac/expertise.md` -> Lesson 13 and Part 3
-2. Optionally scan `.claude/commands/experts/` for live examples
-3. Provide structured answer
+1. Read `.claude/commands/experts/tac/tac-learning-expertise.md` -> Lesson 13
+2. Read `.claude/commands/experts/tac/expertise.md` -> Part 5 (catalogs)
+3. Optionally scan `.claude/commands/experts/` for live examples
 
 ---
 
@@ -94,7 +103,7 @@ Questions about the Claude Code ecosystem graph and layer architecture.
 - "What patterns exist at Class 3?"
 
 **Resolution**:
-1. Read `.claude/commands/experts/tac/expertise.md` -> Part 7
+1. Read `.claude/commands/experts/tac/expertise.md` -> Part 4
 2. Provide layer and pattern descriptions
 
 ---
@@ -109,8 +118,38 @@ Questions about Lessons 9-14 (Context Engineering through Codebase Singularity).
 - "What is codebase singularity?"
 
 **Resolution**:
-1. Read `.claude/commands/experts/tac/expertise.md` -> Part 2
+1. Read `.claude/commands/experts/tac/tac-learning-expertise.md` -> Part 2
 2. Provide lesson explanation with practical implications
+
+---
+
+### Category 7: Post-14 Lesson Questions
+
+Questions about applied project lessons (15-27).
+
+**Examples**:
+- "What is SSVA?"
+- "How does multi-agent observability work?"
+- "What are progressive execution modes?"
+
+**Resolution**:
+1. Read `.claude/commands/experts/tac/tac-learning-expertise.md` -> Part 3
+2. Cross-reference with `.claude/commands/experts/tac/expertise.md` for practical patterns
+
+---
+
+### Category 8: SSVA / Agentic Prompting Questions
+
+Questions about Specialized Self-Validating Agents and agentic prompting patterns.
+
+**Examples**:
+- "How does block/retry self-correction work?"
+- "What's the difference between commands and agents?"
+- "How do agent teams replace ADWs?"
+
+**Resolution**:
+1. Read `.claude/commands/experts/tac/expertise.md` -> Parts 2-3
+2. Provide pattern description with examples
 
 ---
 
@@ -119,19 +158,23 @@ Questions about Lessons 9-14 (Context Engineering through Codebase Singularity).
 ```mermaid
 flowchart TD
     A[Receive Question] --> B{Classify Question}
-    B -->|Tactic| C[Read expertise.md Part 1]
-    B -->|Framework| D[Read expertise.md Part 4]
-    B -->|Hooks| E[Read expertise.md Parts 5-6]
-    B -->|Expert System| F[Read expertise.md Part 2 + Part 3]
-    B -->|Ecosystem| G[Read expertise.md Part 7]
-    B -->|Advanced Lesson| H[Read expertise.md Part 2]
-    C --> I[Generate Answer]
-    D --> I
-    E --> I
-    F --> I
-    G --> I
-    H --> I
-    I --> J[Include Source Reference]
+    B -->|Tactic| C[Read tac-learning-expertise.md Part 1]
+    B -->|Framework| D[Read tac-learning-expertise.md Part 4]
+    B -->|Hooks| E[Read expertise.md Part 1]
+    B -->|Expert System| F[Read tac-learning-expertise.md L13 + expertise.md Part 5]
+    B -->|Ecosystem| G[Read expertise.md Part 4]
+    B -->|Advanced Lesson| H[Read tac-learning-expertise.md Part 2]
+    B -->|Post-14 Lesson| I2[Read tac-learning-expertise.md Part 3]
+    B -->|SSVA / Prompting| J2[Read expertise.md Parts 2-3]
+    C --> K[Generate Answer]
+    D --> K
+    E --> K
+    F --> K
+    G --> K
+    H --> K
+    I2 --> K
+    J2 --> K
+    K --> L[Include Source Reference]
 ```
 
 ---
@@ -145,11 +188,11 @@ flowchart TD
 
 ## Details
 
-{Supporting information from expertise.md}
+{Supporting information from expertise files}
 
 ## TAC Reference
 
-- expertise.md -> {section/part}
+- Source: {tac-learning-expertise.md or expertise.md} -> {section/part}
 - Tactic {N}: {name} (if applicable)
 - Framework: {name} (if applicable)
 ```
@@ -158,7 +201,7 @@ flowchart TD
 
 ## Instructions
 
-1. **Read expertise.md first** - All TAC knowledge is stored there
+1. **Read both expertise files as needed** - Theory in `tac-learning-expertise.md`, patterns in `expertise.md`
 2. **Never modify files** - This is a read-only command
 3. **Be specific** - Reference exact parts, tactics, and frameworks
 4. **Connect to practice** - When possible, relate TAC concepts to this project's structure

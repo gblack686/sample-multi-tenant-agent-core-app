@@ -110,7 +110,7 @@ Nine domain experts with accumulated knowledge. Use them — don't go solo.
 
 ### Workflow & Methodology
 ```bash
-/experts:tac:plan "Design ADW for feature X"             # TAC methodology
+/experts:tac:plan "Design workflow for feature X"         # TAC methodology
 /experts:git:plan "Set up release branching"             # Git workflows
 ```
 
