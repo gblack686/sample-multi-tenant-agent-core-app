@@ -51,8 +51,9 @@ smoke:
     cd client && BASE_URL=http://localhost:3000 npx playwright test navigation.spec.ts intake.spec.ts --project=chromium
 
 # Same as smoke but with a visible browser window (so you can see it pass)
+# --workers=1 runs tests sequentially so windows don't compete and abort
 smoke-ui:
-    cd client && BASE_URL=http://localhost:3000 npx playwright test navigation.spec.ts intake.spec.ts --project=chromium --headed
+    cd client && BASE_URL=http://localhost:3000 npx playwright test navigation.spec.ts intake.spec.ts --project=chromium --headed --workers=1
 
 # One-command local smoke: start stack detached, wait for health, run smoke tests
 dev-smoke: dev-up smoke
