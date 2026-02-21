@@ -32,9 +32,26 @@ create-users:
 
 # ── Development ─────────────────────────────────────────────
 
-# Start backend + frontend via docker compose
+# Start backend + frontend via docker compose (foreground, with logs)
 dev:
     docker compose -f {{COMPOSE_FILE}} up --build
+
+# Start stack detached and wait for backend health (ready for smoke tests)
+dev-up:
+    docker compose -f {{COMPOSE_FILE}} up --build --detach
+    python scripts/wait_for_backend.py
+
+# Tear down local docker compose stack
+dev-down:
+    docker compose -f {{COMPOSE_FILE}} down
+
+# Run smoke tests against local stack (frontend + backend connectivity check)
+# Requires stack to be running — use 'just dev-up' first, or 'just dev-smoke'
+smoke:
+    cd client && BASE_URL=http://localhost:3000 npx playwright test navigation.spec.ts intake.spec.ts --project=chromium
+
+# One-command local smoke: start stack detached, wait for health, run smoke tests
+dev-smoke: dev-up smoke
 
 # Start FastAPI backend only (local)
 dev-backend:
