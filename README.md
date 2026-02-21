@@ -61,7 +61,17 @@ just --list         # See all available commands
 # Development
 just lint           # Ruff (Python) + tsc (TypeScript)
 just test           # Backend pytest
-just test-e2e       # Playwright E2E against Fargate
+
+# Local E2E Testing (stack must be running — use just dev-up first)
+just e2e base       # 9 tests  — connectivity: nav + home page (headless, ~14s)
+just e2e mid        # 26 tests — all pages: nav, home, admin, documents, workflows (headless, ~22s)
+just e2e full       # 30 tests — full E2E including live agent chat (headed, workers=1, ~47s)
+just smoke-ui       # Same as e2e base but visible browser window
+just smoke          # Same as e2e base, headless
+
+# Cloud E2E Testing (against Fargate)
+just test-e2e       # Playwright E2E against Fargate (headless)
+just test-e2e-ui    # Playwright E2E against Fargate (visible browser)
 
 # Eval Suite
 just eval           # Full 28-test eval suite (haiku)
@@ -235,20 +245,24 @@ Backend ready (HTTP 200)
 
 ### A3 — Open in Browser
 
-Open **http://localhost:3000** — you should see the EAGLE intake form with the sidebar showing **"Backend: System Active"**. That status only appears when the frontend successfully reached the backend.
+Open **http://localhost:3000** — you should see the EAGLE landing page with a green **"Connected"** indicator in the top-right header. That indicator only appears when the frontend successfully called the backend on startup.
 
-### A4 — Run Smoke Tests (visible browser)
+### A4 — Run E2E Tests
 
-```bash
-just smoke-ui
-```
-
-A Chromium window opens and runs through the navigation and intake tests. Watch it click through the app in real time. You should see all tests pass green.
+Three coverage levels — start fast, go deeper as needed:
 
 ```bash
-# Or headless (faster, no browser window):
-just smoke
+# Fast connectivity check — nav + home page (9 tests, ~14s, headless)
+just e2e base
+
+# All pages — admin, documents, workflows too (26 tests, ~22s, headless)
+just e2e mid
+
+# Full E2E — all pages + live agent chat (30 tests, ~47s, headed browser)
+just e2e full
 ```
+
+`just e2e full` opens a visible Chromium window, navigates to Chat, types "Hello", and waits for the agent to respond — proof the full AI pipeline is working end-to-end.
 
 ### A5 — Tear Down
 
