@@ -4,7 +4,7 @@ parent: "[[deployment/_index]]"
 file-type: expertise
 human_reviewed: false
 tags: [expert-file, mental-model, deployment, aws, cdk]
-last_updated: 2026-02-20T16:30:00
+last_updated: 2026-02-20T21:00:00
 ---
 
 # Deployment Expertise (Complete Mental Model)
@@ -1062,6 +1062,13 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 ## Learnings
 
 ### patterns_that_work
+- **Two-checklist README structure** for new developers: Checklist A (local dev: Docker + .env + just dev-up + smoke-ui) vs Checklist B (cloud: AWS creds + CDK + containers + verify). Separates concerns and prevents cloud-first confusion for devs who just want to run locally (discovered: 2026-02-20, component: README/onboarding)
+- **`just dev-up` + `wait_for_backend.py` pattern**: `docker compose up --detach` then poll `localhost:8000/health` every 2s for up to 60s — reliably gates downstream commands without blocking the terminal (discovered: 2026-02-20, component: local smoke workflow)
+- **`--headed` flag for Playwright smoke tests**: adding `--headed` to Playwright commands gives a visible browser window with zero extra configuration — perfect for "show the new dev it works" moment without extra tooling (discovered: 2026-02-20, component: smoke-ui / test-e2e-ui)
+- **Playwright `smoke` test as connectivity proof**: `intake.spec.ts` `shows system status` asserts "Backend: System Active" text — only appears if frontend polled the backend health endpoint. Cheap browser-level integration test with no auth needed (discovered: 2026-02-20, component: local smoke testing)
+- **`anthropics/claude-code-action@v1` with `use_sticky_comment: 'true'`**: clean, minimal GitHub Actions workflow for Claude PR review. Auto-reviews PRs, responds to `@claude` issue comments, triggers on labeled issues. 94 lines vs 401 lines for the complex version (discovered: 2026-02-20, component: .github/workflows/claude-code-assistant.yml)
+- **Scripts over inline Python for any logic with try/except**: Python `try/except` cannot be used in `python -c "..."` one-liners. Extract to `scripts/*.py` with proper formatting — more readable, testable, and avoids MSYS line-ending issues (discovered: 2026-02-20, component: scripts/wait_for_backend.py, scripts/check_aws.py)
+- **Bedrock cross-region inference profile format**: `us.anthropic.claude-3-5-haiku-20241022-v1:0` (with `us.` prefix) required for on-demand Claude 3.5+ invocation. IAM needs BOTH `arn:aws:bedrock:{region}:{account}:inference-profile/us.anthropic.*` AND `arn:aws:bedrock:*::foundation-model/anthropic.*` (discovered: 2026-02-20, component: EagleStorageStack/Lambda extractor)
 - Cherry-picking from a separate GitHub repo: accept invitation via `gh api user/repository_invitations` (no leading slash on Windows), add remote, `git fetch`, then `git cherry-pick {sha}` (discovered: 2026-02-20, component: git workflow)
 - CDK Lambda local bundler with `fs.readdirSync().filter().forEach(fs.copyFileSync)` is fully cross-platform — avoids shell glob expansion failures on Windows/MSYS (discovered: 2026-02-20, component: EagleStorageStack Lambda bundler)
 - Granting cross-stack IAM access via **static ARN strings from config** (e.g., `arn:aws:s3:::${config.documentBucketName}`) in the role's own stack keeps IAM policy self-contained and avoids cross-stack token references entirely (discovered: 2026-02-20, component: EagleCoreStack/EagleStorageStack)
@@ -1084,6 +1091,10 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 - Internal just recipes prefixed with `_` stay hidden from `just --list` — clean separation of public and private commands (discovered: 2026-02-18, component: Justfile)
 
 ### patterns_to_avoid
+- Don't put `try/except` logic in Justfile inline Python one-liners (`python -c "..."`). Python requires multi-line syntax for try/except — the one-liner will SyntaxError. Extract to a `scripts/*.py` file instead (discovered: 2026-02-20, component: Justfile/wait_for_backend)
+- Don't inline complex multi-step Python in Justfile recipes — two attempts with `||` fallback is unreadable and fragile. One well-named script file is always better (discovered: 2026-02-20, component: Justfile)
+- Don't use the complex `claude-merge-analysis.yml` pattern (401 lines, two jobs, JSON structured outputs) — it's overkill and fragile. `anthropics/claude-code-action@v1` with a simple prompt is the correct approach (discovered: 2026-02-20, component: GitHub Actions)
+- Don't use `anthropic.claude-3-5-haiku-20241022-v1:0` (direct model ID) for on-demand Bedrock — it only works with provisioned throughput. Always use the cross-region inference profile `us.anthropic.claude-3-5-haiku-20241022-v1:0` for Claude 3.5+ (discovered: 2026-02-20, component: EagleStorageStack Lambda)
 - Don't call `bucket.grantRead(role)` or `table.grantReadData(role)` when the role is in a different stack that the current stack depends on — this creates a circular dependency (role's stack → resource's stack implicitly, while resource's stack → role's stack explicitly). Use static ARN strings in the role's stack instead (discovered: 2026-02-20, component: EagleStorageStack/EagleCoreStack)
 - Don't use `cp -r path/*.py outputDir` in CDK Lambda local bundlers on Windows — the shell glob fails in MSYS/Git Bash. Use `fs.readdirSync().filter().forEach(fs.copyFileSync)` instead (discovered: 2026-02-20, component: EagleStorageStack Lambda bundler)
 - Don't use leading slash in `gh api` calls on Windows/Git Bash — MSYS rewrites `/user/...` as `C:/Program Files/Git/user/...`. Use `gh api user/repository_invitations` (no leading slash) (discovered: 2026-02-20, component: GitHub CLI)
@@ -1099,6 +1110,8 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 - Don't hardcode ALB URLs in task runners — they change on redeployment. Fetch dynamically from `describe_load_balancers()` (discovered: 2026-02-18, component: Justfile)
 
 ### common_issues
+- **`try/except` SyntaxError in `python -c` one-liner**: Python multi-line constructs can't be written with semicolons. Fix: move to `scripts/*.py` file, call as `python scripts/myscript.py` from Justfile (component: Justfile, 2026-02-20)
+- **Bedrock `ValidationException: on-demand throughput isn't supported`**: direct model ID `anthropic.claude-3-5-haiku-20241022-v1:0` given. Fix: use inference profile `us.anthropic.claude-3-5-haiku-20241022-v1:0` AND update IAM to include `inference-profile/us.anthropic.*` resource (component: Lambda extractor, 2026-02-20)
 - CDK circular dependency `Stack A depends on Stack B, Stack B depends on Stack A`: caused by cross-stack `grantRead(role)` where the role is in the other stack. Fix: use `addToPolicy` with static ARN strings in the role's own stack (component: EagleCoreStack/EagleStorageStack, 2026-02-20)
 - CDK Lambda local bundler `cp -r path/*.py outputDir` fails on Windows with `cannot stat '/*.py'`: MSYS path rewriting mangles the glob. Fix: use Node.js `fs.readdirSync().copyFileSync()` (component: EagleStorageStack, 2026-02-20)
 - `gh api /user/repository_invitations` fails on Windows with `invalid API endpoint "C:/Program Files/Git/..."`: MSYS rewrites leading slash. Fix: drop the leading slash → `gh api user/repository_invitations` (component: GitHub CLI, 2026-02-20)
@@ -1112,6 +1125,11 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 - Docker context transfer is ~800MB+ without .dockerignore: ensure `.dockerignore` excludes `node_modules`, `.next`, `.git`, `data/` (component: Dockerfile.frontend)
 
 ### tips
+- **Developer onboarding README structure**: Checklist A (local, no cloud) → Checklist B (cloud deploy). Prereqs at top of each checklist, not in a single monolithic prerequisites block. Browser test at the end of each makes it feel real
+- **`just smoke-ui` / `just dev-smoke-ui`**: adding `--headed` is the zero-cost way to turn a CI Playwright test into a visible demo. Use for onboarding walkthroughs and new account verification
+- **`just dev-up` + poll pattern**: `docker compose up --detach` then poll the health endpoint is the right local smoke setup. The polling script should live in `scripts/` not inline in the Justfile
+- **Justfile script file threshold**: if the Python logic has more than 3 lines or uses try/except, move it to `scripts/*.py` immediately
+- **GitHub Actions for Claude**: use `anthropics/claude-code-action@v1` with `use_sticky_comment: 'true'`. Trigger on PRs (auto-review), `issue_comment` (with `@claude` guard), and labeled issues. Simpler is significantly better here
 - When cherry-picking from a separate org's repo: `gh api user/repository_invitations` (no leading slash) → `git remote add {name} {url}` → `git fetch {name}` → `git cherry-pick {sha}` → `git push`
 - New CDK stacks: design as independent first (no cross-stack props). Add dependency props only when truly needed, and always check if the grant direction creates a cycle before adding them
 - For cross-stack IAM access where a cycle would form: put the policy in the **role's stack** using static `config.*Name` ARN strings — no tokens, no cycle, no `addDependency` needed
@@ -1132,3 +1150,6 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 - `just deploy` for full deploy pipeline: ECR login → build → push → ECS update → wait → status
 - `just ci` for full CI: lint → test → eval-aws
 - `just ship` for full ship: lint → deploy
+- `just dev-up` / `just dev-down` / `just dev-smoke` / `just dev-smoke-ui` for local stack lifecycle
+- `just smoke` / `just smoke-ui` for Playwright smoke tests (headless / headed)
+- `just test-e2e` / `just test-e2e-ui` for Playwright E2E against Fargate (headless / headed)
