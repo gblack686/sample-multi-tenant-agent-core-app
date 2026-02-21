@@ -45,13 +45,36 @@ dev-up:
 dev-down:
     docker compose -f {{COMPOSE_FILE}} down
 
-# Run smoke tests against local stack (frontend + backend connectivity check)
-# Requires stack to be running — use 'just dev-up' first, or 'just dev-smoke'
-smoke:
-    cd client && BASE_URL=http://localhost:3000 npx playwright test navigation.spec.ts intake.spec.ts --project=chromium
+# Integration smoke tests — verify pages load and backend is reachable
+# Requires stack running (just dev-up). Default: base.
+#   base  → connectivity: nav + home page (9 tests, headless, ~14s)
+#   mid   → all pages: nav, home, admin, documents, workflows (26 tests, headless, ~22s)
+#   full  → all pages + basic agent response: adds chat spec (30 tests, headless, ~47s)
+smoke LEVEL="base":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{LEVEL}}" in
+      base)
+        cd client && BASE_URL=http://localhost:3000 npx playwright test \
+          navigation.spec.ts intake.spec.ts \
+          --project=chromium
+        ;;
+      mid)
+        cd client && BASE_URL=http://localhost:3000 npx playwright test \
+          navigation.spec.ts intake.spec.ts admin-dashboard.spec.ts documents.spec.ts workflows.spec.ts \
+          --project=chromium
+        ;;
+      full)
+        cd client && BASE_URL=http://localhost:3000 npx playwright test \
+          navigation.spec.ts intake.spec.ts admin-dashboard.spec.ts documents.spec.ts workflows.spec.ts chat.spec.ts \
+          --project=chromium
+        ;;
+      *)
+        echo "Unknown level '{{LEVEL}}'. Valid: base | mid | full" && exit 1
+        ;;
+    esac
 
-# Same as smoke but with a visible browser window (so you can see it pass)
-# --workers=1 runs tests sequentially so windows don't compete and abort
+# Same as smoke base but with a visible browser window (headed, sequential)
 smoke-ui:
     cd client && BASE_URL=http://localhost:3000 npx playwright test navigation.spec.ts intake.spec.ts --project=chromium --headed --workers=1
 
@@ -96,30 +119,36 @@ test-e2e *ARGS:
 test-e2e-ui *ARGS:
     python -c "import boto3; c=boto3.client('elbv2',region_name='us-east-1'); dns=[lb['DNSName'] for lb in c.describe_load_balancers()['LoadBalancers'] if 'Front' in lb['LoadBalancerName']]; print(f'Testing against: http://{dns[0]}')" && cd client && npx playwright test {{ARGS}} --headed
 
-# E2E test suite with coverage levels (stack must be running — use dev-up first)
-#   base  →  smoke: nav + home page (9 tests, headless, fast)
-#   mid   →  all pages: nav, home, admin, documents, workflows (26 tests, headless)
-#   full  →  all specs + live agent chat (30 tests, headed, workers=1)
-e2e LEVEL="base":
+# E2E use case tests — complete acquisition workflows through the UI
+# Headed + sequential so you can watch each scenario play out.
+# Requires running stack with live AI backend (just dev-up).
+#   intake  → describe acquisition need → agent returns pathway + document list
+#   doc     → request SOW → agent generates document structure
+#   far     → ask FAR question → agent returns regulation reference with citation
+#   full    → all three use case workflows in sequence
+e2e WORKFLOW="full":
     #!/usr/bin/env bash
     set -euo pipefail
-    case "{{LEVEL}}" in
-      base)
+    case "{{WORKFLOW}}" in
+      intake)
         cd client && BASE_URL=http://localhost:3000 npx playwright test \
-          navigation.spec.ts intake.spec.ts \
-          --project=chromium
+          uc-intake.spec.ts --project=chromium --headed --workers=1
         ;;
-      mid)
+      doc)
         cd client && BASE_URL=http://localhost:3000 npx playwright test \
-          navigation.spec.ts intake.spec.ts admin-dashboard.spec.ts documents.spec.ts workflows.spec.ts \
-          --project=chromium
+          uc-document.spec.ts --project=chromium --headed --workers=1
+        ;;
+      far)
+        cd client && BASE_URL=http://localhost:3000 npx playwright test \
+          uc-far-search.spec.ts --project=chromium --headed --workers=1
         ;;
       full)
         cd client && BASE_URL=http://localhost:3000 npx playwright test \
+          uc-intake.spec.ts uc-document.spec.ts uc-far-search.spec.ts \
           --project=chromium --headed --workers=1
         ;;
       *)
-        echo "Unknown level '{{LEVEL}}'. Valid: base | mid | full" && exit 1
+        echo "Unknown workflow '{{WORKFLOW}}'. Valid: intake | doc | far | full" && exit 1
         ;;
     esac
 

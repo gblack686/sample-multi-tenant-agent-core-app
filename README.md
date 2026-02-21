@@ -62,16 +62,21 @@ just --list         # See all available commands
 just lint           # Ruff (Python) + tsc (TypeScript)
 just test           # Backend pytest
 
-# Local E2E Testing (stack must be running — use just dev-up first)
-just e2e base       # 9 tests  — connectivity: nav + home page (headless, ~14s)
-just e2e mid        # 26 tests — all pages: nav, home, admin, documents, workflows (headless, ~22s)
-just e2e full       # 30 tests — full E2E including live agent chat (headed, workers=1, ~47s)
-just smoke-ui       # Same as e2e base but visible browser window
-just smoke          # Same as e2e base, headless
+# Smoke Tests — verify pages load and backend is reachable (stack must be running)
+just smoke          # base: nav + home page (10 tests, headless, ~14s)
+just smoke mid      # all pages: nav, home, admin, documents, workflows (27 tests, ~22s)
+just smoke full     # all pages + basic agent response (31 tests, ~27s)
+just smoke-ui       # same as smoke base, headed (visible browser)
+
+# E2E Use Case Tests — complete acquisition workflows through the UI (headed)
+just e2e intake     # OA Intake: describe need → agent returns pathway + document list
+just e2e doc        # Document Gen: request SOW → agent returns document structure
+just e2e far        # FAR Search: ask regulation question → agent returns FAR citation
+just e2e full       # all three use case workflows in sequence
 
 # Cloud E2E Testing (against Fargate)
-just test-e2e       # Playwright E2E against Fargate (headless)
-just test-e2e-ui    # Playwright E2E against Fargate (visible browser)
+just test-e2e       # Playwright against Fargate (headless)
+just test-e2e-ui    # Playwright against Fargate (headed)
 
 # Eval Suite
 just eval           # Full 28-test eval suite (haiku)
@@ -247,22 +252,24 @@ Backend ready (HTTP 200)
 
 Open **http://localhost:3000** — you should see the EAGLE landing page with a green **"Connected"** indicator in the top-right header. That indicator only appears when the frontend successfully called the backend on startup.
 
-### A4 — Run E2E Tests
+### A4 — Run Tests
 
-Three coverage levels — start fast, go deeper as needed:
+Start with smoke, then use case workflows:
 
 ```bash
-# Fast connectivity check — nav + home page (9 tests, ~14s, headless)
-just e2e base
+# Smoke — pages load and backend is reachable (headless, fast)
+just smoke          # nav + home page (~14s)
+just smoke mid      # all pages including admin, documents, workflows (~22s)
+just smoke full     # all pages + basic agent response check (~27s)
 
-# All pages — admin, documents, workflows too (26 tests, ~22s, headless)
-just e2e mid
-
-# Full E2E — all pages + live agent chat (30 tests, ~47s, headed browser)
-just e2e full
+# E2E Use Cases — complete acquisition workflows (headed, visible browser)
+just e2e intake     # describe acquisition → agent returns pathway + document list
+just e2e doc        # request SOW → agent generates document structure
+just e2e far        # ask FAR question → agent returns regulation reference
+just e2e full       # all three workflows in sequence
 ```
 
-`just e2e full` opens a visible Chromium window, navigates to Chat, types "Hello", and waits for the agent to respond — proof the full AI pipeline is working end-to-end.
+`just e2e full` opens a Chromium window and walks through three real acquisition scenarios end-to-end — proof the AI pipeline, agent routing, and domain knowledge are all working.
 
 ### A5 — Tear Down
 
