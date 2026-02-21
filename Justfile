@@ -96,6 +96,33 @@ test-e2e *ARGS:
 test-e2e-ui *ARGS:
     python -c "import boto3; c=boto3.client('elbv2',region_name='us-east-1'); dns=[lb['DNSName'] for lb in c.describe_load_balancers()['LoadBalancers'] if 'Front' in lb['LoadBalancerName']]; print(f'Testing against: http://{dns[0]}')" && cd client && npx playwright test {{ARGS}} --headed
 
+# E2E test suite with coverage levels (stack must be running — use dev-up first)
+#   base  →  smoke: nav + home page (9 tests, headless, fast)
+#   mid   →  all pages: nav, home, admin, documents, workflows (26 tests, headless)
+#   full  →  all specs + live agent chat (30 tests, headed, workers=1)
+e2e LEVEL="base":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{LEVEL}}" in
+      base)
+        cd client && BASE_URL=http://localhost:3000 npx playwright test \
+          navigation.spec.ts intake.spec.ts \
+          --project=chromium
+        ;;
+      mid)
+        cd client && BASE_URL=http://localhost:3000 npx playwright test \
+          navigation.spec.ts intake.spec.ts admin-dashboard.spec.ts documents.spec.ts workflows.spec.ts \
+          --project=chromium
+        ;;
+      full)
+        cd client && BASE_URL=http://localhost:3000 npx playwright test \
+          --project=chromium --headed --workers=1
+        ;;
+      *)
+        echo "Unknown level '{{LEVEL}}'. Valid: base | mid | full" && exit 1
+        ;;
+    esac
+
 # ── Eval Suite ──────────────────────────────────────────────
 
 # Run full eval suite (28 tests) with haiku and publish results
