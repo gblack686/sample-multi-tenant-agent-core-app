@@ -354,6 +354,17 @@ just status     # ECS health + live URLs
 just urls       # Print frontend/backend URLs
 ```
 
+**Local smoke test** — confirm frontend is connected to backend before pushing:
+
+```bash
+# Prerequisite: cd client && npx playwright install chromium
+just dev-smoke  # builds containers, starts stack, waits for /health, runs Playwright smoke tests
+```
+
+This runs `navigation.spec.ts` + `intake.spec.ts` against `localhost:3000`. The intake
+`shows system status` test asserts `Backend: System Active` — which only appears when
+the frontend successfully reached the backend. Tear down with `just dev-down` when done.
+
 ---
 
 ## CI/CD Pipeline
