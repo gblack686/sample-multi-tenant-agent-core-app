@@ -50,8 +50,15 @@ dev-down:
 smoke:
     cd client && BASE_URL=http://localhost:3000 npx playwright test navigation.spec.ts intake.spec.ts --project=chromium
 
+# Same as smoke but with a visible browser window (so you can see it pass)
+smoke-ui:
+    cd client && BASE_URL=http://localhost:3000 npx playwright test navigation.spec.ts intake.spec.ts --project=chromium --headed
+
 # One-command local smoke: start stack detached, wait for health, run smoke tests
 dev-smoke: dev-up smoke
+
+# One-command local smoke with visible browser window
+dev-smoke-ui: dev-up smoke-ui
 
 # Start FastAPI backend only (local)
 dev-backend:
@@ -80,9 +87,13 @@ lint-ts:
 test *ARGS:
     cd server && python -m pytest tests/ -v {{ARGS}}
 
-# Run Playwright E2E tests against Fargate
+# Run Playwright E2E tests against Fargate (headless)
 test-e2e *ARGS:
     python -c "import boto3; c=boto3.client('elbv2',region_name='us-east-1'); dns=[lb['DNSName'] for lb in c.describe_load_balancers()['LoadBalancers'] if 'Front' in lb['LoadBalancerName']]; print(f'Testing against: http://{dns[0]}')" && cd client && npx playwright test {{ARGS}}
+
+# Run Playwright E2E tests against Fargate with a visible browser window
+test-e2e-ui *ARGS:
+    python -c "import boto3; c=boto3.client('elbv2',region_name='us-east-1'); dns=[lb['DNSName'] for lb in c.describe_load_balancers()['LoadBalancers'] if 'Front' in lb['LoadBalancerName']]; print(f'Testing against: http://{dns[0]}')" && cd client && npx playwright test {{ARGS}} --headed
 
 # ── Eval Suite ──────────────────────────────────────────────
 

@@ -184,131 +184,176 @@ All stacks in `infrastructure/cdk-eagle/`:
 
 ---
 
-## Deployment Guide
+## Setup Guides
 
-### Requirements for a New AWS Account
-
-**AWS Credentials**: Configure the AWS CLI with an IAM user or role that has admin access (or at minimum: CloudFormation, VPC, ECS, ECR, Cognito, DynamoDB, S3, IAM, Lambda, Bedrock, CloudWatch, ELB):
-
-```bash
-aws configure
-# AWS Access Key ID:     <your-key>
-# AWS Secret Access Key: <your-secret>
-# Default region name:   us-east-1
-# Default output format: json
-
-# Verify credentials
-aws sts get-caller-identity
-```
-
-### One-Command Setup
-
-> If you have AWS credentials configured and Bedrock model access enabled, run the entire setup with:
->
-> ```bash
-> just setup
-> ```
->
-> This installs CDK dependencies, creates the S3 bucket, bootstraps CDK, deploys all stacks, builds and deploys containers, creates test users, and verifies connectivity. The steps below explain each stage.
+Two paths depending on your goal. Start with **Checklist A** to validate the stack locally, then run **Checklist B** to deploy to AWS.
 
 ---
 
-### Step-by-Step Setup
+## Checklist A: Local Development
 
-#### Step 0: Configure Account-Specific Names (new accounts only)
+Run the full stack on your laptop using Docker Compose. No cloud account required for the app itself — you only need AWS credentials for DynamoDB session storage and optionally Bedrock.
 
-S3 bucket names are **globally unique** across all AWS accounts. If deploying to a new account, update `infrastructure/cdk-eagle/config/environments.ts` to avoid conflicts:
+### A0 — Prerequisites
 
-```typescript
-// Change to something unique for your account:
-documentBucketName: 'eagle-documents-dev-{your-suffix}',
-```
+- [ ] **Docker Desktop** installed and running
+- [ ] **Python 3.11+** and **Node.js 20+**
+- [ ] **`just`** task runner: `cargo install just` or `brew install just` or `winget install just`
+- [ ] **Playwright Chromium**: `cd client && npx playwright install chromium`
 
-Also update the GitHub owner/repo for CI/CD:
-```typescript
-githubOwner: 'your-github-username',
-githubRepo: 'your-repo-name',
-```
-
-#### Step 1: Enable Bedrock Model Access (manual, one-time)
-
-1. Go to **AWS Console → Amazon Bedrock → Model access**
-2. Click **Manage model access** and enable **Anthropic Claude 3.5 Haiku** and **Anthropic Claude 3.5 Sonnet**
-3. Wait for "Access granted" status before proceeding
-
-> **Note**: The metadata extraction Lambda uses the cross-region inference profile `us.anthropic.claude-3-5-haiku-20241022-v1:0`. Enabling standard Haiku access automatically enables inference profile invocation — no separate step needed.
-
-#### Step 2: Create Pre-requisite Resources
-
-The `nci-documents` S3 bucket is **imported** (not created) by CDK and must exist before deploy. All other resources are created by CDK — do not create them manually.
+### A1 — Configure Environment
 
 ```bash
-# S3 bucket for documents (must exist before CDK deploy)
+cp .env.example .env
+```
+
+Minimum settings for local dev (edit `.env`):
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-...       # Direct Anthropic API (no Bedrock needed)
+USE_BEDROCK=false
+DEV_MODE=true                       # Skips Cognito auth — use for local only
+REQUIRE_AUTH=false
+EAGLE_SESSIONS_TABLE=eagle          # Still needs AWS credentials for DynamoDB
+AWS_DEFAULT_REGION=us-east-1
+```
+
+> **DynamoDB note**: Session storage still uses the real `eagle` DynamoDB table.
+> Set `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` in `.env`, or configure `aws configure`.
+
+### A2 — Start the Stack
+
+```bash
+just dev-up
+```
+
+This builds both containers, starts them detached, then polls `localhost:8000/health` until the backend is ready (up to 60s). You should see:
+
+```
+Backend ready (HTTP 200)
+```
+
+### A3 — Open in Browser
+
+Open **http://localhost:3000** — you should see the EAGLE intake form with the sidebar showing **"Backend: System Active"**. That status only appears when the frontend successfully reached the backend.
+
+### A4 — Run Smoke Tests (visible browser)
+
+```bash
+just smoke-ui
+```
+
+A Chromium window opens and runs through the navigation and intake tests. Watch it click through the app in real time. You should see all tests pass green.
+
+```bash
+# Or headless (faster, no browser window):
+just smoke
+```
+
+### A5 — Tear Down
+
+```bash
+just dev-down
+```
+
+---
+
+## Checklist B: Cloud Deployment (AWS)
+
+Deploys all 5 CDK stacks to AWS and runs EAGLE on ECS Fargate with Cognito auth, Bedrock, and full observability.
+
+### B0 — Prerequisites
+
+- [ ] **AWS CLI** configured with admin credentials:
+  ```bash
+  aws configure
+  # Region: us-east-1
+  aws sts get-caller-identity   # verify
+  ```
+- [ ] **Docker Desktop** installed and running
+- [ ] **Node.js 20+**, **Python 3.11+**, **`just`**
+
+### B1 — Configure Account-Specific Names *(new accounts only)*
+
+S3 bucket names are **globally unique**. If this isn't your first deploy, update `infrastructure/cdk-eagle/config/environments.ts`:
+
+```typescript
+documentBucketName: 'eagle-documents-dev-yourname',  // must be globally unique
+githubOwner: 'your-github-username',
+githubRepo:  'your-repo-name',
+```
+
+### B2 — Enable Bedrock Model Access *(manual, one-time)*
+
+1. Open **AWS Console → Amazon Bedrock → Model access**
+2. Click **Manage model access** → enable **Anthropic Claude 3.5 Haiku** and **Claude 3.5 Sonnet**
+3. Wait for **"Access granted"** before continuing
+
+> The metadata Lambda uses the cross-region inference profile `us.anthropic.claude-3-5-haiku-20241022-v1:0` — no separate profile step needed once standard access is granted.
+
+### B3 — Create Pre-requisite S3 Bucket
+
+The `nci-documents` bucket is **imported** by CDK (not created). It must exist first:
+
+```bash
 aws s3 mb s3://nci-documents --region us-east-1
 ```
 
-#### Step 3: Bootstrap and Deploy CDK
+### B4 — Deploy CDK (all 5 stacks)
 
 ```bash
-cd infrastructure/cdk-eagle
-npm ci
+just cdk-install   # npm ci in infrastructure/cdk-eagle/
 
-# Bootstrap CDK (once per account/region)
+# Bootstrap CDK once per account/region
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-npx cdk bootstrap aws://$ACCOUNT_ID/us-east-1
+npx cdk bootstrap aws://$ACCOUNT_ID/us-east-1 --app "npx ts-node infrastructure/cdk-eagle/bin/eagle.ts"
 
-# Deploy all 5 stacks
-npx cdk deploy --all --require-approval never --outputs-file outputs.json
+# Deploy all stacks
+just cdk-deploy
 ```
 
-#### Step 4: Upload Knowledge Base Documents
-
-After CDK deploys `EagleStorageStack`, upload EAGLE knowledge base documents. S3 event notifications automatically trigger the metadata extraction Lambda for each file:
+Or one command if this is your first time:
 
 ```bash
-# Bulk upload KB documents (triggers metadata extraction automatically)
+just setup   # S3 bucket → CDK bootstrap → CDK deploy → containers → users → verify
+```
+
+### B5 — Upload Knowledge Base Documents *(optional)*
+
+After `EagleStorageStack` deploys, upload documents. S3 event notifications auto-trigger the metadata extraction Lambda:
+
+```bash
 aws s3 sync path/to/knowledge-base/ s3://eagle-documents-dev/eagle/knowledge-base/ \
   --region us-east-1
 
-# Verify extraction ran (check Lambda logs)
+# Confirm Lambda ran
 aws logs filter-log-events \
   --log-group-name /eagle/lambda/metadata-extraction-dev \
   --start-time $(python -c "import time; print(int((time.time()-300)*1000))") \
   --query 'events[].message' --output text | head -20
 ```
 
-> The Lambda uses Claude 3.5 Haiku (Bedrock) to extract title, summary, topics, FAR references, and agent routing hints — storing results in `eagle-document-metadata-dev`.
-
-#### Step 5: Build and Deploy Containers
+### B6 — Build and Deploy Containers
 
 ```bash
-# Using the Justfile (recommended):
 just deploy
-
-# Or individually:
-just build-backend     # Builds backend image
-just build-frontend    # Builds frontend (auto-fetches Cognito config from CDK outputs)
-just deploy-backend    # Push + ECS update
-just deploy-frontend   # Push + ECS update
 ```
 
-#### Step 6: Create Cognito Users
+This logs into ECR, builds both images, pushes them, triggers ECS rolling updates, and waits for services to stabilize.
 
-Users require `custom:tenant_id` and `custom:subscription_tier` custom attributes:
+### B7 — Create Cognito Users
 
 ```bash
 just create-users
 ```
 
-This creates:
-
-| User | Email | Password | Tenant | Tier | Role |
-|------|-------|----------|--------|------|------|
-| Test User | testuser@example.com | EagleTest2024! | nci | basic | user |
-| Admin User | admin@example.com | EagleAdmin2024! | nci | premium | admin |
+| User | Email | Password | Tenant | Tier |
+|------|-------|----------|--------|------|
+| Test | testuser@example.com | EagleTest2024! | nci | basic |
+| Admin | admin@example.com | EagleAdmin2024! | nci | premium |
 
 <details>
-<summary>Manual user creation (click to expand)</summary>
+<summary>Manual user creation</summary>
 
 ```bash
 USER_POOL_ID=$(aws cloudformation describe-stacks --stack-name EagleCoreStack \
@@ -336,34 +381,32 @@ aws cognito-idp admin-set-user-password \
 
 </details>
 
-#### Step 7: Set GitHub Secret (for CI/CD)
+### B8 — Set GitHub Secret *(for CI/CD)*
 
 ```bash
-# Print the deploy role ARN
 aws cloudformation describe-stacks --stack-name EagleCiCdStack \
   --query "Stacks[0].Outputs[?OutputKey=='DeployRoleArn'].OutputValue" --output text
 ```
 
-Add as `DEPLOY_ROLE_ARN` in **GitHub → Settings → Secrets and variables → Actions**.
+Add the output as `DEPLOY_ROLE_ARN` in **GitHub → Settings → Secrets and variables → Actions**.
 
-#### Step 8: Verify
-
-```bash
-just check-aws  # Verifies all 8 AWS resources (S3×2, DDB×2, Lambda, ECS×2, Identity)
-just status     # ECS health + live URLs
-just urls       # Print frontend/backend URLs
-```
-
-**Local smoke test** — confirm frontend is connected to backend before pushing:
+### B9 — Verify and Open in Browser
 
 ```bash
-# Prerequisite: cd client && npx playwright install chromium
-just dev-smoke  # builds containers, starts stack, waits for /health, runs Playwright smoke tests
+just check-aws   # verifies all 8 resources (S3×2, DDB×2, Lambda, ECS×2, Identity)
+just status      # ECS running counts
+just urls        # prints frontend + backend URLs
 ```
 
-This runs `navigation.spec.ts` + `intake.spec.ts` against `localhost:3000`. The intake
-`shows system status` test asserts `Backend: System Active` — which only appears when
-the frontend successfully reached the backend. Tear down with `just dev-down` when done.
+**Open the frontend URL in your browser** — log in with `testuser@example.com / EagleTest2024!` and confirm the intake form loads and responds.
+
+```bash
+# Or run E2E tests with a visible browser window against Fargate:
+just test-e2e-ui
+
+# Headless:
+just test-e2e
+```
 
 ---
 
