@@ -10,7 +10,7 @@ import time
 import urllib.request
 import urllib.error
 
-URL = "http://localhost:8000/health"
+URL = "http://localhost:8000/api/health"
 MAX_ATTEMPTS = 30
 INTERVAL = 2
 
