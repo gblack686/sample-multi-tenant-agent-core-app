@@ -25,12 +25,14 @@ const core = new EagleCoreStack(app, 'EagleCoreStack', {
   description: 'EAGLE Core — VPC, Cognito, IAM, storage imports',
 });
 
-// Storage stack is independent of Core (appRole access granted via static ARNs in CoreStack)
+// Storage stack depends on Core for appRole
 const storage = new EagleStorageStack(app, 'EagleStorageStack', {
   env,
   config: DEV_CONFIG,
+  appRole: core.appRole,
   description: 'EAGLE Storage — Document bucket, metadata DynamoDB, extraction Lambda',
 });
+storage.addDependency(core);
 
 // Compute stack depends on Core for VPC, IAM role, Cognito IDs + Storage for bucket/table names
 const compute = new EagleComputeStack(app, 'EagleComputeStack', {
