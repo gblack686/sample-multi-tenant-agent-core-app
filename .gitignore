@@ -46,6 +46,12 @@ infrastructure/terraform/.terraform/
 infrastructure/terraform/terraform.tfstate*
 infrastructure/terraform/.terraform.lock.hcl
 
+# Claude Code local settings (contains secrets)
+.claude/settings.local.json
+
+# AWS credentials
+.aws/credentials
+
 # IDE
 .vscode/
 .idea/

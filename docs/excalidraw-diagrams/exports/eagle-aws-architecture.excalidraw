@@ -1,236 +1,3 @@
----
-excalidraw-plugin: parsed
-tags: [excalidraw]
----
-
-# Text Elements
-
-EAGLE Platform — AWS Architecture ^text_title
-
-ECS Fargate  |  DynamoDB  |  S3  |  Cognito  |  Bedrock  |  CDK IaC ^text_subtitle
-
-Users (Browser)
-
-HTTPS requests via
-CloudFront or direct ALB
-JWT tokens from Cognito
-React SPA served by Next.js ^text_users
-
-Amazon Cognito
-eagle-users-dev
-
-Pool: us-east-1_XXXXXXX
-OAuth 2.0 + OIDC
-Hosted UI for sign-in/sign-up
-JWT ID + Access tokens
-Scopes: openid, email, profile
-MFA: Optional TOTP
-Stack: EagleCoreStack ^text_cognito
-
-GitHub Actions CI/CD
-gblack686/sample-multi-tenant-
-agent-core-app
-
-Trigger: push to main
-OIDC Federation (no static keys)
-Role: eagle-github-actions-dev
-
-Pipeline:
-  1. Checkout + lint + test
-  2. Docker build (multi-stage)
-  3. ECR push (backend + frontend)
-  4. ECS rolling deploy
-Stack: EagleCiCdStack ^text_github
-
-VPC: eagle-vpc-dev
-CIDR: 10.0.0.0/16
-Region: us-east-1
-AZs: us-east-1a, us-east-1b
-Stack: EagleCoreStack ^text_vpc
-
-Public Subnets
-10.0.0.0/24 (us-east-1a)
-10.0.1.0/24 (us-east-1b)
-Internet Gateway attached
-Route: 0.0.0.0/0 → IGW ^text_pubsub
-
-ALB (Internet-Facing)
-eagle-frontend
-
-Listener: HTTPS :443
-Target: ECS Frontend (port 3000)
-Health: /api/health
-Security Group: allow 443 inbound
-Cross-zone: enabled
-Stack: EagleComputeStack
-Cost: ~$16/mo ^text_falb
-
-ALB (Internal)
-eagle-backend
-
-Listener: HTTP :8000
-Target: ECS Backend (port 8000)
-Health: /health
-Security Group: VPC-only
-Not internet-accessible
-Stack: EagleComputeStack
-Cost: ~$16/mo ^text_ialb
-
-NAT Gateway
-
-Elastic IP attached
-Enables private subnet
-outbound internet access
-(pip install, API calls)
-Cost: ~$32/mo
-Stack: EagleCoreStack ^text_nat
-
-Private Subnets
-10.0.2.0/24 (us-east-1a)
-10.0.3.0/24 (us-east-1b)
-Route: 0.0.0.0/0 → NAT GW
-No direct internet ingress ^text_privsub
-
-ECS Cluster: eagle-dev
-Launch Type: Fargate (serverless)
-Capacity Provider: FARGATE
-Service Discovery: disabled
-Auto-scaling: target tracking
-Stack: EagleComputeStack ^text_ecs_label
-
-Frontend Service
-Next.js 14 (standalone output)
-
-Image: eagle-frontend-dev:latest
-CPU: 0.25 vCPU | Memory: 512 MiB
-Port: 3000
-Desired: 1 | Min: 1 | Max: 3
-Health: /api/health (30s interval)
-Environment:
-  NEXT_PUBLIC_API_URL → internal ALB
-  NEXT_PUBLIC_COGNITO_* → pool config
-Docker: node:20-alpine, multi-stage
-Cost: ~$9/mo per task ^text_frontend_svc
-
-Backend Service
-FastAPI + Anthropic Claude SDK
-
-Image: eagle-backend-dev:latest
-CPU: 0.5 vCPU | Memory: 1024 MiB
-Port: 8000
-Desired: 1 | Min: 1 | Max: 3
-Health: /health (30s interval)
-Environment:
-  ANTHROPIC_API_KEY → Secrets Manager
-  EAGLE_TABLE → eagle (DynamoDB)
-  S3_BUCKET → nci-documents
-  LOG_GROUP → /eagle/app
-Tools: 10+ registered (create_document,
-  search_knowledge, compliance_check...)
-Agents: 8 specialist + supervisor
-Skills: 5 (intake, doc-gen, compliance,
-  knowledge-retrieval, tech-review)
-Cost: ~$18/mo per task ^text_backend_svc
-
-Amazon ECR
-Container Registries
-
-eagle-backend-dev
-  Dockerfile.backend (Python 3.11)
-  Multi-stage: builder → runtime
-  Size: ~400MB
-
-eagle-frontend-dev
-  Dockerfile.frontend (Node 20)
-  Next.js standalone output
-  Size: ~200MB
-
-Lifecycle: keep last 10 images
-Scan on push: enabled
-Stack: EagleComputeStack ^text_ecr
-
-AWS Managed Services ^text_aws_svc_label
-
-Amazon DynamoDB
-Table: eagle (single-table design)
-
-Capacity: On-demand (PAY_PER_REQUEST)
-PK/SK Patterns:
-  SESSION#{tenant}#{user} / SESSION#{id}
-  SESSION#{tenant}#{user} / MSG#{sid}#{mid}
-  USAGE#{tenant} / USAGE#{date}#{session}
-  COST#{tenant} / COST#{date}#{ts}
-  SUB#{tenant} / SUB#{tier}#current
-
-TTL: enabled (expiry field)
-Imported by EagleCoreStack
-Cost: ~$0 (low traffic) ^text_dynamodb
-
-Amazon S3
-Bucket: nci-documents
-
-Size: ~168 MB
-Contents: generated documents
-  (SOWs, Acquisition Plans,
-   IGCEs, Justifications)
-Versioning: enabled
-Encryption: SSE-S3
-CORS: configured for frontend
-Imported by EagleCoreStack
-Cost: ~$0.01/mo ^text_s3
-
-Amazon Bedrock / Claude API
-Anthropic Claude Sonnet 4.5
-
-SDK: anthropic (Python)
-Model: claude-sonnet-4-5-20250929
-Max tokens: 8192 (configurable)
-Tools: function calling (10+ tools)
-Subagents: 12 built from plugin
-Temperature: 0.7 default
-Streaming: enabled
-Auth: ANTHROPIC_API_KEY
-Cost: ~$0.003/1K input tokens ^text_bedrock
-
-CloudWatch
-Log Groups & Metrics
-
-/eagle/app — application logs
-/eagle/test-runs — eval results
-  (28 test JSON events per run)
-Retention: 30 days (set)
-Metrics: custom eval dashboard
-Alarms: SNS on test failures
-Stack: EagleCoreStack +
-  EagleEvalStack (separate)
-Cost: ~$1-3/mo ^text_cloudwatch
-
-Authenticate ^text_arrow_auth
-
-Outbound ^text_arrow_internet
-
-Push Images ^text_arrow_push
-
-Deploy ^text_arrow_deploy
-
-Auth Check ^text_arrow_authcheck
-
-Color Legend ^text_legend_title
-
-Compute / ECS ^text_legend_blue
-
-Data / CI-CD ^text_legend_orange
-
-Auth / AI ^text_legend_purple
-
-Network / Monitoring ^text_legend_cyan
-
-Storage / Users ^text_legend_green
-
-EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text_footer
-
-%%
-```json
 {
   "type": "excalidraw",
   "version": 2,
@@ -244,7 +11,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 900,
       "height": 58,
       "angle": 0,
-      "strokeColor": "#047857",
+      "strokeColor": "#10b981",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -280,7 +47,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 600,
       "height": 24,
       "angle": 0,
-      "strokeColor": "#64748b",
+      "strokeColor": "#6b7280",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -316,13 +83,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 280,
       "height": 170,
       "angle": 0,
-      "strokeColor": "#059669",
-      "backgroundColor": "#d1fae5",
+      "strokeColor": "#10b981",
+      "backgroundColor": "#064e3b",
       "fillStyle": "hachure",
       "strokeWidth": 3,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": null,
@@ -343,7 +110,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 220,
       "height": 130,
       "angle": 0,
-      "strokeColor": "#1e293b",
+      "strokeColor": "#ffffff",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -379,13 +146,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 360,
       "height": 260,
       "angle": 0,
-      "strokeColor": "#7c3aed",
-      "backgroundColor": "#ede9fe",
+      "strokeColor": "#8b5cf6",
+      "backgroundColor": "#4c1d95",
       "fillStyle": "hachure",
       "strokeWidth": 3,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": { "type": 3 },
@@ -406,7 +173,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 320,
       "height": 236,
       "angle": 0,
-      "strokeColor": "#1e293b",
+      "strokeColor": "#ffffff",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -442,13 +209,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 420,
       "height": 340,
       "angle": 0,
-      "strokeColor": "#d97706",
-      "backgroundColor": "#fef3c7",
+      "strokeColor": "#f59e0b",
+      "backgroundColor": "#92400e",
       "fillStyle": "hachure",
       "strokeWidth": 3,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": { "type": 3 },
@@ -469,7 +236,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 380,
       "height": 320,
       "angle": 0,
-      "strokeColor": "#1e293b",
+      "strokeColor": "#ffffff",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -505,8 +272,8 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 1880,
       "height": 1670,
       "angle": 0,
-      "strokeColor": "#2563eb",
-      "backgroundColor": "#eff6ff",
+      "strokeColor": "#3b82f6",
+      "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 4,
       "strokeStyle": "dashed",
@@ -532,7 +299,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 460,
       "height": 120,
       "angle": 0,
-      "strokeColor": "#2563eb",
+      "strokeColor": "#3b82f6",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -568,8 +335,8 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 1800,
       "height": 380,
       "angle": 0,
-      "strokeColor": "#0891b2",
-      "backgroundColor": "#ecfeff",
+      "strokeColor": "#06b6d4",
+      "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 3,
       "strokeStyle": "dashed",
@@ -595,7 +362,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 460,
       "height": 120,
       "angle": 0,
-      "strokeColor": "#0891b2",
+      "strokeColor": "#06b6d4",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -631,13 +398,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 380,
       "height": 230,
       "angle": 0,
-      "strokeColor": "#0891b2",
-      "backgroundColor": "#cffafe",
+      "strokeColor": "#06b6d4",
+      "backgroundColor": "#164e63",
       "fillStyle": "hachure",
       "strokeWidth": 3,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": { "type": 3 },
@@ -658,7 +425,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 340,
       "height": 210,
       "angle": 0,
-      "strokeColor": "#1e293b",
+      "strokeColor": "#ffffff",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -694,13 +461,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 380,
       "height": 230,
       "angle": 0,
-      "strokeColor": "#0891b2",
-      "backgroundColor": "#cffafe",
+      "strokeColor": "#06b6d4",
+      "backgroundColor": "#164e63",
       "fillStyle": "hachure",
       "strokeWidth": 3,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": { "type": 3 },
@@ -721,7 +488,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 340,
       "height": 210,
       "angle": 0,
-      "strokeColor": "#1e293b",
+      "strokeColor": "#ffffff",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -757,13 +524,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 380,
       "height": 200,
       "angle": 0,
-      "strokeColor": "#d97706",
-      "backgroundColor": "#fef3c7",
+      "strokeColor": "#f59e0b",
+      "backgroundColor": "#92400e",
       "fillStyle": "hachure",
       "strokeWidth": 3,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": { "type": 3 },
@@ -784,7 +551,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 340,
       "height": 180,
       "angle": 0,
-      "strokeColor": "#1e293b",
+      "strokeColor": "#ffffff",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -820,8 +587,8 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 1800,
       "height": 1040,
       "angle": 0,
-      "strokeColor": "#2563eb",
-      "backgroundColor": "#eff6ff",
+      "strokeColor": "#3b82f6",
+      "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 3,
       "strokeStyle": "dashed",
@@ -847,7 +614,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 460,
       "height": 100,
       "angle": 0,
-      "strokeColor": "#2563eb",
+      "strokeColor": "#3b82f6",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -883,8 +650,8 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 1180,
       "height": 870,
       "angle": 0,
-      "strokeColor": "#2563eb",
-      "backgroundColor": "#dbeafe",
+      "strokeColor": "#3b82f6",
+      "backgroundColor": "#1e3a8a",
       "fillStyle": "hachure",
       "strokeWidth": 3,
       "strokeStyle": "solid",
@@ -910,7 +677,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 500,
       "height": 140,
       "angle": 0,
-      "strokeColor": "#2563eb",
+      "strokeColor": "#60a5fa",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -946,13 +713,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 470,
       "height": 300,
       "angle": 0,
-      "strokeColor": "#2563eb",
-      "backgroundColor": "#dbeafe",
+      "strokeColor": "#3b82f6",
+      "backgroundColor": "#1e3a8a",
       "fillStyle": "hachure",
       "strokeWidth": 3,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": { "type": 3 },
@@ -973,7 +740,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 430,
       "height": 280,
       "angle": 0,
-      "strokeColor": "#1e293b",
+      "strokeColor": "#ffffff",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -1009,13 +776,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 530,
       "height": 470,
       "angle": 0,
-      "strokeColor": "#2563eb",
-      "backgroundColor": "#dbeafe",
+      "strokeColor": "#3b82f6",
+      "backgroundColor": "#1e3a8a",
       "fillStyle": "hachure",
       "strokeWidth": 3,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": { "type": 3 },
@@ -1036,7 +803,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 490,
       "height": 450,
       "angle": 0,
-      "strokeColor": "#1e293b",
+      "strokeColor": "#ffffff",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -1072,13 +839,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 470,
       "height": 320,
       "angle": 0,
-      "strokeColor": "#2563eb",
-      "backgroundColor": "#dbeafe",
+      "strokeColor": "#3b82f6",
+      "backgroundColor": "#1e3a8a",
       "fillStyle": "hachure",
       "strokeWidth": 3,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": { "type": 3 },
@@ -1099,7 +866,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 430,
       "height": 296,
       "angle": 0,
-      "strokeColor": "#1e293b",
+      "strokeColor": "#ffffff",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -1135,7 +902,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 300,
       "height": 30,
       "angle": 0,
-      "strokeColor": "#d97706",
+      "strokeColor": "#f59e0b",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -1171,13 +938,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 420,
       "height": 300,
       "angle": 0,
-      "strokeColor": "#d97706",
-      "backgroundColor": "#fef3c7",
+      "strokeColor": "#f59e0b",
+      "backgroundColor": "#92400e",
       "fillStyle": "hachure",
       "strokeWidth": 3,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": { "type": 3 },
@@ -1198,7 +965,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 380,
       "height": 276,
       "angle": 0,
-      "strokeColor": "#1e293b",
+      "strokeColor": "#ffffff",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -1234,13 +1001,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 400,
       "height": 280,
       "angle": 0,
-      "strokeColor": "#059669",
-      "backgroundColor": "#d1fae5",
+      "strokeColor": "#10b981",
+      "backgroundColor": "#064e3b",
       "fillStyle": "hachure",
       "strokeWidth": 3,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": { "type": 3 },
@@ -1261,7 +1028,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 360,
       "height": 256,
       "angle": 0,
-      "strokeColor": "#1e293b",
+      "strokeColor": "#ffffff",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -1297,13 +1064,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 420,
       "height": 280,
       "angle": 0,
-      "strokeColor": "#7c3aed",
-      "backgroundColor": "#ede9fe",
+      "strokeColor": "#8b5cf6",
+      "backgroundColor": "#4c1d95",
       "fillStyle": "hachure",
       "strokeWidth": 3,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": { "type": 3 },
@@ -1324,7 +1091,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 380,
       "height": 256,
       "angle": 0,
-      "strokeColor": "#1e293b",
+      "strokeColor": "#ffffff",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -1360,13 +1127,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 420,
       "height": 280,
       "angle": 0,
-      "strokeColor": "#0891b2",
-      "backgroundColor": "#cffafe",
+      "strokeColor": "#06b6d4",
+      "backgroundColor": "#164e63",
       "fillStyle": "hachure",
       "strokeWidth": 3,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": { "type": 3 },
@@ -1387,7 +1154,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 380,
       "height": 256,
       "angle": 0,
-      "strokeColor": "#1e293b",
+      "strokeColor": "#ffffff",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -1423,7 +1190,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 90,
       "height": 5,
       "angle": 0,
-      "strokeColor": "#7c3aed",
+      "strokeColor": "#8b5cf6",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 3,
@@ -1456,7 +1223,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 120,
       "height": 20,
       "angle": 0,
-      "strokeColor": "#6d28d9",
+      "strokeColor": "#c4b5fd",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -1492,7 +1259,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 130,
       "height": 490,
       "angle": 0,
-      "strokeColor": "#059669",
+      "strokeColor": "#10b981",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 3,
@@ -1525,7 +1292,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 80,
       "height": 355,
       "angle": 0,
-      "strokeColor": "#0891b2",
+      "strokeColor": "#06b6d4",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 3,
@@ -1558,7 +1325,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 140,
       "height": -570,
       "angle": 0,
-      "strokeColor": "#0891b2",
+      "strokeColor": "#06b6d4",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 3,
@@ -1591,7 +1358,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 170,
       "height": 355,
       "angle": 0,
-      "strokeColor": "#0891b2",
+      "strokeColor": "#06b6d4",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 3,
@@ -1624,7 +1391,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": -510,
       "height": 440,
       "angle": 0,
-      "strokeColor": "#d97706",
+      "strokeColor": "#f59e0b",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 3,
@@ -1657,7 +1424,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": -130,
       "height": 440,
       "angle": 0,
-      "strokeColor": "#059669",
+      "strokeColor": "#10b981",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 3,
@@ -1690,7 +1457,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 230,
       "height": 440,
       "angle": 0,
-      "strokeColor": "#7c3aed",
+      "strokeColor": "#8b5cf6",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 3,
@@ -1723,7 +1490,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 610,
       "height": 440,
       "angle": 0,
-      "strokeColor": "#0891b2",
+      "strokeColor": "#06b6d4",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 3,
@@ -1756,7 +1523,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 160,
       "height": -400,
       "angle": 0,
-      "strokeColor": "#d97706",
+      "strokeColor": "#f59e0b",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 2,
@@ -1789,7 +1556,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 100,
       "height": 20,
       "angle": 0,
-      "strokeColor": "#b45309",
+      "strokeColor": "#fbbf24",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -1825,7 +1592,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": -960,
       "height": 1280,
       "angle": 0,
-      "strokeColor": "#d97706",
+      "strokeColor": "#f59e0b",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 3,
@@ -1858,7 +1625,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 120,
       "height": 20,
       "angle": 0,
-      "strokeColor": "#b45309",
+      "strokeColor": "#fbbf24",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -1894,7 +1661,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 80,
       "height": -200,
       "angle": 0,
-      "strokeColor": "#2563eb",
+      "strokeColor": "#3b82f6",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 2,
@@ -1927,7 +1694,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 60,
       "height": 20,
       "angle": 0,
-      "strokeColor": "#1d4ed8",
+      "strokeColor": "#93c5fd",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -1963,7 +1730,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": -230,
       "height": 410,
       "angle": 0,
-      "strokeColor": "#7c3aed",
+      "strokeColor": "#8b5cf6",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 2,
@@ -1996,7 +1763,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 100,
       "height": 20,
       "angle": 0,
-      "strokeColor": "#6d28d9",
+      "strokeColor": "#c4b5fd",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -2032,7 +1799,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 160,
       "height": 26,
       "angle": 0,
-      "strokeColor": "#64748b",
+      "strokeColor": "#6b7280",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -2068,13 +1835,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 24,
       "height": 24,
       "angle": 0,
-      "strokeColor": "#2563eb",
-      "backgroundColor": "#dbeafe",
+      "strokeColor": "#3b82f6",
+      "backgroundColor": "#1e3a8a",
       "fillStyle": "hachure",
       "strokeWidth": 2,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": null,
@@ -2095,7 +1862,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 200,
       "height": 22,
       "angle": 0,
-      "strokeColor": "#1d4ed8",
+      "strokeColor": "#93c5fd",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -2131,13 +1898,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 24,
       "height": 24,
       "angle": 0,
-      "strokeColor": "#d97706",
-      "backgroundColor": "#fef3c7",
+      "strokeColor": "#f59e0b",
+      "backgroundColor": "#92400e",
       "fillStyle": "hachure",
       "strokeWidth": 2,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": null,
@@ -2158,7 +1925,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 200,
       "height": 22,
       "angle": 0,
-      "strokeColor": "#b45309",
+      "strokeColor": "#fbbf24",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -2194,13 +1961,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 24,
       "height": 24,
       "angle": 0,
-      "strokeColor": "#7c3aed",
-      "backgroundColor": "#ede9fe",
+      "strokeColor": "#8b5cf6",
+      "backgroundColor": "#4c1d95",
       "fillStyle": "hachure",
       "strokeWidth": 2,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": null,
@@ -2221,7 +1988,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 200,
       "height": 22,
       "angle": 0,
-      "strokeColor": "#6d28d9",
+      "strokeColor": "#c4b5fd",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -2257,13 +2024,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 24,
       "height": 24,
       "angle": 0,
-      "strokeColor": "#0891b2",
-      "backgroundColor": "#cffafe",
+      "strokeColor": "#06b6d4",
+      "backgroundColor": "#164e63",
       "fillStyle": "hachure",
       "strokeWidth": 2,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": null,
@@ -2284,7 +2051,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 200,
       "height": 22,
       "angle": 0,
-      "strokeColor": "#0e7490",
+      "strokeColor": "#67e8f9",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -2320,13 +2087,13 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 24,
       "height": 24,
       "angle": 0,
-      "strokeColor": "#059669",
-      "backgroundColor": "#d1fae5",
+      "strokeColor": "#10b981",
+      "backgroundColor": "#064e3b",
       "fillStyle": "hachure",
       "strokeWidth": 2,
       "strokeStyle": "solid",
       "roughness": 1,
-      "opacity": 60,
+      "opacity": 85,
       "groupIds": [],
       "frameId": null,
       "roundness": null,
@@ -2347,7 +2114,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 200,
       "height": 22,
       "angle": 0,
-      "strokeColor": "#047857",
+      "strokeColor": "#6ee7b7",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -2383,7 +2150,7 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "width": 800,
       "height": 22,
       "angle": 0,
-      "strokeColor": "#64748b",
+      "strokeColor": "#4b5563",
       "backgroundColor": "transparent",
       "fillStyle": "solid",
       "strokeWidth": 1,
@@ -2401,22 +2168,20 @@ EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16 ^text
       "updated": 1,
       "link": null,
       "locked": false,
-      "text": "EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16",
+      "text": "EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0  |  2026-02-16",
       "fontSize": 16,
       "fontFamily": 1,
       "textAlign": "center",
       "verticalAlign": "top",
       "containerId": null,
-      "originalText": "EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0-light  |  2026-02-16",
+      "originalText": "EAGLE Platform  |  AWS us-east-1  |  CDK IaC  |  v2.0  |  2026-02-16",
       "autoResize": true,
       "lineHeight": 1.2
     }
   ],
   "appState": {
     "gridSize": null,
-    "viewBackgroundColor": "#ffffff"
+    "viewBackgroundColor": "#1a1a1a"
   },
   "files": {}
 }
-```
-%%
