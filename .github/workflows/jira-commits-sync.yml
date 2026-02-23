@@ -1,0 +1,73 @@
+# Nightly: sync git commits to Jira (deterministic script only).
+# For an agentic version using Claude Code, see jira-commits-sync-agentic.yml (requires ANTHROPIC_API_KEY).
+#
+# Required repo secrets: JIRA_BASE_URL, JIRA_API_TOKEN
+# Optional: JIRA_COMMIT_AUTHOR, JIRA_WEEKLY_SUMMARY
+
+name: Jira Commits Sync
+
+on:
+  schedule:
+    # 6:00 UTC daily (~1am EST)
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
+        with:
+          fetch-depth: 0
+
+      - name: Restore last synced SHA
+        id: last
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/jira-sync
+          key: jira-commits-sync-${{ github.ref }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests python-dotenv
+
+      - name: Sync commits to Jira
+        env:
+          JIRA_BASE_URL: ${{ secrets.JIRA_BASE_URL }}
+          JIRA_API_TOKEN: ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_PROJECT: EAGLE
+          JIRA_COMMIT_AUTHOR: ${{ secrets.JIRA_COMMIT_AUTHOR }}
+          JIRA_WEEKLY_SUMMARY: ${{ secrets.JIRA_WEEKLY_SUMMARY }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_SERVER_URL: ${{ github.server_url }}
+        run: |
+          LAST="${{ steps.last.outputs.cache-hit }}"
+          SINCE="24h"
+          if [ "$LAST" == "true" ] && [ -f .cache/jira-sync/last_sha.txt ]; then
+            SINCE="$(cat .cache/jira-sync/last_sha.txt)"
+            echo "Syncing commits since $SINCE"
+          else
+            echo "Syncing commits in last 24 hours (no previous run)"
+          fi
+          AUTH_ARGS=""
+          if [ -n "$JIRA_COMMIT_AUTHOR" ]; then AUTH_ARGS="--author $JIRA_COMMIT_AUTHOR"; fi
+          python scripts/jira_commits_sync.py --since "$SINCE" --project "$JIRA_PROJECT" $AUTH_ARGS
+
+      - name: Save current SHA for next run
+        run: |
+          mkdir -p .cache/jira-sync
+          git rev-parse HEAD > .cache/jira-sync/last_sha.txt
+
+      - name: Cache last synced SHA
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/jira-sync
+          key: jira-commits-sync-${{ github.ref }}
