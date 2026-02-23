@@ -6,6 +6,7 @@ import { EagleComputeStack } from '../lib/compute-stack';
 import { EagleStorageStack } from '../lib/storage-stack';
 import { EagleCiCdStack } from '../lib/cicd-stack';
 import { EagleEvalStack } from '../lib/eval-stack';
+import { EagleDevboxStack } from '../lib/devbox-stack';
 import { DEV_CONFIG } from '../config/environments';
 
 const app = new cdk.App();
@@ -56,8 +57,22 @@ const evalStack = new EagleEvalStack(app, 'EagleEvalStack', {
   description: 'EAGLE Eval — S3 artifacts, CloudWatch dashboard, SNS alerts',
 });
 
+// Dev box — only deployed when enableDevBox is true (dev env only)
+// Provides a Linux EC2 instance for Docker-compliant development (Windows org policy blocks WSL/Docker locally)
+const stacksToTag: cdk.Stack[] = [cicd, core, storage, compute, evalStack];
+if (DEV_CONFIG.enableDevBox) {
+  const devbox = new EagleDevboxStack(app, 'EagleDevboxStack', {
+    env,
+    config: DEV_CONFIG,
+    vpc: core.vpc,
+    description: 'EAGLE Dev Box — Linux EC2 for Docker-compliant development',
+  });
+  devbox.addDependency(core);
+  stacksToTag.push(devbox);
+}
+
 // Tag all stacks
-for (const stack of [cicd, core, storage, compute, evalStack]) {
+for (const stack of stacksToTag) {
   cdk.Tags.of(stack).add('Project', 'eagle');
   cdk.Tags.of(stack).add('ManagedBy', 'cdk');
   cdk.Tags.of(stack).add('Environment', DEV_CONFIG.env);

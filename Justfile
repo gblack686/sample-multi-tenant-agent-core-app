@@ -263,6 +263,44 @@ cdk-deploy:
 cdk-deploy-storage:
     cd {{CDK_DIR}} && npx cdk deploy EagleStorageStack --require-approval never
 
+# Refresh AWS SSO session — run this when credentials expire
+# Usage: just aws-login                          (uses default profile)
+#        just aws-login 695681773636_NCIAWSPowerUserAccess
+aws-login PROFILE="695681773636_NCIAWSPowerUserAccess":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Refreshing AWS SSO session (profile: {{PROFILE}}) ==="
+    aws sso login --profile {{PROFILE}}
+    export AWS_PROFILE={{PROFILE}}
+    echo ""
+    echo "Verifying..."
+    aws sts get-caller-identity --profile {{PROFILE}}
+    echo ""
+    echo "Session active. Run your next command with:"
+    echo "  AWS_PROFILE={{PROFILE}} just <command>"
+    echo "Or export it for the session:"
+    echo "  export AWS_PROFILE={{PROFILE}}"
+
+# Deploy the EC2 Linux dev box (EagleDevboxStack) — refreshes SSO first
+# Usage: just devbox-deploy
+#        just devbox-deploy 695681773636_NCIAWSPowerUserAccess
+devbox-deploy PROFILE="695681773636_NCIAWSPowerUserAccess":
+    just aws-login {{PROFILE}}
+    AWS_PROFILE={{PROFILE}} cd {{CDK_DIR}} && npx cdk deploy EagleDevboxStack --require-approval never
+
+# Stop the dev box to avoid idle charges (~$0.04/hr)
+# Usage: just devbox-stop <instance-id>
+devbox-stop INSTANCE_ID:
+    aws ec2 stop-instances --instance-ids {{INSTANCE_ID}}
+    echo "Dev box stopped. Start again with: just devbox-start {{INSTANCE_ID}}"
+
+# Start the dev box back up
+devbox-start INSTANCE_ID:
+    aws ec2 start-instances --instance-ids {{INSTANCE_ID}}
+    aws ec2 wait instance-running --instance-ids {{INSTANCE_ID}}
+    echo "Dev box running. Get IP with:"
+    echo "  aws ec2 describe-instances --instance-ids {{INSTANCE_ID}} --query 'Reservations[].Instances[].PublicIpAddress' --output text"
+
 # ── Operations ──────────────────────────────────────────────
 
 # Show ECS service health and running task counts

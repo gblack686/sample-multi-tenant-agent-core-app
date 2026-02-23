@@ -30,6 +30,10 @@ export interface EagleConfig {
   // CI/CD
   githubOwner: string;
   githubRepo: string;
+
+  // Dev box (EC2 Linux instance for Docker-compliant development)
+  enableDevBox?: boolean;
+  devboxSshCidr?: string;  // Restrict to VPN/IP — default 0.0.0.0/0 is intentionally open for setup
 }
 
 export const DEV_CONFIG: EagleConfig = {
@@ -58,6 +62,9 @@ export const DEV_CONFIG: EagleConfig = {
 
   githubOwner: 'gblack686',
   githubRepo: 'sample-multi-tenant-agent-core-app',
+
+  enableDevBox: true,
+  // devboxSshCidr: '0.0.0.0/0',  // TODO: set to your VPN/IP CIDR before deploying
 };
 
 export const STAGING_CONFIG: EagleConfig = {
