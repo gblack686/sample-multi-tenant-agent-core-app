@@ -266,7 +266,7 @@ cdk-deploy-storage:
 # Refresh AWS SSO session — run this when credentials expire
 # Usage: just aws-login                          (uses default profile)
 #        just aws-login 695681773636_NCIAWSPowerUserAccess
-aws-login PROFILE="695681773636_NCIAWSPowerUserAccess":
+aws-login PROFILE="eagle":
     #!/usr/bin/env bash
     set -euo pipefail
     echo "=== Refreshing AWS SSO session (profile: {{PROFILE}}) ==="
@@ -281,12 +281,6 @@ aws-login PROFILE="695681773636_NCIAWSPowerUserAccess":
     echo "Or export it for the session:"
     echo "  export AWS_PROFILE={{PROFILE}}"
 
-# Deploy the EC2 Linux dev box (EagleDevboxStack) — refreshes SSO first
-# Usage: just devbox-deploy
-#        just devbox-deploy 695681773636_NCIAWSPowerUserAccess
-devbox-deploy PROFILE="695681773636_NCIAWSPowerUserAccess":
-    just aws-login {{PROFILE}}
-    AWS_PROFILE={{PROFILE}} cd {{CDK_DIR}} && npx cdk deploy EagleDevboxStack --require-approval never
 
 # Stop the dev box to avoid idle charges (~$0.04/hr)
 # Usage: just devbox-stop <instance-id>
