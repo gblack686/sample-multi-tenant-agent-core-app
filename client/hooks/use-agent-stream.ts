@@ -4,6 +4,7 @@ import { useState, useCallback, useRef } from 'react';
 import { StreamEvent, AuditLogEntry, parseStreamEvent, streamEventToMessage } from '@/types/stream';
 import { Message, DocumentInfo } from '@/types/chat';
 import { generateUUID } from '@/lib/uuid';
+import type { AgentStatusProps } from '@/components/chat/AgentStatus';
 
 const API_URL = '/api/invoke';
 
@@ -22,6 +23,7 @@ export interface UseAgentStreamReturn {
   logs: AuditLogEntry[];
   lastMessage: Message | null;
   lastDocument: DocumentInfo | null;
+  agentStatuses: AgentStatusProps[];
   clearLogs: () => void;
   error: string | null;
   addUserInputLog: (content: string) => void;
@@ -156,6 +158,7 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
   const [lastMessage, setLastMessage] = useState<Message | null>(null);
   const [lastDocument, setLastDocument] = useState<DocumentInfo | null>(null);
+  const [agentStatuses, setAgentStatuses] = useState<AgentStatusProps[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const eventCountRef = useRef(0);
@@ -165,6 +168,7 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
     setLogs([]);
     setLastMessage(null);
     setLastDocument(null);
+    setAgentStatuses([]);
     setError(null);
     eventCountRef.current = 0;
   }, []);
@@ -177,10 +181,12 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
     abortControllerRef.current = new AbortController();
     setIsStreaming(true);
     setError(null);
+    setAgentStatuses([]);
 
     const finalSessionId = sessionId || generateUUID();
     const queryStartTime = new Date();
     let accumulatedText = '';
+    const stableMessageId = `msg-${generateUUID()}`;
     let shouldFetchDocs = false;
     const emittedDocKeys = new Set<string>();
 
@@ -290,7 +296,10 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
       // Handle text messages
       if (event.type === 'text') {
         accumulatedText += event.content || '';
-        const message = streamEventToMessage(event, logEntry.id);
+        const message = streamEventToMessage(
+          { ...event, content: accumulatedText },
+          stableMessageId,
+        );
         if (message) {
           setLastMessage(message);
           options.onMessage?.(message);
@@ -329,6 +338,38 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
             shouldFetchDocs = true;
           }
         }
+      }
+
+      // Handle agent status updates
+      if (event.type === 'agent_status' && event.metadata) {
+        const statusData = event.metadata as {
+          agent_name: string;
+          display_name: string;
+          message: string;
+          status: 'in_progress' | 'complete' | 'error';
+        };
+        setAgentStatuses(prev => {
+          const updated = [...prev];
+          const existingIndex = updated.findIndex(
+            s => s.agentName === statusData.agent_name && s.status === 'in_progress'
+          );
+          if (existingIndex >= 0 && statusData.status !== 'in_progress') {
+            updated[existingIndex] = {
+              agentName: statusData.agent_name,
+              displayName: statusData.display_name,
+              message: statusData.message,
+              status: statusData.status,
+            };
+          } else if (statusData.status === 'in_progress') {
+            updated.push({
+              agentName: statusData.agent_name,
+              displayName: statusData.display_name,
+              message: statusData.message,
+              status: statusData.status,
+            });
+          }
+          return updated;
+        });
       }
 
       if (event.type === 'error') {
@@ -444,6 +485,7 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
     logs,
     lastMessage,
     lastDocument,
+    agentStatuses,
     clearLogs,
     error,
     addUserInputLog,

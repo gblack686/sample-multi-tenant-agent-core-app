@@ -17,7 +17,7 @@ else:
     load_dotenv(override=True)
     print(f"[EAGLE STARTUP] No .env found at {_env_path}, using defaults")
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header, Response
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, Header, Response, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -176,7 +176,10 @@ async def api_chat(req: EagleChatRequest, user: UserContext = Depends(get_user_f
         add_message(session_id, "user", req.message, tenant_id, user_id)
 
     try:
-        result = await stream_chat(messages, session_id=session_id)
+        trace_context = {"tenant_id": tenant_id, "user_id": user_id}
+        result = await stream_chat(
+            messages, session_id=session_id, trace_context=trace_context,
+        )
 
         # Store response
         if USE_PERSISTENT_SESSIONS:
@@ -213,6 +216,19 @@ async def api_chat(req: EagleChatRequest, user: UserContext = Depends(get_user_f
             "response_time_ms": elapsed_ms,
             "model": result.get("model", ""),
         })
+
+        # Persist trace telemetry
+        try:
+            collector = result.get("trace_collector")
+            if collector:
+                summary = collector.summary()
+                spans = collector.get_completed_spans()
+                from .telemetry.trace_store import store_trace
+                store_trace(summary=summary, spans=spans, trace_json=collector.to_trace_json())
+                from .telemetry.cloudwatch_emitter import emit_trace_completed
+                emit_trace_completed(summary)
+        except Exception as te:
+            logger.warning("Failed to persist telemetry (REST): %s", te)
 
         return EagleChatResponse(
             response=result["text"],
@@ -631,6 +647,54 @@ async def api_telemetry(limit: int = 50):
     }
 
 
+# ── Trace viewer endpoints ───────────────────────────────────────────
+
+@app.get("/api/admin/traces")
+async def api_admin_traces(
+    tenant_id: str = Query(default=None),
+    limit: int = Query(default=50, le=200),
+    from_date: str = Query(default=None),
+    authorization: Optional[str] = Header(None),
+):
+    """Fetch recent traces for admin viewing."""
+    # Default to authenticated user's tenant_id
+    if not tenant_id:
+        user, _ = extract_user_context(authorization)
+        tenant_id = user.tenant_id
+    from app.telemetry.trace_store import get_traces
+    traces = get_traces(tenant_id=tenant_id, limit=limit, from_date=from_date)
+    return {"traces": traces, "total": len(traces)}
+
+
+@app.get("/api/admin/traces/session/{session_id}")
+async def api_admin_session_traces(
+    session_id: str,
+    limit: int = Query(default=20, le=100),
+):
+    """Get all traces for a specific session."""
+    from app.telemetry.trace_store import get_traces_by_session
+    traces = get_traces_by_session(session_id=session_id, limit=limit)
+    return {"traces": traces, "total": len(traces)}
+
+
+@app.get("/api/admin/traces/{trace_id}")
+async def api_admin_trace_detail(
+    trace_id: str,
+    tenant_id: str = Query(default=None),
+    date: str = Query(...),
+    authorization: Optional[str] = Header(None),
+):
+    """Get full trace details including spans."""
+    if not tenant_id:
+        user, _ = extract_user_context(authorization)
+        tenant_id = user.tenant_id
+    from app.telemetry.trace_store import get_trace_detail
+    trace = get_trace_detail(tenant_id=tenant_id, trace_id=trace_id, date=date)
+    if not trace:
+        raise HTTPException(status_code=404, detail="Trace not found")
+    return trace
+
+
 # ── Tools info endpoint ──────────────────────────────────────────────
 
 @app.get("/api/tools")
@@ -735,12 +799,23 @@ async def websocket_chat(ws: WebSocket):
                         "output": display_output,
                     })
 
+                async def on_agent_status(agent_name: str, message_text: str, status: str):
+                    await ws.send_json({
+                        "type": "agent_status",
+                        "agent_name": agent_name,
+                        "message": message_text,
+                        "status": status,
+                    })
+
+                trace_context = {"tenant_id": tenant_id, "user_id": user_id}
                 result = await stream_chat(
                     messages,
                     on_text=on_text,
                     on_tool_use=on_tool_use,
                     on_tool_result=on_tool_result,
+                    on_agent_status=on_agent_status,
                     session_id=session_id,
+                    trace_context=trace_context,
                 )
 
                 if USE_PERSISTENT_SESSIONS:
@@ -787,6 +862,19 @@ async def websocket_chat(ws: WebSocket):
                     "response_time_ms": elapsed_ms,
                     "model": result.get("model", ""),
                 })
+
+                # Persist trace telemetry
+                try:
+                    collector = result.get("trace_collector")
+                    if collector:
+                        summary = collector.summary()
+                        spans = collector.get_completed_spans()
+                        from .telemetry.trace_store import store_trace
+                        store_trace(summary=summary, spans=spans, trace_json=collector.to_trace_json())
+                        from .telemetry.cloudwatch_emitter import emit_trace_completed
+                        emit_trace_completed(summary)
+                except Exception as te:
+                    logger.warning("Failed to persist telemetry (WS): %s", te)
 
             except Exception as e:
                 logger.error("Stream error: %s", e, exc_info=True)

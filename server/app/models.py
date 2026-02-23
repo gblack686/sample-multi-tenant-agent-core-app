@@ -24,7 +24,9 @@ class TenantContext(BaseModel):
 
 class ChatMessage(BaseModel):
     message: str
-    tenant_context: TenantContext
+    session_id: Optional[str] = None
+    tenant_context: Optional[TenantContext] = None
+    use_sdk: Optional[bool] = None  # None = use USE_SDK_BACKEND env var default
 
 class ChatResponse(BaseModel):
     response: str

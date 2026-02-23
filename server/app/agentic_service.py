@@ -2223,7 +2223,9 @@ async def stream_chat(
     on_text: Any = None,
     on_tool_use: Any = None,
     on_tool_result: Any = None,
+    on_agent_status: Any = None,
     session_id: str = None,
+    trace_context: dict = None,
 ) -> dict:
     """
     Stream a chat response from Claude with full tool-use loop.
@@ -2233,12 +2235,16 @@ async def stream_chat(
         on_text: async callback(text_delta: str) for streaming text
         on_tool_use: async callback(tool_name: str, tool_input: dict) for tool calls
         on_tool_result: async callback(tool_name: str, output: str) for tool results
+        on_agent_status: async callback(agent_name, message, status) for AGENT_STATUS SSE events
         session_id: Session ID for tenant scoping
+        trace_context: dict with tenant_id, user_id for trace metadata
 
     Returns:
-        dict with: text, usage, model, tools_called
+        dict with: text, usage, model, tools_called, trace_collector
     """
     import asyncio
+    from .telemetry.chat_trace_collector import ChatTraceCollector
+    from .telemetry.status_messages import get_tool_status_message
 
     client = get_client()
     full_text = ""
@@ -2246,6 +2252,14 @@ async def stream_chat(
     total_output_tokens = 0
     tools_called = []
     model_used = MODEL
+
+    # Initialize trace collector
+    ctx = trace_context or {}
+    collector = ChatTraceCollector(
+        tenant_id=ctx.get("tenant_id", "default"),
+        user_id=ctx.get("user_id", "anonymous"),
+        session_id=session_id,
+    )
 
     # Tool-use loop: keep going while the model wants to call tools (max 10 iterations)
     MAX_TOOL_ITERATIONS = 10
@@ -2256,10 +2270,13 @@ async def stream_chat(
         tool_uses = []
         stop_reason = None
         text_deltas = []
+        iter_input_tokens = 0
+        iter_output_tokens = 0
 
         def _stream_with_deltas():
             nonlocal current_text, tool_uses, stop_reason
             nonlocal total_input_tokens, total_output_tokens, model_used
+            nonlocal iter_input_tokens, iter_output_tokens
 
             with client.messages.stream(
                 model=MODEL,
@@ -2286,11 +2303,16 @@ async def stream_chat(
 
                 final = stream.get_final_message()
                 stop_reason = final.stop_reason
-                total_input_tokens += final.usage.input_tokens
-                total_output_tokens += final.usage.output_tokens
+                iter_input_tokens = final.usage.input_tokens
+                iter_output_tokens = final.usage.output_tokens
+                total_input_tokens += iter_input_tokens
+                total_output_tokens += iter_output_tokens
                 model_used = final.model
 
         await asyncio.to_thread(_stream_with_deltas)
+
+        # Record this API call in the trace collector
+        collector.record_api_call(iter_input_tokens, iter_output_tokens, model_used)
 
         # Dispatch text deltas
         if on_text and text_deltas:
@@ -2333,7 +2355,18 @@ async def stream_chat(
             if on_tool_use:
                 await on_tool_use(tu["name"], tool_input)
 
+            # Emit AGENT_STATUS "in_progress" and start span
+            if on_agent_status:
+                status_msg = get_tool_status_message(tu["name"], tool_input)
+                await on_agent_status(tu["name"], status_msg, "in_progress")
+            collector.start_tool_span(tu["name"], tool_input)
+
             output = execute_tool(tu["name"], tool_input, session_id=session_id)
+
+            # End span and emit AGENT_STATUS "complete"
+            collector.end_tool_span(tu["name"], output)
+            if on_agent_status:
+                await on_agent_status(tu["name"], "Complete", "complete")
 
             if on_tool_result:
                 await on_tool_result(tu["name"], output)
@@ -2354,4 +2387,5 @@ async def stream_chat(
         },
         "model": model_used,
         "tools_called": tools_called,
+        "trace_collector": collector,
     }

@@ -31,6 +31,9 @@ from claude_agent_sdk import (
     AgentDefinition,
 )
 
+from app.telemetry import TraceCollector
+from app.telemetry.span_tracker import SpanTracker
+
 # Add server/ to path for eagle_skill_constants
 _server_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 if _server_dir not in sys.path:
@@ -214,6 +217,7 @@ async def sdk_query(
     skill_names: list[str] | None = None,
     session_id: str | None = None,
     max_turns: int = 15,
+    on_status=None,
 ) -> AsyncGenerator[Any, None]:
     """Run a supervisor query with skill subagents.
 
@@ -229,10 +233,16 @@ async def sdk_query(
         skill_names: Subset of skills to make available
         session_id: Session ID for resume (if continuing conversation)
         max_turns: Max tool-use iterations
+        on_status: Async callback for real-time status updates (agent_name, message, status)
 
     Yields:
         SDK message objects (SystemMessage, AssistantMessage, UserMessage, ResultMessage)
     """
+    # Strip leading slash commands — these are app-level commands (e.g. /document)
+    # that the Claude CLI would misinterpret as its own slash commands.
+    if prompt.startswith("/"):
+        prompt = prompt.lstrip("/")
+
     agent_model = model or MODEL
     agents = build_skill_agents(
         model=agent_model,
@@ -247,6 +257,13 @@ async def sdk_query(
         agent_names=list(agents.keys()),
     )
 
+    # Telemetry: trace collector and span tracker with SDK hooks
+    collector = TraceCollector(tenant_id=tenant_id, user_id=user_id)
+    span_tracker = SpanTracker(on_status=on_status)
+
+    def _stderr_handler(line: str):
+        logger.error("SDK CLI stderr: %s", line.rstrip())
+
     options = ClaudeAgentOptions(
         model=agent_model,
         system_prompt=system_prompt,
@@ -258,13 +275,33 @@ async def sdk_query(
         env={
             "CLAUDE_CODE_USE_BEDROCK": "1",
             "AWS_REGION": "us-east-1",
+            "CLAUDECODE": "",  # Prevent nested-session detection when server runs inside Claude Code
         },
         agents=agents,
-        **({"resume": session_id} if session_id else {}),
+        hooks=span_tracker.get_hook_matchers(),
+        stderr=_stderr_handler,
     )
 
     async for message in query(prompt=prompt, options=options):
+        collector.process(message)
         yield message
+
+    # After query: persist telemetry asynchronously
+    try:
+        summary = collector.summary()
+        summary["spans"] = span_tracker.get_completed_spans()
+
+        from app.telemetry.trace_store import store_trace
+        store_trace(
+            summary=summary,
+            spans=span_tracker.get_completed_spans(),
+            trace_json=collector.to_trace_json(),
+        )
+
+        from app.telemetry.cloudwatch_emitter import emit_trace_completed
+        emit_trace_completed(summary)
+    except Exception as e:
+        logger.warning("Failed to persist telemetry: %s", e)
 
 
 async def sdk_query_single_skill(
@@ -316,6 +353,7 @@ async def sdk_query_single_skill(
         env={
             "CLAUDE_CODE_USE_BEDROCK": "1",
             "AWS_REGION": "us-east-1",
+            "CLAUDECODE": "",  # Prevent nested-session detection when server runs inside Claude Code
         },
     )
 

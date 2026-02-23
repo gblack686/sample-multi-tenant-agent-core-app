@@ -23,6 +23,7 @@ class StreamEventType(str, Enum):
     COMPLETE = "complete"
     ERROR = "error"
     HANDOFF = "handoff"
+    AGENT_STATUS = "agent_status"
 
 
 @dataclass
@@ -129,4 +130,32 @@ class MultiAgentStreamWriter:
     async def write_error(self, queue, error_message: str):
         """Emit an ERROR event with a human-readable error description."""
         event = self._create_event(StreamEventType.ERROR, content=error_message)
+        await queue.put(event.to_sse())
+
+    async def write_agent_status(
+        self,
+        queue,
+        agent_name: str,
+        message: str,
+        status: str = "in_progress",
+    ):
+        """Emit an AGENT_STATUS event for real-time user feedback.
+
+        Args:
+            queue: asyncio.Queue to push SSE events into
+            agent_name: Internal agent/tool name
+            message: Human-readable status message
+            status: One of "in_progress", "complete", "error"
+        """
+        from app.telemetry.status_messages import get_agent_display_name
+
+        event = self._create_event(
+            StreamEventType.AGENT_STATUS,
+            metadata={
+                "agent_name": agent_name,
+                "display_name": get_agent_display_name(agent_name),
+                "message": message,
+                "status": status,
+            },
+        )
         await queue.put(event.to_sse())

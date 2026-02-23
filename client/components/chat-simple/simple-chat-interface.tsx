@@ -84,7 +84,13 @@ export default function SimpleChatInterface() {
                 agent_name: msg.agent_name,
             };
             lastAssistantIdRef.current = msg.id;
-            setMessages((prev) => [...prev, newMessage]);
+            setMessages((prev) => {
+                const last = prev[prev.length - 1];
+                if (last && last.role === 'assistant' && last.id === msg.id) {
+                    return [...prev.slice(0, -1), newMessage];
+                }
+                return [...prev, newMessage];
+            });
         },
         onDocumentGenerated: (doc) => {
             // Attach document to latest assistant message

@@ -23,7 +23,8 @@ export type StreamEventType =
   | 'error'
   | 'handoff'
   | 'user_input'
-  | 'form_submit';
+  | 'form_submit'
+  | 'agent_status';
 
 export interface ToolUse {
   name: string;

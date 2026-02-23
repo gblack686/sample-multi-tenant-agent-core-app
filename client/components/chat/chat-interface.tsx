@@ -134,7 +134,7 @@ export default function ChatInterface() {
     const { sendQuery, isStreaming, logs, lastMessage, clearLogs, error, addUserInputLog, addFormSubmitLog } = useAgentStream({
         getToken,
         onMessage: (msg) => {
-            // Add assistant message to chat
+            // Add or update assistant message in chat
             const newMessage: Message = {
                 id: msg.id,
                 role: 'assistant',
@@ -144,7 +144,13 @@ export default function ChatInterface() {
                 agent_id: msg.agent_id,
                 agent_name: msg.agent_name,
             };
-            setMessages(prev => [...prev, newMessage]);
+            setMessages(prev => {
+                const last = prev[prev.length - 1];
+                if (last && last.role === 'assistant' && last.id === msg.id) {
+                    return [...prev.slice(0, -1), newMessage];
+                }
+                return [...prev, newMessage];
+            });
 
             // Parse acquisition data from the response
             parseAcquisitionData(msg.content);
