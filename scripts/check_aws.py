@@ -51,7 +51,7 @@ print("=== EAGLE AWS Check ===")
 print(f"{'Resource':<45s} {'Status':<6s} {'Detail'}")
 print("-" * 80)
 for name, status, detail in results:
-    indicator = "✓" if status == "OK" else "✗"
+    indicator = "OK" if status == "OK" else "!!"
     print(f"  {indicator} {name:<43s} {status:<6s} {detail}")
 
 ok_count = sum(1 for _, s, _ in results if s == "OK")
