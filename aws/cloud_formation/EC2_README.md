@@ -1,6 +1,6 @@
 # Eagle EC2 - GitHub Self-Hosted Runner
 
-EC2 instance running **Amazon Linux 2023** with a baked-in **PowerUser** IAM role, intended to serve as a GitHub Actions self-hosted runner.
+EC2 instance running **Amazon Linux 2023** with a baked-in **PowerUser** IAM role, intended to serve as a dev box and/or GitHub Actions self-hosted runner.
 
 ## What the Stack Creates
 
