@@ -93,14 +93,15 @@ just lint           # Ruff (Python) + tsc (TypeScript)
 just test           # Backend pytest
 
 # Smoke Tests — verify pages load and backend is reachable (stack must be running)
-just smoke          # base: nav + home page (~10 tests, headless)
-just smoke mid      # all pages: nav, home, admin, documents, workflows (~27 tests, headless)
-just smoke full     # all pages + basic agent response (~31 tests, headless)
+just smoke          # base: nav + home page (~10 tests, headless, ~14s)
+just smoke mid      # all pages: nav, home, admin, documents, workflows (~27 tests, ~22s)
+just smoke full     # all pages + basic agent response (~31 tests, ~27s)
 just smoke-ui       # same as smoke base, headed (visible browser)
 
 # Smoke against deployed Fargate (requires AWS creds)
 just smoke-prod        # mid-level smoke against Fargate ALB (auto-discovers URL)
 just smoke-prod full   # full smoke + chat against Fargate
+
 
 # E2E Use Case Tests — complete acquisition workflows through the UI (headed)
 just e2e intake     # OA Intake: describe need → agent returns pathway + document list
@@ -189,9 +190,9 @@ just ship           # lint + CDK synth gate + deploy + smoke-prod verify
 └────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
-> **Interactive diagrams** in [`excalidraw-diagrams/aws/`](excalidraw-diagrams/aws/) — open in [Excalidraw](https://excalidraw.com) or Obsidian:
-> - [`eagle-aws-architecture.excalidraw.md`](excalidraw-diagrams/aws/eagle-aws-architecture.excalidraw.md) (dark)
-> - [`eagle-aws-architecture-light.excalidraw.md`](excalidraw-diagrams/aws/eagle-aws-architecture-light.excalidraw.md) (light)
+> **Interactive diagrams** in [`docs/excalidraw-diagrams/aws/`](docs/excalidraw-diagrams/aws/) — open in [Excalidraw](https://excalidraw.com) or Obsidian:
+> - [`eagle-aws-architecture.excalidraw.md`](docs/excalidraw-diagrams/aws/eagle-aws-architecture.excalidraw.md) (dark)
+> - [`eagle-aws-architecture-light.excalidraw.md`](docs/excalidraw-diagrams/aws/eagle-aws-architecture-light.excalidraw.md) (light)
 
 ### System Flow
 
@@ -384,9 +385,9 @@ just validate       # L1-L5: lint → unit → CDK synth → docker stack → sm
 # Or run individually:
 
 # Smoke — pages load and backend is reachable (headless, fast)
-just smoke          # nav + home page
-just smoke mid      # all pages including admin, documents, workflows
-just smoke full     # all pages + basic agent response check
+just smoke          # nav + home page (~14s)
+just smoke mid      # all pages including admin, documents, workflows (~22s)
+just smoke full     # all pages + basic agent response check (~27s)
 
 # E2E Use Cases — complete acquisition workflows (headed, visible browser)
 just e2e intake     # describe acquisition → agent returns pathway + document list
@@ -412,7 +413,7 @@ just dev-down
 ### B0 — Prerequisites
 
 - [ ] **AWS CLI** with SSO profile `eagle` configured
-- [ ] SSM Session Manager plugin installed
+- [ ] SSM Session Manager plugin installed: `aws ssm install-plugin`
 - [ ] EC2 runner `i-0390c06d166d18926` in account `695681773636`
 
 ### B1 — Open SSM Session
@@ -436,7 +437,7 @@ cd /home/eagle/eagle
 git pull origin dev/greg   # or main for production
 ```
 
-> **Updating from Windows**: If git pull fails, use the bundle method:
+> **Updating from Windows**: If git pull fails (no direct GitHub access from EC2), use the bundle method:
 > ```bash
 > # On Windows: create and upload bundle
 > git bundle create /tmp/bundle.bundle dev/greg
@@ -458,7 +459,12 @@ just deploy-backend
 just deploy-frontend
 ```
 
-`just deploy` automatically reads Cognito config from CloudFormation outputs — no manual env vars needed.
+`just deploy` automatically:
+1. Logs into ECR using instance role credentials
+2. Reads Cognito config from CloudFormation outputs (no manual env vars)
+3. Builds both Docker images (Linux, matching container OS)
+4. Pushes to ECR with `latest` and `$COMMIT_SHA` tags
+5. Triggers ECS rolling updates and waits for `services-stable`
 
 ### B4 — Verify
 
@@ -467,6 +473,20 @@ just check-aws   # 7/7 OK: Identity, S3, DDB×2, Lambda, ECS×2
 just status      # ECS running counts
 just urls        # frontend + backend ALB URLs
 ```
+
+### B5 — Run Smoke Tests from EC2
+
+The EC2 runner also supports running the full smoke + eval suite:
+
+```bash
+# Eval suite (28 tests against Bedrock/haiku)
+just eval
+
+# Smoke tests (Playwright against local Docker stack)
+just smoke mid
+```
+
+> Playwright and Chromium are pre-installed on the runner. Browsers are in `/home/eagle/.cache/ms-playwright`.
 
 ---
 
@@ -506,7 +526,7 @@ npx cdk bootstrap aws://$ACCOUNT_ID/us-east-1
 just cdk-deploy    # deploys all 5 stacks
 ```
 
-> **NCI accounts** use a patched bootstrap (PowerUser boundary). See `.claude/context/` for the NCI-specific procedure.
+> **NCI accounts** use a patched bootstrap (PowerUser boundary). See `.claude/context/` for the NCI-specific bootstrap procedure.
 
 ### C4 — Create Cognito Users
 
@@ -555,9 +575,18 @@ aws cognito-idp admin-set-user-password \
 aws cloudformation describe-stacks --stack-name EagleCiCdStack \
   --query "Stacks[0].Outputs[?OutputKey=='DeployRoleArn'].OutputValue" --output text
 
-# Set the secret
+# Set the secret (or use gh CLI):
 gh secret set DEPLOY_ROLE_ARN --body "arn:aws:iam::ACCOUNT_ID:role/eagle-github-actions-dev"
 ```
+
+### C6 — Upload Knowledge Base Documents *(optional)*
+
+```bash
+aws s3 sync path/to/knowledge-base/ s3://eagle-documents-{account-id}-dev/eagle/knowledge-base/ \
+  --region us-east-1
+```
+
+S3 event notifications auto-trigger the metadata extraction Lambda on upload.
 
 ---
 
@@ -591,6 +620,7 @@ just ship           # deploy gate: lint + CDK synth + deploy + smoke-prod verify
 
 ---
 
+
 ## CI/CD Pipeline
 
 The GitHub Actions workflow (`.github/workflows/deploy.yml`) runs on push to `main` or manual `workflow_dispatch`.
@@ -605,18 +635,20 @@ The GitHub Actions workflow (`.github/workflows/deploy.yml`) runs on push to `ma
 Authentication uses **GitHub OIDC federation** — no static IAM keys stored in secrets.
 
 Required secrets:
-- `DEPLOY_ROLE_ARN` — IAM role ARN from `EagleCiCdStack`
+- `DEPLOY_ROLE_ARN` — IAM role ARN from `EagleCiCdStack` (e.g. `arn:aws:iam::695681773636:role/eagle-github-actions-dev`)
 
 ```bash
 # Enable the workflow (if disabled)
 gh workflow enable "Deploy EAGLE Platform"
 
 # Trigger manually
-gh workflow run deploy.yml --ref main --field deploy_infra=true --field deploy_app=true
+gh workflow run deploy.yml --ref main
 
 # Watch the run
 gh run watch
 ```
+
+> **Note**: The EC2 runner (`just deploy`) is the standard deploy path. GitHub Actions CI/CD automates this on merge to `main` — it runs the same build+push+ECS update steps as the EC2 script.
 
 The local equivalent of the full CI+deploy pipeline:
 
@@ -624,6 +656,7 @@ The local equivalent of the full CI+deploy pipeline:
 just ci     # L1 lint + L2 unit + L4 CDK synth + L6 eval-aws (pre-deploy check)
 just ship   # lint + CDK synth gate + deploy + L5 smoke-prod verify (full ship)
 ```
+
 
 ---
 

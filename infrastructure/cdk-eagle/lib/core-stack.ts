@@ -1,5 +1,4 @@
 import * as cdk from 'aws-cdk-lib';
-import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as cognito from 'aws-cdk-lib/aws-cognito';
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -13,7 +12,7 @@ export interface EagleCoreStackProps extends cdk.StackProps {
 }
 
 export class EagleCoreStack extends cdk.Stack {
-  public readonly vpc: ec2.Vpc;
+  public readonly vpc: ec2.IVpc;
   public readonly appRole: iam.Role;
   public readonly userPool: cognito.UserPool;
   public readonly userPoolClient: cognito.UserPoolClient;
@@ -21,11 +20,6 @@ export class EagleCoreStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props: EagleCoreStackProps) {
     super(scope, id, props);
     const { config } = props;
-
-    // ── Import existing S3 bucket ──────────────────────────────
-    const docsBucket = s3.Bucket.fromBucketName(
-      this, 'DocsBucket', config.docsBucketName,
-    );
 
     // ── DynamoDB: Eagle single-table ─────────────────────────
     const eagleTable = new dynamodb.Table(this, 'EagleTable', {
@@ -38,22 +32,12 @@ export class EagleCoreStack extends cdk.Stack {
     });
 
     // ── VPC ──────────────────────────────────────────────────
-    this.vpc = new ec2.Vpc(this, 'Vpc', {
-      vpcName: `eagle-vpc-${config.env}`,
-      maxAzs: config.vpcMaxAzs,
-      natGateways: config.natGateways,
-      subnetConfiguration: [
-        {
-          cidrMask: 24,
-          name: 'Public',
-          subnetType: ec2.SubnetType.PUBLIC,
-        },
-        {
-          cidrMask: 24,
-          name: 'Private',
-          subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
-        },
-      ],
+    // Import the existing NCI EAGLE DEV VPC — SCP blocks ec2:CreateVpc directly;
+    // VPCs are provisioned by the NCI networking team via Service Catalog.
+    // VPC: C1-CWEB-EAGLE-DEV-VPC (vpc-09def43fcabfa4df6), CIDR 10.209.140.192/26
+    // 4 private subnets across 2 AZs; egress via Transit Gateway. No public subnets.
+    this.vpc = ec2.Vpc.fromLookup(this, 'Vpc', {
+      vpcId: 'vpc-09def43fcabfa4df6',
     });
 
     // ── Cognito User Pool ────────────────────────────────────
@@ -115,24 +99,8 @@ export class EagleCoreStack extends cdk.Stack {
       assumedBy: new iam.ServicePrincipal('ecs-tasks.amazonaws.com'),
     });
 
-    // S3: Document operations scoped to eagle/ prefix
-    this.appRole.addToPolicy(new iam.PolicyStatement({
-      sid: 'S3DocumentAccess',
-      actions: [
-        's3:GetObject',
-        's3:PutObject',
-        's3:DeleteObject',
-        's3:ListBucket',
-      ],
-      resources: [
-        docsBucket.bucketArn,
-        `${docsBucket.bucketArn}/eagle/*`,
-      ],
-    }));
-
     // DynamoDB: Full CRUD on eagle table
     this.appRole.addToPolicy(new iam.PolicyStatement({
-      sid: 'DynamoDBAccess',
       actions: [
         'dynamodb:GetItem',
         'dynamodb:PutItem',
@@ -150,7 +118,6 @@ export class EagleCoreStack extends cdk.Stack {
 
     // Document bucket: read access for ECS backend (static ARN avoids cross-stack token cycle)
     this.appRole.addToPolicy(new iam.PolicyStatement({
-      sid: 'DocumentBucketRead',
       actions: ['s3:GetObject', 's3:ListBucket'],
       resources: [
         `arn:aws:s3:::${config.documentBucketName}`,
@@ -160,7 +127,6 @@ export class EagleCoreStack extends cdk.Stack {
 
     // Metadata DynamoDB: read access for ECS backend
     this.appRole.addToPolicy(new iam.PolicyStatement({
-      sid: 'DocumentMetadataRead',
       actions: ['dynamodb:GetItem', 'dynamodb:Query', 'dynamodb:Scan'],
       resources: [
         `arn:aws:dynamodb:${config.region}:${this.account}:table/${config.documentMetadataTableName}`,
@@ -170,7 +136,6 @@ export class EagleCoreStack extends cdk.Stack {
 
     // Bedrock: Invoke models (foundation models + cross-region inference profiles)
     this.appRole.addToPolicy(new iam.PolicyStatement({
-      sid: 'BedrockInvoke',
       actions: [
         'bedrock:InvokeModel',
         'bedrock:InvokeModelWithResponseStream',
@@ -185,7 +150,6 @@ export class EagleCoreStack extends cdk.Stack {
 
     // CloudWatch: App + eval logging
     this.appRole.addToPolicy(new iam.PolicyStatement({
-      sid: 'CloudWatchLogs',
       actions: [
         'logs:CreateLogStream',
         'logs:PutLogEvents',
@@ -200,7 +164,6 @@ export class EagleCoreStack extends cdk.Stack {
 
     // Cognito: User management
     this.appRole.addToPolicy(new iam.PolicyStatement({
-      sid: 'CognitoUserManagement',
       actions: [
         'cognito-idp:GetUser',
         'cognito-idp:AdminGetUser',
@@ -214,7 +177,7 @@ export class EagleCoreStack extends cdk.Stack {
     // ── Outputs ──────────────────────────────────────────────
     new cdk.CfnOutput(this, 'VpcId', {
       value: this.vpc.vpcId,
-      exportName: `eagle-vpc-id-${config.env}`,
+      description: 'EAGLE DEV VPC (imported)',
     });
     new cdk.CfnOutput(this, 'UserPoolId', {
       value: this.userPool.userPoolId,
