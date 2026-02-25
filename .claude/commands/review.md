@@ -2,7 +2,7 @@
 allowed-tools: Write, Read, Bash, Grep, Glob
 description: Reviews completed work by analyzing git diffs and produces risk-tiered validation reports
 argument-hint: [user prompt describing work], [path to plan file]
-model: sonnet
+model: opus
 ---
 
 # Review Agent

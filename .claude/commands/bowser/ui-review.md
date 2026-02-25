@@ -1,5 +1,5 @@
 ---
-model: sonnet
+model: opus
 description: Parallel user story validation — discovers YAML stories, fans out bowser-qa-agents, aggregates results
 argument-hint: [headed] [filename-filter] [vision]
 ---
