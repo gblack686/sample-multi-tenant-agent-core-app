@@ -980,9 +980,10 @@ async def test_8_subagent_tool_tracking():
         model=MODEL,
         system_prompt=(
             "You are a code analysis assistant with specialized subagents. "
-            "ALWAYS delegate file tasks to the appropriate subagent."
+            "You MUST use the Task tool to delegate all file tasks to the appropriate subagent. "
+            "Do NOT call file tools directly — always invoke a subagent via Task."
         ),
-        allowed_tools=["Read", "Glob", "Grep", "Task"],
+        allowed_tools=["Task"],
         permission_mode="bypassPermissions",
         max_turns=12,
         max_budget_usd=0.30,
@@ -2005,7 +2006,10 @@ async def test_23_uc04_contract_modification():
     tenant_context = (
         "Tenant: nci-oa | User: co-garcia-001 | Tier: premium\n"
         "You are the OA Intake skill for the EAGLE Supervisor Agent.\n"
-        "Handle contract modification requests by classifying mod type and identifying required documents.\n\n"
+        "Handle contract modification requests by classifying mod type and identifying required documents.\n"
+        "IMPORTANT: Do not ask clarifying questions. All required information has been provided. "
+        "Analyze the request directly and provide your complete classification, scope determination, "
+        "FAR compliance guidance, and required documents list in your first response.\n\n"
     )
 
     options = ClaudeAgentOptions(
@@ -2433,7 +2437,7 @@ async def test_16_s3_document_ops():
     session_id = "test-session-001"
     test_key = f"test_doc_{uuid.uuid4().hex[:8]}.md"
     test_content = f"# Test Document\nGenerated at {datetime.now(timezone.utc).isoformat()}\nThis is test content for S3 verification."
-    bucket = "nci-documents"
+    bucket = os.environ.get("S3_BUCKET", "eagle-documents-695681773636-dev")
 
     steps_passed = []
 
@@ -2686,7 +2690,7 @@ async def test_19_document_generation():
     import boto3 as _boto3
 
     session_id = "test-session-001"
-    bucket = "nci-documents"
+    bucket = os.environ.get("S3_BUCKET", "eagle-documents-695681773636-dev")
 
     doc_tests = [
         {

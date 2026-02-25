@@ -14,14 +14,14 @@ Windows binary wheels (.pyd, .dll). Lambda runs Linux x86_64. Native C extension
 
 STRATEGY
 --------
-1. On Windows → pip --platform manylinux2014_x86_64 --only-binary :all:
+1. On Windows -> pip --platform manylinux2014_x86_64 --only-binary :all:
    Downloads Linux-compatible manylinux wheels from PyPI.
    manylinux2014_x86_64 is the Lambda-compatible ABI tag.
 
-2. If --platform install fails (package has no manylinux wheel) → warn + fallback
+2. If --platform install fails (package has no manylinux wheel) -> warn + fallback
    Pure-Python packages always work; this only affects packages with native extensions.
 
-3. On Linux/macOS → standard pip install
+3. On Linux/macOS -> standard pip install
    Native platform is already Lambda-compatible (Linux) or close enough (macOS arm64 CI
    should use --platform too, but that's a rarer case).
 
@@ -126,7 +126,7 @@ def bundle(requirements_file: str, output_dir: str, source_dir: str) -> None:
     os.makedirs(output_dir, exist_ok=True)
 
     if host_os == "Windows":
-        print("[bundle-lambda] Windows detected → using --platform manylinux2014_x86_64")
+        print("[bundle-lambda] Windows detected -> using --platform manylinux2014_x86_64")
         ok = install_linux_platform(requirements_file, output_dir)
         if not ok:
             print(
@@ -141,12 +141,12 @@ def bundle(requirements_file: str, output_dir: str, source_dir: str) -> None:
         # Linux (CI/CD, native dev) or macOS — standard install
         # macOS + native deps: if you hit issues, set FORCE_LINUX_BUNDLE=1
         if os.environ.get("FORCE_LINUX_BUNDLE", "").lower() in ("1", "true", "yes"):
-            print(f"[bundle-lambda] FORCE_LINUX_BUNDLE=1 → using --platform {LAMBDA_PLATFORM}")
+            print(f"[bundle-lambda] FORCE_LINUX_BUNDLE=1 -> using --platform {LAMBDA_PLATFORM}")
             ok = install_linux_platform(requirements_file, output_dir)
             if not ok:
                 install_host_platform(requirements_file, output_dir)
         else:
-            print(f"[bundle-lambda] {host_os} detected → standard pip install")
+            print(f"[bundle-lambda] {host_os} detected -> standard pip install")
             install_host_platform(requirements_file, output_dir)
 
     copy_python_sources(source_dir, output_dir)

@@ -18,8 +18,8 @@ COMPOSE_FILE    := "deployment/docker-compose.dev.yml"
 
 # ── First-Time Setup ──────────────────────────────────────
 
-# Full first-time setup: S3 bucket → CDK bootstrap → CDK deploy → containers → users → verify
-setup: _create-bucket cdk-install _cdk-bootstrap cdk-deploy deploy create-users check-aws
+# Full first-time setup: CDK bootstrap → CDK deploy → containers → users → verify
+setup: cdk-install _cdk-bootstrap cdk-deploy deploy create-users check-aws
     @echo ""
     @echo "=== Setup complete! ==="
     @echo "Run 'just urls' to see your live application URLs."
@@ -263,6 +263,38 @@ cdk-deploy:
 cdk-deploy-storage:
     cd {{CDK_DIR}} && npx cdk deploy EagleStorageStack --require-approval never
 
+# Refresh AWS SSO session — run this when credentials expire
+# Usage: just aws-login                          (uses default profile)
+#        just aws-login 695681773636_NCIAWSPowerUserAccess
+aws-login PROFILE="eagle":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Refreshing AWS SSO session (profile: {{PROFILE}}) ==="
+    aws sso login --profile {{PROFILE}}
+    export AWS_PROFILE={{PROFILE}}
+    echo ""
+    echo "Verifying..."
+    aws sts get-caller-identity --profile {{PROFILE}}
+    echo ""
+    echo "Session active. Run your next command with:"
+    echo "  AWS_PROFILE={{PROFILE}} just <command>"
+    echo "Or export it for the session:"
+    echo "  export AWS_PROFILE={{PROFILE}}"
+
+
+# Stop the dev box to avoid idle charges (~$0.04/hr)
+# Usage: just devbox-stop <instance-id>
+devbox-stop INSTANCE_ID:
+    aws ec2 stop-instances --instance-ids {{INSTANCE_ID}}
+    echo "Dev box stopped. Start again with: just devbox-start {{INSTANCE_ID}}"
+
+# Start the dev box back up
+devbox-start INSTANCE_ID:
+    aws ec2 start-instances --instance-ids {{INSTANCE_ID}}
+    aws ec2 wait instance-running --instance-ids {{INSTANCE_ID}}
+    echo "Dev box running. Get IP with:"
+    echo "  aws ec2 describe-instances --instance-ids {{INSTANCE_ID}} --query 'Reservations[].Instances[].PublicIpAddress' --output text"
+
 # ── Operations ──────────────────────────────────────────────
 
 # Show ECS service health and running task counts
@@ -326,7 +358,7 @@ check-sso:
     echo "✅ Bedrock access verified"
     echo ""
     echo "3. Testing S3 access..."
-    aws s3 ls s3://nci-documents --region us-east-1 &>/dev/null || echo "⚠️  S3 bucket 'nci-documents' not accessible (may not exist)"
+    aws s3 ls s3://eagle-documents-695681773636-dev --region us-east-1 &>/dev/null || echo "⚠️  S3 bucket 'eagle-documents-695681773636-dev' not accessible (may not exist)"
     echo ""
     echo "=== All checks passed ==="
 
@@ -401,17 +433,6 @@ ci: lint test cdk-synth eval-aws
 ship: lint cdk-synth deploy smoke-prod
 
 # ── Internal Helpers (prefixed with _) ──────────────────────
-
-_create-bucket:
-    python -c "\
-    import boto3; \
-    s3 = boto3.client('s3', region_name='us-east-1'); \
-    try: \
-        s3.head_bucket(Bucket='nci-documents'); \
-        print('S3 bucket nci-documents already exists.'); \
-    except s3.exceptions.ClientError: \
-        s3.create_bucket(Bucket='nci-documents'); \
-        print('Created S3 bucket: nci-documents')"
 
 _cdk-bootstrap:
     python -c "\

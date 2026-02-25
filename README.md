@@ -34,6 +34,21 @@ User Login -> JWT with tenant_id -> Session Attributes -> Anthropic SDK (via Bed
 
 ---
 
+## Deployment Methods
+
+Two paths for running EAGLE. **EC2 Runner is the standard method** — no local Docker required and uses instance-role credentials for zero-config AWS access.
+
+| | Local Development | EC2 Runner (Standard) |
+|---|---|---|
+| **Use when** | Iterating locally, UI changes | All deployments to NCI AWS |
+| **Docker** | Local Docker Desktop | Instance has Docker installed |
+| **AWS creds** | SSO or access keys | Instance role (automatic) |
+| **Bedrock access** | VPN / SSO required | Native VPC access |
+| **Command** | `just dev` | SSM → `just deploy` |
+| **Speed** | ~2 min startup | ~5 min (build + ECR push) |
+
+---
+
 ## Quick Start
 
 ### Prerequisites
@@ -41,6 +56,21 @@ User Login -> JWT with tenant_id -> Session Attributes -> Anthropic SDK (via Bed
 - **Python 3.11+**, **Node.js 20+**, **Docker**, **AWS CLI** configured
 - **[just](https://github.com/casey/just)** task runner (`cargo install just` or `brew install just`)
 - AWS account with Bedrock model access enabled (Claude 3.5 Haiku / Sonnet)
+
+### Standard Deployment (EC2 Runner)
+
+```bash
+# 1. Open SSM session to the EC2 runner (no SSH keys needed)
+AWS_PROFILE=eagle aws ssm start-session \
+  --target i-0390c06d166d18926 \
+  --region us-east-1
+
+# 2. Switch to the eagle user and deploy
+su -s /bin/bash eagle
+cd /home/eagle/eagle
+just deploy          # build → ECR push → ECS rolling update → wait
+just check-aws       # verify all 7 resources are healthy
+```
 
 ### Local Development
 
@@ -63,14 +93,15 @@ just lint           # Ruff (Python) + tsc (TypeScript)
 just test           # Backend pytest
 
 # Smoke Tests — verify pages load and backend is reachable (stack must be running)
-just smoke          # base: nav + home page (~10 tests, headless)
-just smoke mid      # all pages: nav, home, admin, documents, workflows (~27 tests, headless)
-just smoke full     # all pages + basic agent response (~31 tests, headless)
+just smoke          # base: nav + home page (~10 tests, headless, ~14s)
+just smoke mid      # all pages: nav, home, admin, documents, workflows (~27 tests, ~22s)
+just smoke full     # all pages + basic agent response (~31 tests, ~27s)
 just smoke-ui       # same as smoke base, headed (visible browser)
 
 # Smoke against deployed Fargate (requires AWS creds)
 just smoke-prod        # mid-level smoke against Fargate ALB (auto-discovers URL)
 just smoke-prod full   # full smoke + chat against Fargate
+
 
 # E2E Use Case Tests — complete acquisition workflows through the UI (headed)
 just e2e intake     # OA Intake: describe need → agent returns pathway + document list
@@ -253,7 +284,10 @@ All stacks in `infrastructure/cdk-eagle/`:
 
 ## Setup Guides
 
-Two paths depending on your goal. Start with **Checklist A** to validate the stack locally, then run **Checklist B** to deploy to AWS.
+Three checklists:
+- **Checklist A** — Local development (Docker Compose, fast iteration)
+- **Checklist B** — EC2 Runner deployment *(standard — recommended for all NCI deploys)*
+- **Checklist C** — First-time cloud setup (CDK infrastructure bootstrap)
 
 ---
 
@@ -351,9 +385,9 @@ just validate       # L1-L5: lint → unit → CDK synth → docker stack → sm
 # Or run individually:
 
 # Smoke — pages load and backend is reachable (headless, fast)
-just smoke          # nav + home page
-just smoke mid      # all pages including admin, documents, workflows
-just smoke full     # all pages + basic agent response check
+just smoke          # nav + home page (~14s)
+just smoke mid      # all pages including admin, documents, workflows (~22s)
+just smoke full     # all pages + basic agent response check (~27s)
 
 # E2E Use Cases — complete acquisition workflows (headed, visible browser)
 just e2e intake     # describe acquisition → agent returns pathway + document list
@@ -372,90 +406,149 @@ just dev-down
 
 ---
 
-## Checklist B: Cloud Deployment (AWS)
+## Checklist B: EC2 Runner Deployment (Standard)
 
-Deploys all 5 CDK stacks to AWS and runs EAGLE on ECS Fargate with Cognito auth, Bedrock, and full observability.
+> **This is the recommended deploy path for NCI.** No local Docker required — all builds happen on the EC2 runner inside the VPC using its instance-role credentials.
 
 ### B0 — Prerequisites
 
-- [ ] **AWS CLI** configured with admin credentials:
-  ```bash
-  aws configure
-  # Region: us-east-1
-  aws sts get-caller-identity   # verify
-  ```
-- [ ] **Docker Desktop** installed and running
-- [ ] **Node.js 20+**, **Python 3.11+**, **`just`**
+- [ ] **AWS CLI** with SSO profile `eagle` configured
+- [ ] SSM Session Manager plugin installed: `aws ssm install-plugin`
+- [ ] EC2 runner `i-0390c06d166d18926` in account `695681773636`
 
-### B1 — Configure Account-Specific Names *(new accounts only)*
+### B1 — Open SSM Session
 
-S3 bucket names are **globally unique**. If this isn't your first deploy, update `infrastructure/cdk-eagle/config/environments.ts`:
+```bash
+aws sso login --profile eagle
+AWS_PROFILE=eagle aws ssm start-session \
+  --target i-0390c06d166d18926 \
+  --region us-east-1
+```
+
+No SSH keys, no bastion host — SSM handles authentication via IAM.
+
+### B2 — Switch to Eagle User and Pull Latest Code
+
+```bash
+su -s /bin/bash eagle
+cd /home/eagle/eagle
+
+# Pull latest from your branch
+git pull origin dev/greg   # or main for production
+```
+
+> **Updating from Windows**: If git pull fails (no direct GitHub access from EC2), use the bundle method:
+> ```bash
+> # On Windows: create and upload bundle
+> git bundle create /tmp/bundle.bundle dev/greg
+> aws s3 cp /tmp/bundle.bundle s3://eagle-eval-artifacts-695681773636-dev/deploy/
+>
+> # On EC2: download and apply
+> aws s3 cp s3://eagle-eval-artifacts-695681773636-dev/deploy/bundle.bundle /tmp/
+> git -C /home/eagle/eagle pull /tmp/bundle.bundle dev/greg
+> ```
+
+### B3 — Deploy
+
+```bash
+# Full deploy: ECR login → build backend → build frontend → push → ECS rolling update
+just deploy
+
+# Or separately:
+just deploy-backend
+just deploy-frontend
+```
+
+`just deploy` automatically:
+1. Logs into ECR using instance role credentials
+2. Reads Cognito config from CloudFormation outputs (no manual env vars)
+3. Builds both Docker images (Linux, matching container OS)
+4. Pushes to ECR with `latest` and `$COMMIT_SHA` tags
+5. Triggers ECS rolling updates and waits for `services-stable`
+
+### B4 — Verify
+
+```bash
+just check-aws   # 7/7 OK: Identity, S3, DDB×2, Lambda, ECS×2
+just status      # ECS running counts
+just urls        # frontend + backend ALB URLs
+```
+
+### B5 — Access the App
+
+The ALBs are **VPC-internal** — not reachable from the public internet. Access requires being on the NCI network (VPN or SSM port-forward).
+
+**Get the frontend URL:**
+```bash
+AWS_PROFILE=eagle aws cloudformation describe-stacks --stack-name EagleComputeStack \
+  --query "Stacks[0].Outputs[?contains(OutputKey,'FrontendUrl')].OutputValue" \
+  --output text --region us-east-1
+```
+
+**Login credentials** (created by `just create-users`):
+
+| Role | Email | Password |
+|------|-------|----------|
+| Standard user | testuser@example.com | EagleTest2024! |
+| Admin | admin@example.com | EagleAdmin2024! |
+
+> **First login note**: Cognito may prompt for a password change. Enter `EagleTest2024!` as both old and new password to clear the prompt.
+
+### B6 — Run Smoke Tests from EC2
+
+The EC2 runner also supports running the full smoke + eval suite:
+
+```bash
+# Eval suite (28 tests against Bedrock/haiku)
+just eval
+
+# Smoke tests (Playwright against local Docker stack)
+just smoke mid
+```
+
+> Playwright and Chromium are pre-installed on the runner. Browsers are in `/home/eagle/.cache/ms-playwright`.
+
+---
+
+## Checklist C: First-Time Cloud Setup (CDK Bootstrap)
+
+Only needed when deploying to a **new AWS account** for the first time.
+
+### C0 — Prerequisites
+
+- [ ] **AWS CLI** with admin credentials (or PowerUser + boundary for NCI accounts)
+- [ ] **Node.js 20+**, **`just`**
+
+### C1 — Configure Account-Specific Names
+
+S3 bucket names are globally unique. Update `infrastructure/cdk-eagle/config/environments.ts`:
 
 ```typescript
-documentBucketName: 'eagle-documents-dev-yourname',  // must be globally unique
-githubOwner: 'your-github-username',
+documentBucketName: 'eagle-documents-{account-id}-dev',  // must be globally unique
+githubOwner: 'your-github-org',
 githubRepo:  'your-repo-name',
 ```
 
-### B2 — Enable Bedrock Model Access *(manual, one-time)*
+### C2 — Enable Bedrock Model Access *(manual, one-time)*
 
 1. Open **AWS Console → Amazon Bedrock → Model access**
-2. Click **Manage model access** → enable **Anthropic Claude 3.5 Haiku** and **Claude 3.5 Sonnet**
-3. Wait for **"Access granted"** before continuing
+2. Enable **Anthropic Claude 3.5 Haiku** and **Claude 3.5 Sonnet**
+3. Wait for **"Access granted"**
 
-> The metadata Lambda uses the cross-region inference profile `us.anthropic.claude-3-5-haiku-20241022-v1:0` — no separate profile step needed once standard access is granted.
-
-### B3 — Create Pre-requisite S3 Bucket
-
-The `nci-documents` bucket is **imported** by CDK (not created). It must exist first:
-
-```bash
-aws s3 mb s3://nci-documents --region us-east-1
-```
-
-### B4 — Deploy CDK (all 5 stacks)
+### C3 — Bootstrap CDK and Deploy All Stacks
 
 ```bash
 just cdk-install   # npm ci in infrastructure/cdk-eagle/
 
-# Bootstrap CDK once per account/region
 ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-npx cdk bootstrap aws://$ACCOUNT_ID/us-east-1 --app "npx ts-node infrastructure/cdk-eagle/bin/eagle.ts"
+npx cdk bootstrap aws://$ACCOUNT_ID/us-east-1
 
-# Deploy all stacks
-just cdk-deploy
+just cdk-deploy    # deploys all 5 stacks
 ```
 
-Or one command if this is your first time:
+> **NCI accounts** use a patched bootstrap (PowerUser boundary). See `.claude/context/` for the NCI-specific bootstrap procedure.
 
-```bash
-just setup   # S3 bucket → CDK bootstrap → CDK deploy → containers → users → verify
-```
-
-### B5 — Upload Knowledge Base Documents *(optional)*
-
-After `EagleStorageStack` deploys, upload documents. S3 event notifications auto-trigger the metadata extraction Lambda:
-
-```bash
-aws s3 sync path/to/knowledge-base/ s3://eagle-documents-dev/eagle/knowledge-base/ \
-  --region us-east-1
-
-# Confirm Lambda ran
-aws logs filter-log-events \
-  --log-group-name /eagle/lambda/metadata-extraction-dev \
-  --start-time $(python -c "import time; print(int((time.time()-300)*1000))") \
-  --query 'events[].message' --output text | head -20
-```
-
-### B6 — Build and Deploy Containers
-
-```bash
-just deploy
-```
-
-This logs into ECR, builds both images, pushes them, triggers ECS rolling updates, and waits for services to stabilize.
-
-### B7 — Create Cognito Users
+### C4 — Create Cognito Users
 
 ```bash
 just create-users
@@ -495,32 +588,25 @@ aws cognito-idp admin-set-user-password \
 
 </details>
 
-### B8 — Set GitHub Secret *(for CI/CD)*
+### C5 — Set GitHub Secret for CI/CD
 
 ```bash
+# Get the deploy role ARN from CiCdStack
 aws cloudformation describe-stacks --stack-name EagleCiCdStack \
   --query "Stacks[0].Outputs[?OutputKey=='DeployRoleArn'].OutputValue" --output text
+
+# Set the secret (or use gh CLI):
+gh secret set DEPLOY_ROLE_ARN --body "arn:aws:iam::ACCOUNT_ID:role/eagle-github-actions-dev"
 ```
 
-Add the output as `DEPLOY_ROLE_ARN` in **GitHub → Settings → Secrets and variables → Actions**.
-
-### B9 — Verify and Open in Browser
+### C6 — Upload Knowledge Base Documents *(optional)*
 
 ```bash
-just check-aws   # verifies all 8 resources (S3×2, DDB×2, Lambda, ECS×2, Identity)
-just status      # ECS running counts
-just urls        # prints frontend + backend URLs
+aws s3 sync path/to/knowledge-base/ s3://eagle-documents-{account-id}-dev/eagle/knowledge-base/ \
+  --region us-east-1
 ```
 
-**Open the frontend URL in your browser** — log in with `testuser@example.com / EagleTest2024!` and confirm the intake form loads and responds.
-
-```bash
-# Or run E2E tests with a visible browser window against Fargate:
-just test-e2e-ui
-
-# Headless:
-just test-e2e
-```
+S3 event notifications auto-trigger the metadata extraction Lambda on upload.
 
 ---
 
@@ -554,16 +640,35 @@ just ship           # deploy gate: lint + CDK synth + deploy + smoke-prod verify
 
 ---
 
+
 ## CI/CD Pipeline
 
-The GitHub Actions workflow (`.github/workflows/deploy.yml`) runs on push to `main`:
+The GitHub Actions workflow (`.github/workflows/deploy.yml`) runs on push to `main` or manual `workflow_dispatch`.
 
-1. **deploy-infra** — OIDC auth → `cdk deploy --all` → extract outputs
-2. **deploy-backend** — Docker build+push → ECS rolling update → wait for stable
-3. **deploy-frontend** — Docker build+push (with Cognito build-args) → ECS rolling update
-4. **verify** — Health checks on `/api/health` and `/`
+| Job | Steps |
+|-----|-------|
+| **deploy-infra** | OIDC auth → `cdk deploy --all` → extract stack outputs |
+| **deploy-backend** | Docker build+push → ECS rolling update → wait for stable |
+| **deploy-frontend** | Docker build+push (Cognito build-args from CDK outputs) → ECS rolling update |
+| **verify** | Health check `/api/health` + `/` |
 
-Authentication uses GitHub OIDC federation — no static IAM keys.
+Authentication uses **GitHub OIDC federation** — no static IAM keys stored in secrets.
+
+Required secrets:
+- `DEPLOY_ROLE_ARN` — IAM role ARN from `EagleCiCdStack` (e.g. `arn:aws:iam::695681773636:role/eagle-github-actions-dev`)
+
+```bash
+# Enable the workflow (if disabled)
+gh workflow enable "Deploy EAGLE Platform"
+
+# Trigger manually
+gh workflow run deploy.yml --ref main
+
+# Watch the run
+gh run watch
+```
+
+> **Note**: The EC2 runner (`just deploy`) is the standard deploy path. GitHub Actions CI/CD automates this on merge to `main` — it runs the same build+push+ECS update steps as the EC2 script.
 
 The local equivalent of the full CI+deploy pipeline:
 
@@ -571,6 +676,7 @@ The local equivalent of the full CI+deploy pipeline:
 just ci     # L1 lint + L2 unit + L4 CDK synth + L6 eval-aws (pre-deploy check)
 just ship   # lint + CDK synth gate + deploy + L5 smoke-prod verify (full ship)
 ```
+
 
 ---
 
