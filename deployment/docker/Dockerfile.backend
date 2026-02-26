@@ -1,0 +1,26 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+COPY server/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Install curl for ECS health checks
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
+COPY server/app/ app/
+COPY server/run.py .
+COPY server/config.py .
+COPY server/eagle_skill_constants.py .
+COPY eagle-plugin/ ../eagle-plugin/
+
+# Claude Code CLI blocks --dangerously-skip-permissions when running as root
+RUN useradd -m -u 1000 appuser \
+    && chown -R appuser:appuser /app /eagle-plugin
+
+ENV HOME=/home/appuser
+USER appuser
+
+EXPOSE 8000
+
+CMD ["python", "-m", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

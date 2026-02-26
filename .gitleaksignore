@@ -1,0 +1,18 @@
+# Gitleaks ignore file - False positives and removed secrets
+# These secrets are from deleted files or have been replaced with placeholders
+
+# GITHUB_DEPLOYMENT.md (file deleted)
+77c959e5fe24f025acbd1f41ca2add6cf897f1ae:GITHUB_DEPLOYMENT.md:generic-api-key:102
+77c959e5fe24f025acbd1f41ca2add6cf897f1ae:GITHUB_DEPLOYMENT.md:generic-api-key:112
+77c959e5fe24f025acbd1f41ca2add6cf897f1ae:GITHUB_DEPLOYMENT.md:generic-api-key:115
+77c959e5fe24f025acbd1f41ca2add6cf897f1ae:GITHUB_DEPLOYMENT.md:generic-api-key:124
+
+# DEPLOYMENT.md (file deleted)
+77c959e5fe24f025acbd1f41ca2add6cf897f1ae:DEPLOYMENT.md:generic-api-key:51
+77c959e5fe24f025acbd1f41ca2add6cf897f1ae:DEPLOYMENT.md:generic-api-key:80
+
+# frontend/README.md (file deleted)
+cb682aec8a4decc986da0ac98693fe42efff16fb:frontend/README.md:generic-api-key:63
+
+# frontend/index.html (replaced with placeholders)
+e52a6d2f27c619c189f5de6f2add14af7506f7f0:frontend/index.html:generic-api-key:131

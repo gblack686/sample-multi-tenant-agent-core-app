@@ -1,0 +1,233 @@
+EAGLE (Enhanced Acquisition Guidance Learning Engine)
+Objectives: 
+•	Objective 1: Build out the initial set of requirements (MVP) for the EAGLE application that can be used by the CORs to generate acquisition plan and send to OA Intake. (Need Ryan to confirm)
+•	Objective 2: Design an agentic AI workflow that automate the Acquisition Planning processing. Essentially, a contractor specialist managing the entire AP workflow until its complete. (Need Ryan to confirm)
+High-Level Acquisition Workflow
+SOW+IGCE+MRR -> Acquisition Planning (AP) -> Solicitation (RFQ/RFP) -> Source Selection – Technical Evaluation -> Negotiation -> Pre-Award -> Award –> Administer -> Closeout
+•	Ryan’s application is focus on the AP part of the workflow. The application is called EAGLE. The AP step requires gathering information needed and working with various folks to put together an acquisition plan. 
+o	Ryan has a S3 bucket with different folders, 6 of them, each representing a role that is needed for the AP process. There is one supervisor role that help coordinate the activities.
+o	After the AP is completed (got all the approvals) send it to OA Intake via the OA Intake API.
+o	Future: Integrate with other system to feed information into the EAGLE App or send out to other system such as Merlin.
+o	Pain Point: Design the application to minimize inference calls/token length to reduce cost.
+GitHub Repo: https://github.com/CBIIT/nci-webtools-ctri-arti
+•	The codebase for the chat interface and other tools
+•	SolidJS UI framework
+•	NodeJS REST API, uses Docker to containerize the API for testing and deployment
+•	Hosted on NCI CloudOne (AWS)
+o	Uses AWS CDK to setup the infrastructure and deploy the application
+o	AWS Services
+	API Gateway
+	Elastic Container Registry
+	Elastic Container Service
+	Simple Storage Service (S3)
+	RDS PostgreSQL with pgvector extension to support storing vector embeddings
+	AWS Bedrock - Claude Model
+Site URL: https://researchoptimizer-dev.cancer.gov
+•	Ryan is current using the chat tool to support acquisition planning
+•	He wants EAGLE to have its own URL but for now tagging on to the research optimizer website
+•	The chat interface web interface interacts with the model via the REST API - POST /api/model. Example of the payload below.
+POST https://researchoptimizer-dev.cancer.gov/api/model
+Payload:
+{
+  "model": "us.meta.llama4-maverick-17b-instruct-v1:0",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "text": "Answer this question about the document: \"What are the technical requirements, system specifications, and integration capabilities needed for a medical imaging research system, particularly related to DICOM standards, PACS integration, data management, and research-specific features like anonymization and multi-center collaboration support?\""
+        }
+      ]
+    }
+  ],
+  "system": …
+}
+
+
+Dev Env:
+OA – Office of Acquisitions
+Scale to 100s of people.
+Do we need an intake questionnaire 
+Do we have a directory of products that are approved or history?
+Approval HITL chain and history. 
+Orchestrator – Multi Agent
+Prototype -> Enterprise 
+-	Logs, reports, 
+-	Act as an agent on 
+ 
+
+Meeting chat
+Greg was invited to the meeting.
+Valisetty, Srichaitra (NIH/NCI) [C] started recording.
+Link https://researchoptimizer-dev.cancer.g... by Hash, Ryan (NIH/NCI) [E]
+Hash, Ryan (NIH/NCI) [E]
+2:56 PM
+https://researchoptimizer-dev.cancer.gov/tools/chat-v2?agentId=3
+Looking forward to seeing this get develope... by Fu, Tony (NIH/NCI) [C]
+Fu, Tony (NIH/NCI) [C]
+3:17 PM
+Looking forward to seeing this get developed. I have to drop. Thanks everyone!
+Link Releases · CBIIT/nci-webtools-ctri-art by Hash, Ryan (NIH/NCI) [E]
+Hash, Ryan (NIH/NCI) [E]
+3:19 PM
+Releases · CBIIT/nci-webtools-ctri-arti
+I'll compile a comprehensive feature list for EAGLE based on the design work we've done. This should give developers a clear technical roadmap.
+EAGLE Development Features List
+Core System Architecture
+1. Multi-Agent AI Framework
+•	Supervisor agent orchestrating 6 specialist agents (Compliance, Legal, Financial, Market, Technical, Public Interest)
+•	Strategic invocation system to manage costs (10x token cost for multi-agent collaboration)
+•	Context sharing and handoff protocols between agents
+•	Agent memory management and session persistence
+2. Knowledge Base Integration
+•	AWS S3-based vector database system (Amazon S3 Vectors, not OpenSearch)
+•	Real-time knowledge base querying across 8 specialized knowledge bases
+•	Knowledge base sync monitoring and status tracking
+•	Version control for regulatory content updates (FAR 2.0 tracking)
+3. Authentication & Access Control
+•	PIV card authentication (federal employees only)
+•	Role-based access control (COR/CO vs Policy Group interfaces)
+•	Two-tier system architecture with credential-controlled visibility
+________________________________________
+User Interface & Experience
+4. Adaptive Questioning Engine
+•	Progressive discovery workflow (information gathering → analysis → validation → documentation)
+•	Context-aware follow-up question generation
+•	Completeness validation checkpoints before proceeding
+•	Summary and confirmation displays after each major section
+•	User correction handling with validation
+5. Document Generation System
+•	25+ acquisition document types (SOWs, APs, IGCEs, RFQs, D&Fs, JOFOCs, Market Research, Source Selection Plans, etc.)
+•	Template hierarchy: agency-specific → HHS → NIH → generic FAR-compliant
+•	Template population with validation checks (checkboxes, form fields, required sections)
+•	Format control (paragraph vs bullet style per document type)
+•	Simultaneous multi-document generation capability
+6. Template Management
+•	Template library with version control
+•	Template discovery and selection logic
+•	Mandatory vs optional template enforcement
+•	Template update notifications when regulations change
+•	Template compliance validation (missing sections, checkboxes, form fields)
+________________________________________
+Intelligent Analysis Features
+7. Cross-Document Consistency Engine
+•	Automated inconsistency detection across acquisition documents
+•	Bidirectional updates when information changes
+•	Conflict identification with strategic options presentation
+•	Resolution decision tracking to prevent recurring questions
+•	Document relationship mapping (SOW ↔ IGCE ↔ Market Research ↔ Budget)
+8. Existing Vehicle Detection
+•	Search NIH contract portfolio for existing vehicles
+•	Ceiling availability checking
+•	Contract expiration date awareness
+•	Recommendation engine: "Use existing contract X vs. new acquisition"
+•	Integration with NIH contract management systems (NVision)
+9. Commercial-First Analysis (Executive Order 14275 compliance)
+•	Commercial solution identification for custom requirements
+•	Cost comparison: commercial licensing vs. custom development
+•	Justification framework generation for non-commercial approaches
+•	Market research integration with commercial alternatives
+10. Cost Estimation Coaching
+•	Industry benchmark data integration
+•	Labor mix analysis by project type
+•	Typical person-month calculations
+•	Cost range presentation with scope trade-off guidance
+•	IGCE generation with variance tracking
+________________________________________
+Regulatory Compliance Automation
+11. Regulatory Intelligence
+•	Real-time FAR/HHSAR/NIH policy compliance checking
+•	Threshold monitoring (SAT, TINA, JOFOC levels)
+•	Automatic D&F requirement detection (options, T&M contracts, sole source, etc.)
+•	Small business set-aside determination
+•	Section 508/security/privacy requirement triggering
+12. Timeline Validation
+•	Acquisition complexity assessment
+•	Realistic timeline estimation with milestone generation
+•	Crisis timeline detection with alternative strategy suggestions
+•	Approval workflow duration tracking
+•	Fiscal year end deadline warnings
+13. Regulatory Boundary Management
+•	Problematic approach detection
+•	CO escalation path recommendations
+•	Risk flagging with mitigation options
+•	GAO protest risk assessment
+________________________________________
+Integration & Data Management
+14. NIH System Integrations
+•	NVision: Contract data, ceiling tracking, obligation history
+•	Microsoft Teams: Collaboration, notifications
+•	SharePoint: Document repository, template library
+•	ServiceNow: Help desk integration, ticket generation
+•	NIH Active Directory for user profiles
+15. Data Intelligence Layer
+•	Historical contract performance data
+•	Vendor capability database
+•	Past acquisition package analysis (learning from CO modifications)
+•	IGCE accuracy tracking over time
+•	Market research repository
+16. Document Import/Analysis
+•	Parse existing acquisition documents (SOWs, RFQs, contracts)
+•	Extract mission impact from technical documents
+•	Identify requirements from stakeholder input
+•	Analyze contractor quotes against IGCEs
+________________________________________
+Workflow & Collaboration
+17. Acquisition Package Assembly
+•	Complete contract file checklist generation
+•	HHS Board of Contract Awards package preparation
+•	Presidential Appointee Approval (PAA) package assembly
+•	Cross-referencing engine ("See Attachment X" vs. duplicate entry)
+•	Package completeness validation against FAR 4.803
+18. User Guidance System
+•	Context-sensitive help
+•	Acquisition path recommendations with justification
+•	Decision framework presentations
+•	Educational content delivery (teaching CORs while helping)
+19. Quality Control Features
+•	Pre-generation validation (all questions answered, conflicts resolved)
+•	Post-generation review (format, completeness, regulatory compliance)
+•	CO feedback loop for continuous improvement
+•	Error pattern detection and user coaching
+________________________________________
+Advanced Features
+20. Performance Standards & Monitoring
+•	User adoption metrics tracking
+•	Response time monitoring
+•	Document generation success rates
+•	CO modification tracking (learning dataset)
+21. Change Management
+•	Regulatory update notifications
+•	Template cascade updates when FAR changes
+•	Knowledge base refresh protocols
+•	System-wide procedural change management (Policy Group interface)
+22. Crisis Acquisition Support
+•	Accelerated timeline workflows
+•	Bridge contract recommendations
+•	Letter contract guidance
+•	Alternative vehicle suggestions (existing contracts, GWACs, BPAs)
+________________________________________
+Technical Infrastructure
+23. AWS Bedrock Configuration
+•	Claude 4 Opus/Sonnet model access
+•	Extended thinking mode for complex analysis
+•	Token cost optimization strategies
+•	Performance monitoring and throttling
+24. Security & Compliance
+•	FedRAMP compliance
+•	FIPS 199 MODERATE security controls
+•	CUI (Controlled Unclassified Information) handling
+•	Audit logging and retention
+25. Scalability Requirements
+•	Support 600+ CORs and 200+ COs across NIH
+•	Concurrent user session management
+•	Knowledge base update without downtime
+•	Response time SLAs
+________________________________________
+Phase Implementation Suggestion
+MVP (6 months): Features 1-6, 11, 17 (core architecture, basic Q&A, document generation, regulatory compliance)
+Advanced (12 months): Features 7-10, 14-16 (consistency engine, vehicle detection, system integrations)
+Full (18 months): Features 18-25 (AI learning, performance optimization, full collaboration features)
+________________________________________
+Would you like me to expand on any specific feature area or create a different format (like user stories, technical specifications, or API requirements)?
+ 

@@ -1,0 +1,207 @@
+name: Deploy EAGLE Platform
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_infra:
+        description: 'Deploy CDK infrastructure'
+        required: false
+        default: 'true'
+        type: string
+      deploy_app:
+        description: 'Build and deploy application'
+        required: false
+        default: 'true'
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-east-1
+  CDK_DIR: infrastructure/cdk-eagle
+  CLUSTER_NAME: eagle-dev
+  BACKEND_SERVICE: eagle-backend-dev
+  FRONTEND_SERVICE: eagle-frontend-dev
+
+jobs:
+  # ── Deploy CDK Infrastructure ───────────────────────────────
+  deploy-infra:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || inputs.deploy_infra == 'true'
+    outputs:
+      user-pool-id: ${{ steps.outputs.outputs.user-pool-id }}
+      user-pool-client-id: ${{ steps.outputs.outputs.user-pool-client-id }}
+      backend-repo-uri: ${{ steps.outputs.outputs.backend-repo-uri }}
+      frontend-repo-uri: ${{ steps.outputs.outputs.frontend-repo-uri }}
+      backend-url: ${{ steps.outputs.outputs.backend-url }}
+      frontend-url: ${{ steps.outputs.outputs.frontend-url }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+    - name: Configure AWS credentials (OIDC)
+      uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4.0.2
+      with:
+        role-to-assume: ${{ secrets.DEPLOY_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Setup Node.js
+      uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8  # v4.0.2
+      with:
+        node-version: '20'
+
+    - name: Install CDK dependencies
+      run: |
+        cd ${{ env.CDK_DIR }}
+        npm ci
+        npx cdk --version
+
+    - name: CDK Diff
+      run: |
+        cd ${{ env.CDK_DIR }}
+        npx cdk diff --all 2>&1 || true
+
+    - name: CDK Deploy
+      run: |
+        cd ${{ env.CDK_DIR }}
+        npx cdk deploy --all --require-approval never --outputs-file outputs.json
+
+    - name: Extract CDK Outputs
+      id: outputs
+      run: |
+        cd ${{ env.CDK_DIR }}
+        echo "user-pool-id=$(jq -r '.EagleCoreStack.UserPoolId' outputs.json)" >> $GITHUB_OUTPUT
+        echo "user-pool-client-id=$(jq -r '.EagleCoreStack.UserPoolClientId' outputs.json)" >> $GITHUB_OUTPUT
+        echo "backend-repo-uri=$(jq -r '.EagleComputeStack.BackendRepoUri' outputs.json)" >> $GITHUB_OUTPUT
+        echo "frontend-repo-uri=$(jq -r '.EagleComputeStack.FrontendRepoUri' outputs.json)" >> $GITHUB_OUTPUT
+        echo "backend-url=$(jq -r '.EagleComputeStack.BackendUrl' outputs.json)" >> $GITHUB_OUTPUT
+        echo "frontend-url=$(jq -r '.EagleComputeStack.FrontendUrl' outputs.json)" >> $GITHUB_OUTPUT
+
+        echo "--- CDK Outputs ---"
+        cat outputs.json | jq .
+
+  # ── Build & Push Backend Container ──────────────────────────
+  deploy-backend:
+    needs: deploy-infra
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || inputs.deploy_app == 'true'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+    - name: Configure AWS credentials (OIDC)
+      uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4.0.2
+      with:
+        role-to-assume: ${{ secrets.DEPLOY_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to ECR
+      id: ecr-login
+      uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076  # v2.0.1
+
+    - name: Build and push backend image
+      env:
+        REPO_URI: ${{ needs.deploy-infra.outputs.backend-repo-uri }}
+      run: |
+        docker build \
+          -f deployment/docker/Dockerfile.backend \
+          -t $REPO_URI:${{ github.sha }} \
+          -t $REPO_URI:latest \
+          .
+        docker push $REPO_URI:${{ github.sha }}
+        docker push $REPO_URI:latest
+
+    - name: Update ECS backend service
+      run: |
+        aws ecs update-service \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --service ${{ env.BACKEND_SERVICE }} \
+          --force-new-deployment \
+          --region ${{ env.AWS_REGION }}
+
+    - name: Wait for backend deployment
+      run: |
+        aws ecs wait services-stable \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --services ${{ env.BACKEND_SERVICE }} \
+          --region ${{ env.AWS_REGION }}
+        echo "Backend deployment stable"
+
+  # ── Build & Push Frontend Container ─────────────────────────
+  deploy-frontend:
+    needs: deploy-infra
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || inputs.deploy_app == 'true'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+    - name: Configure AWS credentials (OIDC)
+      uses: aws-actions/configure-aws-credentials@e3dd6a429d7300a6a4c196c26e071d42e0343502  # v4.0.2
+      with:
+        role-to-assume: ${{ secrets.DEPLOY_ROLE_ARN }}
+        aws-region: ${{ env.AWS_REGION }}
+
+    - name: Login to ECR
+      id: ecr-login
+      uses: aws-actions/amazon-ecr-login@062b18b96a7aff071d4dc91bc00c4c1a7945b076  # v2.0.1
+
+    - name: Build and push frontend image
+      env:
+        REPO_URI: ${{ needs.deploy-infra.outputs.frontend-repo-uri }}
+      run: |
+        docker build \
+          -f deployment/docker/Dockerfile.frontend \
+          --build-arg NEXT_PUBLIC_COGNITO_USER_POOL_ID=${{ needs.deploy-infra.outputs.user-pool-id }} \
+          --build-arg NEXT_PUBLIC_COGNITO_CLIENT_ID=${{ needs.deploy-infra.outputs.user-pool-client-id }} \
+          --build-arg NEXT_PUBLIC_COGNITO_REGION=${{ env.AWS_REGION }} \
+          -t $REPO_URI:${{ github.sha }} \
+          -t $REPO_URI:latest \
+          .
+        docker push $REPO_URI:${{ github.sha }}
+        docker push $REPO_URI:latest
+
+    - name: Update ECS frontend service
+      run: |
+        aws ecs update-service \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --service ${{ env.FRONTEND_SERVICE }} \
+          --force-new-deployment \
+          --region ${{ env.AWS_REGION }}
+
+    - name: Wait for frontend deployment
+      run: |
+        aws ecs wait services-stable \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --services ${{ env.FRONTEND_SERVICE }} \
+          --region ${{ env.AWS_REGION }}
+        echo "Frontend deployment stable"
+
+  # ── Post-Deploy Verification ────────────────────────────────
+  verify:
+    needs: [deploy-infra, deploy-backend, deploy-frontend]
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Health check
+      run: |
+        BACKEND_URL="${{ needs.deploy-infra.outputs.backend-url }}"
+        FRONTEND_URL="${{ needs.deploy-infra.outputs.frontend-url }}"
+
+        echo "--- Backend Health Check ---"
+        curl -sf "${BACKEND_URL}/api/health" | jq . || echo "Backend health check failed"
+
+        echo "--- Frontend Check ---"
+        curl -sf "${FRONTEND_URL}/" -o /dev/null -w "HTTP %{http_code}" || echo "Frontend check failed"
+
+        echo ""
+        echo "=== Deployment Complete ==="
+        echo "Frontend: ${FRONTEND_URL}"
+        echo "Backend:  ${BACKEND_URL}"

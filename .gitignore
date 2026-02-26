@@ -1,0 +1,90 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+/lib/
+/lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Environment
+.env
+.env.lightsail
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# CDK
+infrastructure/cdk/cdk.out/
+infrastructure/cdk/outputs.json
+infrastructure/cdk/.cdk.staging/
+infrastructure/cdk-eagle/cdk.out/
+infrastructure/cdk-eagle/node_modules/
+infrastructure/cdk-eagle/dist/
+infrastructure/cdk-eagle/outputs.json
+infrastructure/cdk-eagle/*.js
+infrastructure/cdk-eagle/*.d.ts
+
+# Terraform
+infrastructure/terraform/.terraform/
+infrastructure/terraform/terraform.tfstate*
+infrastructure/terraform/.terraform.lock.hcl
+
+# Claude Code local settings (contains secrets)
+.claude/settings.local.json
+
+# AWS credentials
+.aws/credentials
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test coverage
+.coverage
+htmlcov/
+
+# Docker
+.dockerignore
+
+# Node / Next.js
+node_modules/
+.next/
+next-env.d.ts
+
+# Playwright test artifacts
+client/playwright-report/
+client/test-results/
+
+# Dev-only (not on main)
+notes/
+data/
+
+# Legacy directories (kept locally, not tracked)
+nextjs-frontend/
