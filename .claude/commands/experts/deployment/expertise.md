@@ -4,7 +4,7 @@ parent: "[[deployment/_index]]"
 file-type: expertise
 human_reviewed: false
 tags: [expert-file, mental-model, deployment, aws, cdk]
-last_updated: 2026-02-20T21:00:00
+last_updated: 2026-02-26T17:50:00
 ---
 
 # Deployment Expertise (Complete Mental Model)
@@ -1089,6 +1089,11 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 - Justfile with Python boto3 for AWS operations — `aws` CLI returns exit code 1 on MSYS/Git Bash even when succeeding; boto3 is reliable cross-platform (discovered: 2026-02-18, component: Justfile)
 - `build-frontend` recipe auto-fetches Cognito config from CDK stack outputs via boto3 — no hardcoded pool IDs (discovered: 2026-02-18, component: Justfile)
 - Internal just recipes prefixed with `_` stay hidden from `just --list` — clean separation of public and private commands (discovered: 2026-02-18, component: Justfile)
+- GitHub Actions OIDC deploy to NCI account: OIDC provider already exists (NCI StackSet), import via `fromOpenIdConnectProviderArn()`. Role must be in `EagleCiCdStack`. Trust sub must match `repo:CBIIT/sm_eagle:*` (discovered: 2026-02-26, component: cicd-stack)
+- `DEPLOY_ROLE_ARN` GitHub secret must be set to the current deploy role ARN after any re-deployment of `EagleCiCdStack` — it doesn't auto-update (discovered: 2026-02-26, component: deploy.yml)
+- GitHub Actions `cdk deploy --all` re-deploys `EagleCiCdStack` on every run using the code in `main` — if local CDK changes haven't been merged, GitHub Actions will overwrite the locally-deployed role (discovered: 2026-02-26, component: EagleCiCdStack)
+- NCI SSO credentials for CDK: `export $(aws configure export-credentials --profile eagle --format env | grep "^export" | sed 's/^export //')` before running `npx cdk deploy` (discovered: 2026-02-26, component: credentials)
+- Duplicate `sid` values in IAM DefaultPolicy from shared `appRole`: `core-stack.ts`, `storage-stack.ts`, `compute-stack.ts` all call `appRole.addToPolicy()` — CDK merges into one policy document, IAM rejects duplicate SIDs. Fix: omit `sid` in `core-stack.ts` (discovered: 2026-02-26, component: EagleCoreStack)
 
 ### patterns_to_avoid
 - Don't put `try/except` logic in Justfile inline Python one-liners (`python -c "..."`). Python requires multi-line syntax for try/except — the one-liner will SyntaxError. Extract to a `scripts/*.py` file instead (discovered: 2026-02-20, component: Justfile/wait_for_backend)
@@ -1108,6 +1113,9 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 - Don't keep eval observability in a standalone CDK project — it gets forgotten and never deployed. Merge into the main CDK app (discovered: 2026-02-17, component: infrastructure/eval → cdk-eagle)
 - Don't use `aws` CLI in Justfile shebang scripts on Windows/MSYS — exit code 1 even on success breaks `set -euo pipefail`. Use Python boto3 instead (discovered: 2026-02-18, component: Justfile)
 - Don't hardcode ALB URLs in task runners — they change on redeployment. Fetch dynamically from `describe_load_balancers()` (discovered: 2026-02-18, component: Justfile)
+- Don't use `claude_model:` as an input to `anthropics/claude-code-action@v1` — it is not a valid input and is silently ignored. Use `claude_args: "--model <model-id>"` instead (discovered: 2026-02-26, component: claude-code-assistant.yml)
+- Don't rely on `AWS_PROFILE` or `--profile` to pass SSO credentials to CDK CLI on Windows — they don't propagate to CDK subprocesses. Always export as env vars first (discovered: 2026-02-26, component: CDK deploy)
+- Don't push CDK deploy role changes to GitHub Actions without first deploying the updated `EagleCiCdStack` locally AND updating `DEPLOY_ROLE_ARN` secret — GitHub Actions will otherwise use the wrong role and fail OIDC auth (discovered: 2026-02-26)
 
 ### common_issues
 - **`try/except` SyntaxError in `python -c` one-liner**: Python multi-line constructs can't be written with semicolons. Fix: move to `scripts/*.py` file, call as `python scripts/myscript.py` from Justfile (component: Justfile, 2026-02-20)
@@ -1115,6 +1123,9 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 - CDK circular dependency `Stack A depends on Stack B, Stack B depends on Stack A`: caused by cross-stack `grantRead(role)` where the role is in the other stack. Fix: use `addToPolicy` with static ARN strings in the role's own stack (component: EagleCoreStack/EagleStorageStack, 2026-02-20)
 - CDK Lambda local bundler `cp -r path/*.py outputDir` fails on Windows with `cannot stat '/*.py'`: MSYS path rewriting mangles the glob. Fix: use Node.js `fs.readdirSync().copyFileSync()` (component: EagleStorageStack, 2026-02-20)
 - `gh api /user/repository_invitations` fails on Windows with `invalid API endpoint "C:/Program Files/Git/..."`: MSYS rewrites leading slash. Fix: drop the leading slash → `gh api user/repository_invitations` (component: GitHub CLI, 2026-02-20)
+- OIDC `Not authorized to perform sts:AssumeRoleWithWebIdentity`: trust policy `sub` condition has wrong repo. Check `githubOwner`/`githubRepo` in `config/environments.ts` — must be `CBIIT/sm_eagle` not old forked repo name (component: cicd-stack, 2026-02-26)
+- IAM `Statement IDs (SID) must be unique`: `appRole.addToPolicy()` called across multiple stacks produces duplicate SIDs in one DefaultPolicy. Fix: remove `sid:` from `core-stack.ts` statements — they conflict with `storage-stack.ts` SIDs (component: EagleCoreStack, 2026-02-26)
+- CloudFormation stack stuck in `UPDATE_ROLLBACK_FAILED` after blocked IAM update: `aws cloudformation continue-update-rollback --stack-name EagleCiCdStack --resources-to-skip <LogicalId>` to unstick (component: EagleCiCdStack, 2026-02-26)
 - AWS credentials expire or are not configured -> all services fail
 - S3 bucket name globally unique constraint -> can't reuse names across accounts
 - CDK bootstrap missing -> deploy fails with cryptic asset error
@@ -1148,6 +1159,9 @@ python -u server/tests/test_eagle_sdk_eval.py --tests 1
 - Use `just --list` to see all available commands — replaces scattered shell scripts with one entry point
 - `just status` / `just urls` / `just check-aws` for quick operational checks
 - `just deploy` for full deploy pipeline: ECR login → build → push → ECS update → wait → status
+- When changing `EagleCiCdStack` deploy role: (1) update `cicd-stack.ts` with new logical ID + name, (2) deploy locally with SSO creds, (3) update `DEPLOY_ROLE_ARN` secret, (4) push code to main. GitHub Actions will then self-consistently redeploy (discovered: 2026-02-26)
+- `claude-code-action@v1` valid model input: `claude_args: "--model claude-haiku-4-5-20251001"` — never `claude_model:` (discovered: 2026-02-26)
+- NCI SAML SSO GitHub CLI auth: if `gh pr create` fails with SAML enforcement, run `gh auth refresh --hostname github.com --scopes repo,read:org` (discovered: 2026-02-26)
 - `just ci` for full CI: lint → test → eval-aws
 - `just ship` for full ship: lint → deploy
 - `just dev-up` / `just dev-down` / `just dev-smoke` / `just dev-smoke-ui` for local stack lifecycle

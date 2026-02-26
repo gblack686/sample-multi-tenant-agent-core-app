@@ -4,7 +4,7 @@ parent: "[[git/_index]]"
 file-type: expertise
 human_reviewed: false
 tags: [expert-file, mental-model, git, github, actions, cicd]
-last_updated: 2026-02-11T00:00:00
+last_updated: 2026-02-26T17:50:00
 ---
 
 # Git/CI-CD Expertise (Complete Mental Model)
@@ -446,6 +446,12 @@ on:
 - Parallel CI jobs (backend, frontend, CDK) reduce pipeline time
 - `pull_request_target` + security review for fork PRs needing secrets
 - Squash merge keeps main branch history clean
+- NCI SAML SSO GitHub CLI: `gh auth refresh --hostname github.com --scopes repo,read:org` resolves SAML enforcement errors on `gh pr create` (discovered: 2026-02-26)
+- `gh pr merge <n> --repo CBIIT/sm_eagle --merge --delete-branch` cleanly merges and removes the branch in one command (discovered: 2026-02-26)
+- `git log --oneline --since="72 hours ago" --all --decorate` shows all branch activity across the repo for a quick orientation (discovered: 2026-02-26)
+- `gh run view <id> --repo CBIIT/sm_eagle --log-failed 2>/dev/null | head -100` gets the failure logs without navigating the GitHub UI (discovered: 2026-02-26)
+- Add/add merge conflicts (both branches independently added the same file) are resolved by reading both sides fully and synthesizing a combined version — prioritize the newer NCI-specific patterns (fromLookup VPC, Haiku-only Bedrock) over generic patterns (discovered: 2026-02-26)
+- After merging a PR that fixes a CI issue, immediately check whether there's a follow-on issue in the next run — the deploy pipeline has sequential failure modes (OIDC → CDK → ECS) (discovered: 2026-02-26)
 
 ### patterns_to_avoid
 - Static IAM keys in GitHub secrets (use OIDC instead)
@@ -453,12 +459,19 @@ on:
 - Single monolithic workflow file (split CI/CD into separate workflows)
 - Force pushing to main (even with permissions)
 - Committing .env files or secrets
+- Don't use `claude_model:` in `claude-code-action@v1` — it's not a valid input, use `claude_args: "--model <id>"` (discovered: 2026-02-26)
+- Don't open a PR to merge into main when there are already unresolved merge conflicts — resolve conflicts locally, push, then verify the PR shows "mergeable" before merging (discovered: 2026-02-26)
+- Don't push CDK changes to a feature branch and merge to main without first deploying the CDK changes locally — GitHub Actions will re-deploy the old code and undo local AWS changes (discovered: 2026-02-26)
 
 ### common_issues
 - `OIDC provider not configured`: Need to create IAM OIDC provider for GitHub Actions
 - `CRLF line endings`: Scripts saved on Windows need `.gitattributes` with `eol=lf`
 - `Workflow not triggered`: Check trigger conditions, branch filters, and path filters
 - `Secret not available`: Fork PRs don't have access to secrets; use `pull_request_target`
+- `Resource protected by organization SAML enforcement`: run `gh auth refresh --hostname github.com --scopes repo,read:org` (component: CBIIT org, 2026-02-26)
+- `Unexpected input(s) 'claude_model'` in claude-code-action@v1: replace with `claude_args: "--model <id>"` (component: claude-code-assistant.yml, 2026-02-26)
+- `Not authorized to perform sts:AssumeRoleWithWebIdentity`: trust policy `sub` has wrong GitHub owner/repo — check `config/environments.ts` (component: EagleCiCdStack, 2026-02-26)
+- PR shows `CONFLICTING` after creation: pull `origin/main` into branch locally, resolve, push — never merge with conflicts pending (component: GitHub, 2026-02-26)
 
 ### tips
 - Run `/experts:git:maintenance` to validate all workflow YAML files

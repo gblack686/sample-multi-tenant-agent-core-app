@@ -4,7 +4,7 @@ parent: "[[aws/_index]]"
 file-type: expertise
 human_reviewed: false
 tags: [expert-file, mental-model, aws, cdk, dynamodb, iam, s3]
-last_updated: 2026-02-20T22:30:00
+last_updated: 2026-02-26T17:50:00
 ---
 
 # AWS Expertise (Complete Mental Model)
@@ -826,6 +826,9 @@ MSYS_NO_PATHCONV=1 aws logs describe-log-streams --log-group-name "/eagle/ecs/ba
 - Don't delete a CloudFormation stack with RETAIN ECR repos then re-create without `--import-existing-resources` — will fail on repo name conflict (discovered: 2026-02-17)
 - Don't rely on ECS pulling updated `latest` tag from ECR for already-running tasks — Fargate caches images per task launch, use `--force-new-deployment` (discovered: 2026-02-17)
 - Don't use `CMD-SHELL curl` in container health checks without installing curl in the image — ALB health checks may pass while container health checks fail, causing infinite task cycling (discovered: 2026-02-17)
+- Don't add `sid:` labels to IAM policy statements in `core-stack.ts` if `storage-stack.ts` or `compute-stack.ts` also add policies to the same role — duplicate SIDs across stacks collapse into one DefaultPolicy and IAM rejects it (discovered: 2026-02-26, component: core-stack)
+- Don't try to update a role's trust policy via CDK stack update in NCI — `iam:UpdateAssumeRolePolicy` is blocked; use a new logical ID + role name instead (discovered: 2026-02-26, component: cicd-stack)
+- Don't export `AWS_PROFILE` or use `--profile` with CDK CLI — SSO credentials are not propagated to CDK subprocesses on Windows; use `aws configure export-credentials` to get env vars (discovered: 2026-02-26)
 
 ### common_issues
 - AWS credentials expire or are not configured -> all services fail
@@ -841,6 +844,9 @@ MSYS_NO_PATHCONV=1 aws logs describe-log-streams --log-group-name "/eagle/ecs/ba
 - ECS tasks use cached image digest even after pushing new `latest` tag to ECR. Fix: `aws ecs update-service --force-new-deployment` (discovered: 2026-02-17)
 - Container health check (`CMD-SHELL curl`) fails silently if curl not in image, while ALB health check passes — causes infinite task cycling with no obvious error (discovered: 2026-02-17)
 - Windows Git Bash converts `/eagle/ecs/...` paths to `C:/Program Files/Git/eagle/ecs/...` — use `MSYS_NO_PATHCONV=1` prefix (discovered: 2026-02-17)
+- Duplicate SIDs across shared IAM role: `storage-stack.ts` uses `BedrockInvoke`, `DocumentBucketRead`, `MetadataTableRead` on `appRole` — `core-stack.ts` must not reuse these SIDs (discovered: 2026-02-26, component: core-stack)
+- NCI account OIDC error "Not authorized to perform sts:AssumeRoleWithWebIdentity": trust policy sub condition had wrong repo (`gblack686/sample-multi-tenant-agent-core-app` instead of `CBIIT/sm_eagle`) — always verify `githubOwner`/`githubRepo` in `config/environments.ts` (discovered: 2026-02-26, component: cicd-stack)
+- CloudFormation stack stuck in `UPDATE_ROLLBACK_FAILED`: use `aws cloudformation continue-update-rollback --stack-name <stack> --resources-to-skip <LogicalId>` to unstick (discovered: 2026-02-26)
 
 ### tips
 - Run `/experts:aws:maintenance` before any deployment to verify connectivity
@@ -861,3 +867,15 @@ MSYS_NO_PATHCONV=1 aws logs describe-log-streams --log-group-name "/eagle/ecs/ba
 - When adding new Lambda to CDK, always wire local bundler to `bundle-lambda.py` — never use raw `pip install` in tryBundle on Windows dev machines (discovered: 2026-02-20)
 - Use `LogType='Tail'` in `lambda.invoke()` to get execution logs inline — no CloudWatch polling needed for debugging (discovered: 2026-02-20)
 - Before using a Bedrock model ID, verify with `bedrock.list_foundation_models()` or in the Bedrock Console — avoid assuming model IDs from other cloud providers translate to Bedrock (discovered: 2026-02-20)
+- To unstick a CloudFormation stack in UPDATE_ROLLBACK_FAILED: `aws cloudformation continue-update-rollback --stack-name <stack> --resources-to-skip <LogicalId>` — the skipped resource retains its pre-update state (discovered: 2026-02-26)
+- NCI CDK SSO credential workaround: `export $(aws configure export-credentials --profile eagle --format env | grep "^export" | sed 's/^export //')` before `npx cdk deploy` (discovered: 2026-02-26)
+- NCI account `695681773636` (NIH.NCI.CBIIT.EAGLE.NONPROD) uses SSO profile `eagle` → `NCIAWSPowerUserAccess` — only one role available via SSO portal (discovered: 2026-02-26, component: iam-oidc)
+- CDK does NOT pick up SSO credentials via `AWS_PROFILE` or `--profile` flag in bash subshells — must export creds explicitly: `export $(aws configure export-credentials --profile eagle --format env | grep "^export" | sed 's/^export //')` (discovered: 2026-02-26, component: cdk-deploy)
+- GitHub OIDC provider already exists in NCI account (NCI StackSet-deployed) — import via `fromOpenIdConnectProviderArn()`, never create (discovered: 2026-02-26, component: cicd-stack)
+- NCI SCP blocks `ec2:CreateVpc` — always use `ec2.Vpc.fromLookup()` with hardcoded VPC ID `vpc-09def43fcabfa4df6` for the DEV environment (discovered: 2026-02-26, component: core-stack)
+- When CDK `appRole` is mutated by multiple stacks (`addToPolicy` in core-stack, storage-stack, compute-stack), all statements merge into one `DefaultPolicy` — duplicate `sid` values across stacks cause IAM to reject the update with "Statement IDs must be unique" (discovered: 2026-02-26, component: core-stack)
+- `iam:UpdateAssumeRolePolicy` is blocked by NCI permissions boundary on CFN execution role AND explicitly denied by `poweruser-deny-policy` for user sessions — cannot update a role's trust policy via CDK or CLI (discovered: 2026-02-26, component: iam)
+- `iam:DeleteRole` is not permitted by `NCIAWSPowerUserAccess` user session — but CDK CFN execution role CAN delete roles as part of a stack update when a logical ID changes (discovered: 2026-02-26, component: iam)
+- Workaround for blocked `iam:UpdateAssumeRolePolicy`: change the CDK logical ID + role name → CDK creates new role (allowed) and CFN deletes old one during the same update (discovered: 2026-02-26, component: cicd-stack)
+- NCI CDK bootstrap uses custom role names: `power-user-cdk-deploy-{account}`, `power-user-cdk-cfn-exec-{account}`, etc. — configured in `DefaultStackSynthesizer` in `bin/eagle.ts` (discovered: 2026-02-26, component: cdk-bootstrap)
+- Haiku 4.5 Bedrock IAM policy is now RESTRICTED — appRole only allows `anthropic.claude-haiku-4-5-20251001-v1:0` and its inference profile. Adding Sonnet/Opus requires a PR to `core-stack.ts` + re-deploy (discovered: 2026-02-26, component: core-stack)
