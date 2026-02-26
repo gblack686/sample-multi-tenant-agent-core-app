@@ -1,7 +1,21 @@
 # pull-remote — Upstream Sync with NCI Guardrails
 
-Sync `upstream` (`gblack686/sample-multi-tenant-agent-core-app`) into a review branch,
-then flag every diff that touches NCI/account-specific configuration before anything lands on main.
+Sync `upstream` (`gblack686/sample-multi-tenant-agent-core-app`) into a review branch
+using **cherry-pick** (not merge), so the PR history stays linear and GitHub can diff it cleanly.
+
+## Ownership model
+
+| Layer | Owner | Rule |
+|-------|-------|------|
+| `infrastructure/cdk-eagle/config/` | **NCI** | Never overwrite |
+| `infrastructure/cdk-eagle/bin/` | **NCI** | Never overwrite |
+| `eagle-plugin/` (agents, skills) | **NCI** | Never overwrite |
+| `.claude/commands/experts/` | **NCI** | NCI expertise is more current |
+| `.gitignore`, repo hygiene | **NCI** | NCI leads |
+| `server/app/*_store.py` (new modules) | **Upstream leads** | Cherry-pick in |
+| `server/app/main.py` | **Upstream leads, NCI patches** | Cherry-pick, watch for conflicts |
+| `client/` (frontend features) | Shared — review per commit | Cherry-pick |
+| `Justfile`, `scripts/`, `deployment/` | Shared — review per commit | Cherry-pick |
 
 ---
 
@@ -11,13 +25,21 @@ then flag every diff that touches NCI/account-specific configuration before anyt
 git fetch upstream
 ```
 
-Report the number of commits upstream is ahead of `origin/main`:
+Show what's new — **non-merge commits only** (skip upstream's merge-of-NCI commits):
 
 ```bash
-git log origin/main..upstream/main --oneline
+git log origin/main..upstream/main --oneline --no-merges --reverse
 ```
 
-If upstream is 0 commits ahead, stop and tell the user: "Already in sync. Nothing to merge."
+If there are 0 new commits, stop: "Already in sync."
+
+Save the list:
+
+```bash
+COMMITS=$(git log origin/main..upstream/main --no-merges --reverse --format="%H")
+COUNT=$(echo "$COMMITS" | grep -c .)
+echo "$COUNT new commits to cherry-pick"
+```
 
 ---
 
@@ -30,25 +52,43 @@ git checkout -b "$BRANCH" origin/main
 
 ---
 
-## Step 3 — Merge upstream (no auto-commit)
+## Step 3 — Cherry-pick upstream commits (no auto-commit)
+
+Apply all non-merge upstream commits as a single staged diff, without committing:
 
 ```bash
-git merge upstream/main --no-commit --no-ff
+git cherry-pick $COMMITS --no-commit 2>&1
 ```
 
-If there are merge conflicts, list them:
+If cherry-pick reports conflicts:
 
 ```bash
 git diff --name-only --diff-filter=U
 ```
 
-Do NOT resolve conflicts automatically. Present them to the user as a blocklist.
+For each conflicted file, apply the **ownership rule** from the table above:
+- **NCI-owned files** → `git checkout HEAD -- <file>` (keep ours, discard upstream)
+- **Upstream-owned or shared files** → resolve manually, keeping NCI-specific values
+
+Do NOT auto-resolve shared files. Report the conflict list to the user.
 
 ---
 
-## Step 4 — Scan the staged diff for protected patterns
+## Step 4 — Exclude noise files
 
-Run each check and collect hits:
+Always unstage these regardless of what upstream committed:
+
+```bash
+# Upstream scratch files
+git rm --cached upstream-changes.patch upstream-changes-summary.md 2>/dev/null || true
+
+# Test artifacts
+git rm --cached -r client/playwright-report/ client/test-results/ 2>/dev/null || true
+```
+
+---
+
+## Step 5 — Scan the staged diff for protected patterns
 
 ```bash
 # Account number
@@ -63,9 +103,6 @@ git diff --cached | grep -n "power-user-"
 # Cognito pool / client
 git diff --cached | grep -En "us-east-1_GqZzjtSu9|4cv12gt73qi3nct25vl6mno72a"
 
-# Account-suffixed S3 buckets
-git diff --cached | grep -n "695681773636"
-
 # Protected file paths touched
 git diff --cached --name-only | grep -E \
   "infrastructure/cdk-eagle/config/environments\.ts|\
@@ -73,62 +110,72 @@ infrastructure/cdk-eagle/bin/eagle\.ts|\
 \.env|settings\.local\.json|bootstrap-"
 ```
 
----
-
-## Step 5 — Categorize and report
-
-Present a table:
-
-| Category | Files / Lines | Action |
-|---|---|---|
-| **Safe** — no protected patterns | list files | Auto-staged |
-| **Review required** — protected pattern hit | file:line | Must be manually verified |
-| **Merge conflicts** | file list | Must be resolved before proceeding |
-
-For every protected-pattern hit, show the upstream value vs. what the NCI config should be (from the reference table below).
+A hit in a **spec/doc file** (`.claude/specs/`, `.md` docs) is informational — flag it but do not block.
+A hit in **any other file** is a hard block — do not commit, explain what needs fixing.
 
 ---
 
-## Step 6 — Commit what's safe, hold the rest
+## Step 6 — Categorize and report
 
-If there are NO protected-pattern hits and NO conflicts:
+Present a summary table:
+
+| Category | Files | Action |
+|----------|-------|--------|
+| **Safe** — no pattern hits, NCI-owned files untouched | list | Auto-staged |
+| **NCI-owned file conflict** | file list | Already resolved via `git checkout HEAD` |
+| **Protected pattern hit (doc only)** | file:line | Flagged, not blocked |
+| **Protected pattern hit (infra/config)** | file:line | BLOCKED — fix before commit |
+| **Unresolved conflicts** | file list | BLOCKED — must resolve manually |
+
+---
+
+## Step 7 — Commit and push
+
+If no hard blocks:
 
 ```bash
-git commit -m "chore(sync): merge upstream $(date +%Y-%m-%d)
+git commit -m "chore(sync): cherry-pick upstream $(date +%Y-%m-%d) — $COUNT commits
+
+Non-merge upstream commits cherry-picked from gblack686/sample-multi-tenant-agent-core-app.
+NCI-specific config (environments.ts, eagle.ts, VPC, IAM, Cognito) unchanged.
 
 Co-Authored-By: Claude Sonnet 4.6 <noreply@anthropic.com>"
-```
 
-If there ARE hits → do NOT commit. Instead tell the user exactly which files need manual review and what to change.
+git push origin "$BRANCH"
+```
 
 ---
 
-## Step 7 — Push sync branch and open PR
+## Step 8 — Open PR
 
 ```bash
-git push origin "$BRANCH"
 gh pr create \
   --base main \
   --head "$BRANCH" \
-  --title "chore(sync): upstream merge $(date +%Y-%m-%d)" \
+  --title "chore(sync): upstream cherry-pick $(date +%Y-%m-%d)" \
   --body "$(cat <<'EOF'
-## Upstream Sync
+## Upstream Sync — Cherry-Pick
 
-Merging changes from \`gblack686/sample-multi-tenant-agent-core-app\` into \`main\`.
+Cherry-picked $COUNT non-merge commits from \`gblack686/sample-multi-tenant-agent-core-app\`.
+Uses cherry-pick (not merge) to keep history linear and PRs diffable.
+
+## Ownership decisions
+
+NCI-owned files (\`infrastructure/cdk-eagle/config/\`, \`eagle-plugin/\`, \`.claude/commands/experts/\`) — upstream changes discarded per ownership model.
+Upstream-owned files (\`server/app/*_store.py\`, \`main.py\`, frontend features) — cherry-picked in.
 
 ## Protected-pattern scan
 
-<!-- Paste Step 5 table here -->
+<!-- paste Step 6 table here -->
 
 ## Review checklist
 
-- [ ] No AWS account numbers changed (`695681773636`)
-- [ ] CDK environments.ts unchanged or manually reconciled
-- [ ] IAM role names keep `power-user-` prefix
+- [ ] AWS account \`695681773636\` unchanged in infra
+- [ ] CDK \`environments.ts\` / \`eagle.ts\` unchanged
+- [ ] \`power-user-\` IAM prefix unchanged
 - [ ] Cognito pool/client IDs unchanged
-- [ ] VPC / subnet IDs unchanged
-- [ ] No `.env` files included
-- [ ] All merge conflicts resolved
+- [ ] NCI VPC / subnet IDs unchanged in infra
+- [ ] No \`.env\` files included
 
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 EOF
@@ -140,8 +187,6 @@ Return the PR URL.
 ---
 
 ## NCI Protected-Value Reference
-
-Use this table when explaining what a protected diff hit means and what the correct NCI value is:
 
 | Key | NCI Value | Risk if overwritten |
 |-----|-----------|---------------------|
@@ -155,19 +200,18 @@ Use this table when explaining what a protected diff hit means and what the corr
 | Cognito pool | `us-east-1_GqZzjtSu9` | Auth completely breaks |
 | Cognito client | `4cv12gt73qi3nct25vl6mno72a` | Frontend login fails |
 | S3 bucket | `eagle-documents-695681773636-dev` | Document upload/download fails |
-| CDK synth role | `power-user-cdk-cfn-exec-role-695681773636-us-east-1` | CDK deploy fails |
 
 ---
 
-## Files always protected (never auto-merge)
+## Files always protected (never cherry-pick over)
 
 ```
 infrastructure/cdk-eagle/config/environments.ts
 infrastructure/cdk-eagle/bin/eagle.ts
 infrastructure/cdk-eagle/bootstrap-*.yaml
+eagle-plugin/
 client/.env.local
 server/.env
 .claude/settings.local.json
+.claude/commands/experts/*/expertise.md
 ```
-
-These files must be manually diffed and reconciled, never overwritten by upstream.
