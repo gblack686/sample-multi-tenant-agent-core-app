@@ -103,38 +103,41 @@ STATUS=$([ "$PW_EXIT" -eq 0 ] && echo "passed" || echo "failed")
 echo "Results: ${PASSED} passed, ${FAILED} failed in ${DURATION} — status=${STATUS}"
 
 # ── Write DynamoDB record ───────────────────────────────────────────────────
+# Uses AWS CLI (not boto3 — not installed on EC2 system Python).
+# Python is used only to build the JSON item; aws dynamodb put-item does the write.
 echo "=== Writing run record to DynamoDB ==="
 TTL=$(( $(date +%s) + 7776000 ))  # 90-day retention
-(
-  RUN_ID="$RUN_ID" STATUS="$STATUS" PASSED="$PASSED" FAILED="$FAILED" \
-  DURATION="$DURATION" PW_EXIT="$PW_EXIT" S3_BUCKET="$S3_BUCKET" \
-  S3_RESULTS_PREFIX="$S3_RESULTS_PREFIX" DYNAMO_TABLE="$DYNAMO_TABLE" \
-  TTL="$TTL" python3 << 'PYEOF'
-import boto3, os
-from datetime import datetime, timezone
+TIMESTAMP=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
+ITEM=$(RUN_ID="$RUN_ID" STATUS="$STATUS" PASSED="${PASSED:-0}" FAILED="${FAILED:-0}" \
+  DURATION="${DURATION:-0s}" PW_EXIT="$PW_EXIT" S3_BUCKET="$S3_BUCKET" \
+  S3_RESULTS_PREFIX="$S3_RESULTS_PREFIX" TTL="$TTL" TIMESTAMP="$TIMESTAMP" \
+  python3 -c "
+import json, os
 e = os.environ
-client = boto3.client('dynamodb', region_name='us-east-1')
 run_id = e['RUN_ID']
+item = {
+    'PK':        {'S': f'SMOKE_RUN#{run_id}'},
+    'SK':        {'S': 'METADATA'},
+    'run_id':    {'S': run_id},
+    'timestamp': {'S': e['TIMESTAMP']},
+    'status':    {'S': e['STATUS']},
+    'passed':    {'N': e['PASSED'] or '0'},
+    'failed':    {'N': e['FAILED'] or '0'},
+    'duration':  {'S': e['DURATION']},
+    'pw_exit':   {'N': e['PW_EXIT']},
+    's3_prefix': {'S': 's3://' + e['S3_BUCKET'] + '/' + e['S3_RESULTS_PREFIX'] + '/test-results/'},
+    'ttl':       {'N': e['TTL']},
+}
+print(json.dumps(item))
+")
 
-client.put_item(
-    TableName=e['DYNAMO_TABLE'],
-    Item={
-        'PK':        {'S': f'SMOKE_RUN#{run_id}'},
-        'SK':        {'S': 'METADATA'},
-        'run_id':    {'S': run_id},
-        'timestamp': {'S': datetime.now(timezone.utc).isoformat()},
-        'status':    {'S': e['STATUS']},
-        'passed':    {'N': e['PASSED'] or '0'},
-        'failed':    {'N': e['FAILED'] or '0'},
-        'duration':  {'S': e.get('DURATION', '0s')},
-        'pw_exit':   {'N': e['PW_EXIT']},
-        's3_prefix': {'S': f"s3://{e['S3_BUCKET']}/{e['S3_RESULTS_PREFIX']}/test-results/"},
-        'ttl':       {'N': e['TTL']},
-    },
-)
-print(f"DynamoDB record written: SMOKE_RUN#{run_id}")
-PYEOF
-) || echo "WARN: DynamoDB write failed (non-fatal — check EC2 role permissions)"
+(
+  aws dynamodb put-item \
+    --table-name "$DYNAMO_TABLE" \
+    --item "$ITEM" \
+    --region us-east-1 \
+  && echo "DynamoDB record written: SMOKE_RUN#${RUN_ID}"
+) || echo "WARN: DynamoDB write failed (non-fatal — check EC2 role has dynamodb:PutItem on eagle table)"
 
 exit $PW_EXIT
