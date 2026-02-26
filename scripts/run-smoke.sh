@@ -39,6 +39,8 @@ aws s3 cp s3://eagle-documents-695681773636-dev/scripts/global-setup.ts \
   /root/eagle/client/tests/global-setup.ts --region us-east-1
 aws s3 cp s3://eagle-documents-695681773636-dev/scripts/playwright.config.ts \
   /root/eagle/client/playwright.config.ts --region us-east-1
+aws s3 cp s3://eagle-documents-695681773636-dev/scripts/chat.spec.ts \
+  /root/eagle/client/tests/chat.spec.ts --region us-east-1
 
 echo "=== Starting docker compose ==="
 docker compose -f deployment/docker-compose.dev.yml down --remove-orphans 2>&1 | tail -3 || true

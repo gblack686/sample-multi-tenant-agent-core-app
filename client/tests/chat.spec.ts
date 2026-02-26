@@ -33,12 +33,27 @@ test.describe('Chat Page', () => {
     test.slow();
     await page.goto('/chat/');
     await page.getByRole('button', { name: 'New Chat' }).click();
+
     // Blank new session — welcome screen, no agent messages yet
     await expect(page.locator('main').getByText('🦅 EAGLE')).toHaveCount(0, { timeout: 5000 });
+
     const input = page.getByPlaceholder(/Ask EAGLE/i);
     await input.fill('Hello');
     await page.getByRole('button', { name: '➤' }).click();
-    // Wait for the first agent response header to appear
+
+    // Phase 1: first response chunk arrived — agent header appeared in message list
     await expect(page.locator('main').getByText('🦅 EAGLE')).toHaveCount(1, { timeout: 60000 });
+
+    // Phase 2: streaming finished — header status badge switches from 'Streaming...' to 'Ready'
+    // This is driven by isStreaming===false in chat-interface.tsx.
+    await expect(page.locator('header').getByText('Ready')).toBeVisible({ timeout: 90000 });
+
+    // Phase 3: input re-enables, confirming isStreaming state fully cleared
+    await expect(input).toBeEnabled();
+
+    // Phase 4: the agent sent substantive content (not just the badge header)
+    // .msg-bubble.text-gray-700 targets the assistant message body div only
+    const responseText = await page.locator('.msg-bubble.text-gray-700').first().textContent();
+    expect(responseText?.trim().length).toBeGreaterThan(20);
   });
 });
