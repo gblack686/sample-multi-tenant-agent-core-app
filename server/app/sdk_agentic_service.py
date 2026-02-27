@@ -370,7 +370,6 @@ async def sdk_query(
         env=_build_sdk_env(),
         stderr=_log_stderr,
         agents=agents,
-        **({"resume": session_id} if session_id else {}),
     )
 
     async for message in query(prompt=prompt, options=options):
