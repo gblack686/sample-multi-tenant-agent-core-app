@@ -43,8 +43,10 @@ If no argument given, run `status` first and ask which operation to perform.
 
 - GitHub: `https://github.com/CBIIT/sm_eagle`
 - CBIIT-managed production repo — may have stricter IAM/review requirements
-- Their account: **TBD** — run `git log sm_eagle/main --format="%H %s" | head -5` to check recent commits for account clues
-- **Pull ownership**: sm_eagle leads on compliance/policy features and CBIIT-specific integrations; hub owns NCI infra
+- Their account: **`695681773636`** — same AWS account as hub (NCI account)
+- VPC/subnets: identical to hub (`vpc-09def43fcabfa4df6`, same subnet IDs)
+- Only material differences: `githubOwner: 'CBIIT'`, `githubRepo: 'sm_eagle'` in `environments.ts`
+- **Pull ownership**: sm_eagle leads on compliance/policy features and CBIIT-specific integrations; hub owns NCI infra, `.claude/`, `eagle-plugin/`
 - **Push ownership**: hub sends app logic and skill improvements; suppress NCI infra config
 
 ---
@@ -266,5 +268,13 @@ power-user-cdk-|us-east-1_GqZzjtSu9|4cv12gt73qi3nct25vl6mno72a"
 
 ## sm_eagle Spoke Values
 
-TBD — run `/sync status` then inspect `git log sm_eagle/main --stat | head -50`
-to discover their account-specific values before first push.
+sm_eagle uses the **same NCI account** (`695681773636`) as hub. Outbound scan uses identical
+protected-pattern list as the inbound scan — no separate values to track.
+
+| Key | sm_eagle Value |
+|-----|----------------|
+| AWS Account | `695681773636` (same as hub) |
+| VPC | `vpc-09def43fcabfa4df6` (same as hub) |
+| Subnets | Identical to hub NCI subnets |
+| GitHub owner | `CBIIT` |
+| GitHub repo | `sm_eagle` |
