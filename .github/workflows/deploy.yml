@@ -70,19 +70,27 @@ jobs:
     - name: CDK Deploy
       run: |
         cd ${{ env.CDK_DIR }}
-        npx cdk deploy --all --require-approval never --outputs-file outputs.json
+        # Skip EagleCoreStack — stable core infra (Cognito, DDB, IAM) managed manually.
+        # Deploy only the stacks that change with application releases.
+        npx cdk deploy EagleCiCdStack EagleStorageStack EagleComputeStack EagleEvalStack \
+          --require-approval never --outputs-file outputs.json
 
     - name: Extract CDK Outputs
       id: outputs
       run: |
         cd ${{ env.CDK_DIR }}
-        echo "user-pool-id=$(jq -r '.EagleCoreStack.UserPoolId' outputs.json)" >> $GITHUB_OUTPUT
-        echo "user-pool-client-id=$(jq -r '.EagleCoreStack.UserPoolClientId' outputs.json)" >> $GITHUB_OUTPUT
+        # Compute/storage outputs come from this deploy's outputs.json
         echo "backend-repo-uri=$(jq -r '.EagleComputeStack.BackendRepoUri' outputs.json)" >> $GITHUB_OUTPUT
         echo "frontend-repo-uri=$(jq -r '.EagleComputeStack.FrontendRepoUri' outputs.json)" >> $GITHUB_OUTPUT
         echo "backend-url=$(jq -r '.EagleComputeStack.BackendUrl' outputs.json)" >> $GITHUB_OUTPUT
         echo "frontend-url=$(jq -r '.EagleComputeStack.FrontendUrl' outputs.json)" >> $GITHUB_OUTPUT
         echo "eagle-table-name=$(jq -r '.EagleCoreStack.EagleTableName' outputs.json)" >> $GITHUB_OUTPUT
+
+        # Cognito IDs come from the stable EagleCoreStack (already deployed)
+        CORE_OUTPUTS=$(aws cloudformation describe-stacks --stack-name EagleCoreStack \
+          --query "Stacks[0].Outputs" --output json)
+        echo "user-pool-id=$(echo $CORE_OUTPUTS | jq -r '.[] | select(.OutputKey=="UserPoolId") | .OutputValue')" >> $GITHUB_OUTPUT
+        echo "user-pool-client-id=$(echo $CORE_OUTPUTS | jq -r '.[] | select(.OutputKey=="UserPoolClientId") | .OutputValue')" >> $GITHUB_OUTPUT
 
         echo "--- CDK Outputs ---"
         cat outputs.json | jq .
