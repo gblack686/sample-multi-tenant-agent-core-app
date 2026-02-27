@@ -52,12 +52,10 @@ export class EagleCoreStack extends cdk.Stack {
     });
 
     // ── VPC ──────────────────────────────────────────────────
-    // Import the existing NCI EAGLE DEV VPC — SCP blocks ec2:CreateVpc directly;
-    // VPCs are provisioned by the NCI networking team via Service Catalog.
-    // VPC: C1-CWEB-EAGLE-DEV-VPC (vpc-09def43fcabfa4df6), CIDR 10.209.140.192/26
-    // 4 private subnets across 2 AZs; egress via Transit Gateway. No public subnets.
+    // Import existing VPC — ID configured per-account in environments.ts
+    // (or override via CDK_VPC_ID env var).
     this.vpc = ec2.Vpc.fromLookup(this, 'Vpc', {
-      vpcId: 'vpc-09def43fcabfa4df6',
+      vpcId: config.vpcId,
     });
 
     // ── Cognito User Pool ────────────────────────────────────

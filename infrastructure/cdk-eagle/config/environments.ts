@@ -3,6 +3,9 @@ export interface EagleConfig {
   account: string;
   region: string;
 
+  // Networking (import existing VPC)
+  vpcId: string;
+
   // Storage (import existing)
   eagleTableName: string;
 
@@ -38,6 +41,8 @@ export const DEV_CONFIG: EagleConfig = {
   env: 'dev',
   account: ACCOUNT,
   region: REGION,
+
+  vpcId: process.env.CDK_VPC_ID || 'vpc-0ede565d9119f98aa',
 
   eagleTableName: 'eagle',
   evalBucketName: `eagle-eval-artifacts-${ACCOUNT}-dev`,
