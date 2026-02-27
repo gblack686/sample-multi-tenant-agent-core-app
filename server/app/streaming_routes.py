@@ -65,6 +65,18 @@ async def stream_generator(
     tenant_id = getattr(tenant_context, "tenant_id", "demo-tenant")
     user_id = getattr(tenant_context, "user_id", "demo-user")
 
+    # Look up the SDK's native session ID for conversation continuity.
+    # The Claude Agent SDK resumes via its own JSONL session ID, not our UUID.
+    sdk_resume_id: str | None = None
+    if session_id:
+        try:
+            from .session_store import get_session
+            sess = get_session(session_id=session_id, tenant_id=tenant_id, user_id=user_id)
+            if sess:
+                sdk_resume_id = sess.get("sdk_session_id")
+        except Exception as _lookup_err:
+            logger.warning("Could not look up sdk_session_id for %s: %s", session_id, _lookup_err)
+
     async def _run_sdk():
         """Consume sdk_query(); falls back to direct Anthropic API on subprocess failure."""
         text_emitted = False
@@ -75,6 +87,7 @@ async def stream_generator(
                 user_id=user_id,
                 tier=tier or "advanced",
                 session_id=session_id,
+                sdk_resume_id=sdk_resume_id,
             ):
                 msg_type = type(sdk_msg).__name__
                 if msg_type == "AssistantMessage":
@@ -86,6 +99,34 @@ async def stream_generator(
                         elif block_type == "tool_use":
                             await writer.write_tool_use(queue, block.name, getattr(block, "input", {}))
                 elif msg_type == "ResultMessage":
+                    # Persist the SDK's native session ID so the next turn can resume
+                    new_sdk_session_id = getattr(sdk_msg, "session_id", None)
+                    if new_sdk_session_id and session_id:
+                        try:
+                            from .session_store import update_session, create_session
+                            # Upsert: update if exists, create if not
+                            existing = get_session(session_id=session_id, tenant_id=tenant_id, user_id=user_id)
+                            if existing:
+                                update_session(
+                                    session_id=session_id,
+                                    tenant_id=tenant_id,
+                                    user_id=user_id,
+                                    updates={"sdk_session_id": new_sdk_session_id},
+                                )
+                            else:
+                                create_session(
+                                    tenant_id=tenant_id,
+                                    user_id=user_id,
+                                    session_id=session_id,
+                                )
+                                update_session(
+                                    session_id=session_id,
+                                    tenant_id=tenant_id,
+                                    user_id=user_id,
+                                    updates={"sdk_session_id": new_sdk_session_id},
+                                )
+                        except Exception as _save_err:
+                            logger.warning("Could not save sdk_session_id: %s", _save_err)
                     await writer.write_complete(queue)
                     return
             # Fallback COMPLETE if generator exhausts without a ResultMessage
@@ -117,15 +158,73 @@ async def stream_generator(
             print(f"[EAGLE FALLBACK] SDK failed, trying direct API. text_emitted={text_emitted}", flush=True)
             try:
                 from .agentic_service import stream_chat
+                from .session_store import (
+                    get_session, create_session,
+                    add_message, get_messages_for_anthropic,
+                )
+
+                # Ensure the session exists in DynamoDB
+                if session_id:
+                    try:
+                        existing = get_session(session_id=session_id, tenant_id=tenant_id, user_id=user_id)
+                        if not existing:
+                            create_session(
+                                tenant_id=tenant_id,
+                                user_id=user_id,
+                                session_id=session_id,
+                            )
+                        # Save the user message
+                        add_message(
+                            session_id=session_id,
+                            role="user",
+                            content=message,
+                            tenant_id=tenant_id,
+                            user_id=user_id,
+                        )
+                    except Exception as _msg_err:
+                        logger.warning("Could not save user message to DynamoDB: %s", _msg_err)
+
+                # Load conversation history for this session
+                history: list[dict] = []
+                if session_id:
+                    try:
+                        history = get_messages_for_anthropic(
+                            session_id=session_id,
+                            tenant_id=tenant_id,
+                            user_id=user_id,
+                        )
+                    except Exception as _hist_err:
+                        logger.warning("Could not load history from DynamoDB: %s", _hist_err)
+
+                # Fall back to just the current message if history is empty or load failed
+                if not history:
+                    history = [{"role": "user", "content": message}]
+
+                accumulated_response: list[str] = []
 
                 async def _on_text(text_delta: str) -> None:
+                    accumulated_response.append(text_delta)
                     await writer.write_text(queue, text_delta)
 
                 await stream_chat(
-                    messages=[{"role": "user", "content": message}],
+                    messages=history,
                     on_text=_on_text,
                     session_id=session_id,
                 )
+
+                # Save the assistant response
+                if session_id and accumulated_response:
+                    try:
+                        add_message(
+                            session_id=session_id,
+                            role="assistant",
+                            content="".join(accumulated_response),
+                            tenant_id=tenant_id,
+                            user_id=user_id,
+                        )
+                    except Exception as _save_err:
+                        logger.warning("Could not save assistant message to DynamoDB: %s", _save_err)
+
                 await writer.write_complete(queue)
             except Exception as fallback_err:
                 logger.error("Fallback API also failed: %s", str(fallback_err), exc_info=True)

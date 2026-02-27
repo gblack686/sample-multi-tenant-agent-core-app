@@ -299,6 +299,7 @@ async def sdk_query(
     model: str = None,
     skill_names: list[str] | None = None,
     session_id: str | None = None,
+    sdk_resume_id: str | None = None,
     workspace_id: str | None = None,
     max_turns: int = 15,
 ) -> AsyncGenerator[Any, None]:
@@ -314,7 +315,8 @@ async def sdk_query(
         tier: Subscription tier (basic/advanced/premium)
         model: Model override (default: MODULE-level MODEL)
         skill_names: Subset of skills to make available
-        session_id: Session ID for resume (if continuing conversation)
+        session_id: Our application session ID (used for DynamoDB storage)
+        sdk_resume_id: Claude SDK native session ID for resuming a prior turn
         workspace_id: Active workspace for per-user prompt resolution
         max_turns: Max tool-use iterations
 
@@ -370,7 +372,7 @@ async def sdk_query(
         env=_build_sdk_env(),
         stderr=_log_stderr,
         agents=agents,
-        **({"resume": session_id} if session_id else {}),
+        **({"resume": sdk_resume_id} if sdk_resume_id else {}),
     )
 
     async for message in query(prompt=prompt, options=options):
