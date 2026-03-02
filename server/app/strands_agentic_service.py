@@ -543,6 +543,24 @@ def build_supervisor_prompt(
 
 # -- SDK Query Wrappers (same signatures as sdk_agentic_service.py) --
 
+def _to_strands_messages(anthropic_messages: list[dict]) -> list[dict]:
+    """Convert Anthropic-format messages to Strands Message format.
+
+    Anthropic: [{"role": "user", "content": "text"}, ...]
+    Strands:   [{"role": "user", "content": [{"text": "text"}]}, ...]
+    """
+    strands_msgs = []
+    for msg in anthropic_messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        if isinstance(content, str):
+            strands_msgs.append({"role": role, "content": [{"text": content}]})
+        elif isinstance(content, list):
+            # Already in block format — pass through
+            strands_msgs.append({"role": role, "content": content})
+    return strands_msgs
+
+
 async def sdk_query(
     prompt: str,
     tenant_id: str = "demo-tenant",
@@ -553,6 +571,7 @@ async def sdk_query(
     session_id: str | None = None,
     workspace_id: str | None = None,
     max_turns: int = 15,
+    messages: list[dict] | None = None,
 ) -> AsyncGenerator[Any, None]:
     """Run a supervisor query with skill subagents (Strands implementation).
 
@@ -566,9 +585,10 @@ async def sdk_query(
         tier: Subscription tier (basic/advanced/premium)
         model: Model override (unused in Strands -- model is shared)
         skill_names: Subset of skills to make available
-        session_id: Session ID (reserved for future session persistence)
+        session_id: Session ID for session persistence
         workspace_id: Active workspace for per-user prompt resolution
         max_turns: Max tool-use iterations (reserved for future use)
+        messages: Conversation history in Anthropic format (excludes current prompt)
 
     Yields:
         AssistantMessage and ResultMessage adapter objects
@@ -599,11 +619,15 @@ async def sdk_query(
         workspace_id=resolved_workspace_id,
     )
 
+    # Convert conversation history to Strands format (excludes current prompt)
+    strands_history = _to_strands_messages(messages) if messages else None
+
     supervisor = Agent(
         model=_model,
         system_prompt=system_prompt,
         tools=skill_tools,
         callback_handler=None,
+        messages=strands_history,
     )
 
     # Synchronous call -- Strands handles the agentic loop internally

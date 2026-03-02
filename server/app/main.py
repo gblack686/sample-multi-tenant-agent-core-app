@@ -226,6 +226,8 @@ async def api_chat(req: EagleChatRequest, user: UserContext = Depends(get_user_f
             tenant_id=tenant_id,
             user_id=user_id,
             tier=user.tier or "advanced",
+            session_id=session_id,
+            messages=messages[:-1],  # History excluding current user message
         ):
             _msg_type = type(_sdk_msg).__name__
             if _msg_type == "AssistantMessage":
@@ -1092,6 +1094,8 @@ async def websocket_chat(ws: WebSocket):
                     tenant_id=tenant_id,
                     user_id=user_id,
                     tier=user.tier or "advanced",
+                    session_id=session_id,
+                    messages=messages[:-1],  # History excluding current user message
                 ):
                     _msg_type = type(_sdk_msg).__name__
                     if _msg_type == "AssistantMessage":

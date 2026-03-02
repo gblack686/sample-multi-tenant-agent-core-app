@@ -39,6 +39,7 @@ async def stream_generator(
     tier,
     subscription_service: SubscriptionService,
     session_id: str | None = None,
+    messages: list[dict] | None = None,
 ) -> AsyncGenerator[str, None]:
     """Generate SSE events from sdk_query() subagent orchestration.
 
@@ -64,6 +65,7 @@ async def stream_generator(
             user_id=user_id,
             tier=tier or "advanced",
             session_id=session_id,
+            messages=messages,
         )
 
         async for sdk_msg in sdk_messages:
@@ -155,6 +157,15 @@ def create_streaming_router(
             tenant_id = message.tenant_context.tenant_id or tenant_id
             user_id = message.tenant_context.user_id or user_id
 
+        # Load conversation history for multi-turn context
+        history = []
+        if message.session_id:
+            try:
+                from .session_store import get_messages_for_anthropic
+                history = get_messages_for_anthropic(message.session_id, tenant_id, user_id)
+            except Exception:
+                pass
+
         # Return streaming response
         return StreamingResponse(
             stream_generator(
@@ -164,6 +175,7 @@ def create_streaming_router(
                 tier=user.tier,
                 subscription_service=subscription_service,
                 session_id=message.session_id,
+                messages=history,
             ),
             media_type="text/event-stream",
             headers={
