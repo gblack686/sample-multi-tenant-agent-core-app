@@ -7,6 +7,7 @@ Next.js + FastAPI + CDK + Claude SDK. Developed through TAC methodology.
 
 ## Constraints
 
+- **No Anthropic/Claude models in Bedrock** — client requirement. Use non-Claude models only (e.g. Llama, Nova, Mistral, DeepSeek). Strands SDK + BedrockModel is the orchestration layer.
 - Specs → `.claude/specs/` (all plans written here with validation commands)
 - Agent/skill source of truth → `eagle-plugin/` (not server code)
 - Subscription tiers gate features: basic / advanced / premium
