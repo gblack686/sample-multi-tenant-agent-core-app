@@ -2,7 +2,7 @@
 Streaming Routes for EAGLE NCI Acquisition Assistant
 
 Provides SSE (Server-Sent Events) streaming chat and health check endpoints.
-Updated to use sdk_agentic_service.sdk_query() with Claude Agent SDK
+Updated to use strands_agentic_service.sdk_query() with Strands Agents SDK
 subagent delegation instead of the legacy stream_chat() prompt-injection path.
 
 # NOTE: main.py should include this router:
@@ -25,7 +25,7 @@ from .stream_protocol import StreamEvent, StreamEventType, MultiAgentStreamWrite
 from .models import ChatMessage
 from .subscription_service import SubscriptionService
 from .agentic_service import MODEL, EAGLE_TOOLS
-from .sdk_agentic_service import sdk_query
+from .strands_agentic_service import sdk_query
 
 import os
 REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "false").lower() == "true"
@@ -190,7 +190,7 @@ def create_streaming_router(
             "version": "4.0.0",
             "model": MODEL,
             "services": {
-                "anthropic": True,
+                "bedrock": True,
                 "dynamodb": True,
                 "cognito": True,
                 "s3": True,

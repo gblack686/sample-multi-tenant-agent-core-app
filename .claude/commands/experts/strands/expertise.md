@@ -2,7 +2,7 @@
 type: expert-file
 file-type: expertise
 domain: strands
-last_updated: "2026-03-02T19:30:00"
+last_updated: "2026-03-02T20:00:00"
 sdk_version: "1.28.0"
 tags: [strands-agents-sdk, agent, tool, bedrock, swarm, graph, multi-agent, streaming, sessions, hooks, agentskills, migration]
 ---
@@ -1006,6 +1006,9 @@ For streaming, the bridge tool should collect `ResultMessage.result` and return 
 - **strands-agents coexists with claude-agent-sdk**: Both packages install cleanly in the same venv (tested: strands-agents 1.28.0 + claude-agent-sdk 0.1.19). No dependency conflicts. Enables incremental migration. (discovered: 2026-03-02, component: installation)
 - **Multi-agent agents-as-tools proven on Nova Pro**: Supervisor with 3 @tool-wrapped subagents (oa_intake, legal_counsel, market_intelligence) routes correctly every time. 11/12 indicators found across 3 tests. ~18-24s per supervisor+subagent call on Nova Pro. (discovered: 2026-03-02, component: multi-agent-poc)
 - **Supervisor reliably delegates with explicit tool descriptions**: The supervisor's system_prompt should list available tools with clear descriptions. Nova Pro correctly maps "buy lab supplies" to oa_intake, "sole-source contract" to legal_counsel, "FedRAMP cloud vendors" to market_intelligence. (discovered: 2026-03-02, component: multi-agent-poc)
+- **Adapter dataclasses for drop-in replacement**: Use `@dataclass` classes named exactly `AssistantMessage` and `ResultMessage` (matching Claude SDK class names) so callers checking `type(msg).__name__` work unchanged. `TextBlock` and `ToolUseBlock` adapt content blocks. Zero changes needed in `streaming_routes.py` or `main.py`. (discovered: 2026-03-02, component: service-migration)
+- **Skill name hyphen-to-underscore for @tool names**: Strands `@tool(name=...)` must use Python-valid identifiers. Use `skill_name.replace("-", "_")` (e.g., "oa-intake" -> "oa_intake"). The supervisor still sees the underscore name in the tool schema. (discovered: 2026-03-02, component: service-migration)
+- **sdk_query() as async generator with sync Agent inside**: Even though Strands `agent()` is sync, the wrapper is `async def ... -> AsyncGenerator` with `yield`. This preserves the async generator interface for callers without needing `stream_async()`. Works because Python allows `yield` in `async def`. (discovered: 2026-03-02, component: service-migration)
 
 ### patterns_to_avoid
 

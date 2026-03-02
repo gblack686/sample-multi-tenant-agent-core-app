@@ -35,7 +35,7 @@ import io
 
 # EAGLE modules (new)
 from .agentic_service import get_client, MODEL, EAGLE_TOOLS
-from .sdk_agentic_service import sdk_query
+from .strands_agentic_service import sdk_query
 from .document_export import export_document
 from .session_store import (
     create_session as eagle_create_session, get_session as eagle_get_session,
