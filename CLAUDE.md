@@ -1,7 +1,7 @@
 ## EAGLE
 
 Multi-tenant Bedrock Agent Core app. Government acquisition domain.
-Next.js + FastAPI + CDK + Claude SDK. Developed through TAC methodology.
+Next.js + FastAPI + CDK + Strands Agents SDK. Developed through TAC methodology.
 
 ---
 
@@ -113,8 +113,8 @@ Zod for form validation, Tailwind for styling, Lucide for icons.
 | Concern | Key Files |
 |---------|-----------|
 | Entry point | `app/main.py` (FastAPI routes, CORS, middleware) |
-| Orchestration | `app/sdk_agentic_service.py` (Claude SDK — PRIMARY) |
-| Legacy orch | `app/agentic_service.py` (prompt injection — DEPRECATED) |
+| Orchestration | `app/strands_agentic_service.py` (Strands SDK — PRIMARY) |
+| Legacy orch | `app/sdk_agentic_service.py` (Claude SDK — ARCHIVED), `app/agentic_service.py` (prompt injection — DEPRECATED) |
 | Auth | `app/cognito_auth.py` (JWT → tenant context) |
 | Storage | `app/session_store.py` (DynamoDB single-table CRUD) |
 | Costs | `app/cost_attribution.py` + `app/admin_cost_service.py` |
@@ -122,7 +122,7 @@ Zod for form validation, Tailwind for styling, Lucide for icons.
 | Streaming | `app/stream_protocol.py` + `app/streaming_routes.py` |
 | Doc export | `app/document_export.py` (PDF/Word) |
 | Skill loader | `eagle_skill_constants.py` (auto-discovery) |
-| Tests | `tests/test_agent_sdk.py`, `tests/test_eagle_sdk_eval.py` |
+| Tests | `tests/test_strands_eval.py`, `tests/test_strands_service_integration.py`, `tests/test_strands_multi_agent.py` |
 
 **Patterns**: Pydantic models for all data, DynamoDB single-table with PK/SK prefixes,
 SSE streaming for agent responses, Cognito JWT for multi-tenant auth.
