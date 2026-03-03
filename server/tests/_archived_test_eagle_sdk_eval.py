@@ -2437,7 +2437,7 @@ async def test_16_s3_document_ops():
     session_id = "test-session-001"
     test_key = f"test_doc_{uuid.uuid4().hex[:8]}.md"
     test_content = f"# Test Document\nGenerated at {datetime.now(timezone.utc).isoformat()}\nThis is test content for S3 verification."
-    bucket = os.environ.get("S3_BUCKET", "eagle-documents-695681773636-dev")
+    bucket = os.environ.get("S3_BUCKET", "")
 
     steps_passed = []
 
@@ -2690,7 +2690,7 @@ async def test_19_document_generation():
     import boto3 as _boto3
 
     session_id = "test-session-001"
-    bucket = os.environ.get("S3_BUCKET", "eagle-documents-695681773636-dev")
+    bucket = os.environ.get("S3_BUCKET", "")
 
     doc_tests = [
         {

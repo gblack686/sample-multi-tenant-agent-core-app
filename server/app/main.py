@@ -34,8 +34,7 @@ import uuid
 import io
 
 # EAGLE modules (new)
-from .agentic_service import get_client, MODEL, EAGLE_TOOLS
-from .sdk_agentic_service import sdk_query
+from .strands_agentic_service import sdk_query, MODEL, EAGLE_TOOLS
 from .document_export import export_document
 from .session_store import (
     create_session as eagle_create_session, get_session as eagle_get_session,
@@ -227,6 +226,8 @@ async def api_chat(req: EagleChatRequest, user: UserContext = Depends(get_user_f
             tenant_id=tenant_id,
             user_id=user_id,
             tier=user.tier or "advanced",
+            session_id=session_id,
+            messages=messages[:-1],  # History excluding current user message
         ):
             _msg_type = type(_sdk_msg).__name__
             if _msg_type == "AssistantMessage":
@@ -1093,6 +1094,8 @@ async def websocket_chat(ws: WebSocket):
                     tenant_id=tenant_id,
                     user_id=user_id,
                     tier=user.tier or "advanced",
+                    session_id=session_id,
+                    messages=messages[:-1],  # History excluding current user message
                 ):
                     _msg_type = type(_sdk_msg).__name__
                     if _msg_type == "AssistantMessage":
