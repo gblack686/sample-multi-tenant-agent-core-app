@@ -121,15 +121,15 @@ DocGen → S3: Store v2
 ## Template Files Reference
 
 Source templates available in `eagle-plugin/diagrams/excalidraw/`:
-- `uc01-new-acquisition-happy-path.excalidraw` - Standard 4-phase workflow
-- `uc01-complex-agent-subrouting.excalidraw` - Multi-skill invocation pattern
-- `uc02-micro-purchase.excalidraw` - Simplified flow for small purchases
-- `uc03-option-exercise.excalidraw` - Contract option workflow
-- `uc04-contract-modification.excalidraw` - Modification request flow
-- `uc05-co-package-review.excalidraw` - Review and approval process
-- `uc07-contract-closeout.excalidraw` - Closeout workflow
-- `uc08-shutdown-notification.excalidraw` - Notification sequence
-- `uc09-score-consolidation.excalidraw` - Scoring and consolidation
+- `20260208-220845-arch-uc01-new-acquisition-happy-path-v1.excalidraw` - Standard 4-phase workflow
+- `20260208-220845-arch-uc01-complex-agent-subrouting-v1.excalidraw` - Multi-skill invocation pattern
+- `20260208-220845-arch-uc02-micro-purchase-v1.excalidraw` - Simplified flow for small purchases
+- `20260208-220845-arch-uc03-option-exercise-v1.excalidraw` - Contract option workflow
+- `20260208-220845-arch-uc04-contract-modification-v1.excalidraw` - Modification request flow
+- `20260208-220845-arch-uc05-co-package-review-v1.excalidraw` - Review and approval process
+- `20260208-220845-arch-uc07-contract-closeout-v1.excalidraw` - Closeout workflow
+- `20260208-220845-arch-uc08-shutdown-notification-v1.excalidraw` - Notification sequence
+- `20260208-220845-arch-uc09-score-consolidation-v1.excalidraw` - Scoring and consolidation
 
 ## Usage Guidelines
 

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-EAGLE is a multi-tenant AI acquisition assistant for NCI (National Cancer Institute). It helps contracting officers navigate federal procurement — intake, FAR/DFARS guidance, document generation (SOW, IGCE, AP). Built with TAC methodology: supervisor orchestrates specialist subagents via Claude Agent SDK, streamed over SSE to a Next.js frontend.
+EAGLE is a multi-tenant AI acquisition assistant for NCI (National Cancer Institute). It helps contracting officers navigate federal procurement — intake, FAR/DFARS guidance, document generation (SOW, IGCE, AP). Built with TAC methodology: supervisor orchestrates specialist subagents via Strands Agents SDK (boto3-native Bedrock), streamed over SSE to a Next.js frontend.
 
 ---
 
@@ -14,8 +14,8 @@ EAGLE is a multi-tenant AI acquisition assistant for NCI (National Cancer Instit
 |------------|---------|
 | Next.js (App Router) | Frontend — chat UI, admin dashboard, Playwright E2E |
 | FastAPI | Backend — SSE streaming, tool dispatch, Cognito auth |
-| Claude Agent SDK | Supervisor → subagent orchestration (primary path) |
-| Anthropic API | Direct fallback when SDK subprocess fails |
+| Strands Agents SDK | Supervisor → subagent orchestration via BedrockModel (boto3-native) |
+| Anthropic API | Direct fallback when Strands/Bedrock unavailable |
 | AWS CDK (TypeScript) | Infrastructure — ECS Fargate, Cognito, DynamoDB, S3 |
 | DynamoDB single-table | Sessions, messages, usage, costs, subscriptions |
 
@@ -45,7 +45,7 @@ npm run build && npx cdk synth --quiet
 ```
 /
 ├── client/              ← Next.js frontend
-├── server/              ← FastAPI + Claude SDK backend
+├── server/              ← FastAPI + Strands SDK backend
 │   └── app/             ← Routes, services, stores
 ├── eagle-plugin/        ← Agent + skill definitions (source of truth)
 │   ├── plugin.json      ← Active agents + skills manifest
@@ -63,7 +63,7 @@ npm run build && npx cdk synth --quiet
 
 ## Architecture
 
-**Flow**: `POST /api/chat/stream` → `sdk_query()` → supervisor (Task tool) → specialist subagents (each gets a fresh context window via `AgentDefinition`). Falls back to direct Anthropic API when the SDK subprocess can't start (e.g. nested Claude Code session).
+**Flow**: `POST /api/chat` (REST, primary) or `POST /api/chat/stream` (SSE) → `sdk_query()` / `sdk_query_streaming()` → Strands Agent with BedrockModel → specialist subagents via tool dispatch. Frontend proxy (`/api/invoke`) targets REST endpoint and wraps response in SSE. Falls back to direct Anthropic API when Strands/Bedrock unavailable.
 
 **Streaming**: `StreamingResponse` → `asyncio.Queue` → `MultiAgentStreamWriter` → SSE events (`text`, `tool_use`, `complete`, `error`) → `use-agent-stream.ts` hook.
 
@@ -108,7 +108,7 @@ npx cdk synth --quiet    # Level 4 — Infra compile
 
 | File | Purpose |
 |------|---------|
-| `server/app/sdk_agentic_service.py` | Claude SDK orchestration — supervisor + subagents |
+| `server/app/strands_agentic_service.py` | Strands SDK orchestration — supervisor + subagents (BedrockModel) |
 | `server/app/streaming_routes.py` | SSE endpoint + fallback to direct API |
 | `server/app/stream_protocol.py` | SSE event format (`MultiAgentStreamWriter`) |
 | `server/eagle_skill_constants.py` | Auto-discovery of plugin content |
@@ -145,6 +145,6 @@ npx cdk synth --quiet    # Level 4 — Infra compile
 | `plan` | `.claude/specs/` | `20260217-143000-plan-sdk-signing-v1.md` |
 | `pbi` | `.claude/specs/` | `20260217-143000-pbi-frontend-dark-mode-v1.md` |
 | `eval` | `server/tests/` | `20260217-160000-eval-sdk-patterns-v1.md` |
-| `arch` | `docs/architecture/` | `20260222-150000-arch-streaming-v1.excalidraw.md` |
+| `arch` | `docs/architecture/diagrams/excalidraw/` | `20260222-150000-arch-streaming-v1.excalidraw.md` |
 | `report` | `docs/development/` | `20260222-160000-report-cost-v1.md` |
 | `meeting` | `docs/development/meeting-transcripts/` | `20260217-170000-meeting-sprint-planning-v1.md` |
