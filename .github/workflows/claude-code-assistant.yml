@@ -46,6 +46,7 @@ permissions:
   contents: write
   issues: write
   pull-requests: write
+  id-token: write
 
 jobs:
   claude:
@@ -70,6 +71,9 @@ jobs:
         with:
           # Pass the API key from repository secrets
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+
+          # Lock to Haiku to avoid Sonnet/Opus charges on every PR/issue
+          claude_args: "--model claude-haiku-4-5-20251001"
 
           # Project-specific instructions for Claude
           prompt: |

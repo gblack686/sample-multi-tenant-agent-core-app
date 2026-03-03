@@ -221,6 +221,7 @@ async def api_chat(req: EagleChatRequest, user: UserContext = Depends(get_user_f
         _usage: dict = {}
         _tools_called: list[str] = []
         _final_text: str = ""
+        _final_text: str = ""
         async for _sdk_msg in sdk_query(
             prompt=req.message,
             tenant_id=tenant_id,
@@ -242,6 +243,9 @@ async def api_chat(req: EagleChatRequest, user: UserContext = Depends(get_user_f
                     "input_tokens": getattr(_raw, "input_tokens", 0),
                     "output_tokens": getattr(_raw, "output_tokens", 0),
                 }
+                _final_text = str(getattr(_sdk_msg, "result", "") or "")
+        _response_text = "".join(_text_parts) or _final_text
+        result = {"text": _response_text, "usage": _usage, "model": MODEL, "tools_called": _tools_called}
                 _final_text = str(getattr(_sdk_msg, "result", "") or "")
         _response_text = "".join(_text_parts) or _final_text
         result = {"text": _response_text, "usage": _usage, "model": MODEL, "tools_called": _tools_called}
@@ -1089,6 +1093,7 @@ async def websocket_chat(ws: WebSocket):
                 _text_parts: list[str] = []
                 _usage: dict = {}
                 _final_text: str = ""
+                _final_text: str = ""
                 async for _sdk_msg in sdk_query(
                     prompt=user_message,
                     tenant_id=tenant_id,
@@ -1113,6 +1118,11 @@ async def websocket_chat(ws: WebSocket):
                             "input_tokens": getattr(_raw, "input_tokens", 0),
                             "output_tokens": getattr(_raw, "output_tokens", 0),
                         }
+                        _final_text = str(getattr(_sdk_msg, "result", "") or "")
+                _response_text = "".join(_text_parts) or _final_text
+                if _response_text and not _text_parts:
+                    await on_text(_response_text)
+                result = {"text": _response_text, "usage": _usage, "model": MODEL, "tools_called": tools_called}
                         _final_text = str(getattr(_sdk_msg, "result", "") or "")
                 _response_text = "".join(_text_parts) or _final_text
                 if _response_text and not _text_parts:

@@ -18,6 +18,7 @@ import asyncio
 import json
 import logging
 from contextlib import suppress
+from contextlib import suppress
 from typing import AsyncGenerator, Optional
 
 from .cognito_auth import extract_user_context, UserContext
@@ -34,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 async def stream_generator(
     message: str,
+    tenant_id: str,
+    user_id: str,
     tenant_id: str,
     user_id: str,
     tier,
@@ -162,6 +165,8 @@ def create_streaming_router(
         return StreamingResponse(
             stream_generator(
                 message=message.message,
+                tenant_id=tenant_id,
+                user_id=user_id,
                 tenant_id=tenant_id,
                 user_id=user_id,
                 tier=user.tier,
