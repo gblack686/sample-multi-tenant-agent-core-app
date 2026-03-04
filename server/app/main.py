@@ -454,6 +454,61 @@ async def api_create_session(
     return session
 
 
+# ── AI session title generation (must be before {session_id} routes) ──
+
+class GenerateTitleRequest(BaseModel):
+    message: str
+    response_snippet: Optional[str] = None
+
+
+_TITLE_SYSTEM_PROMPT = (
+    "Generate a short, descriptive title (3-6 words) for a chat session based on "
+    "the user's message. The title should capture the main topic or intent. "
+    "Do NOT include quotes, periods, or punctuation. Just output the title text. "
+    "Examples: 'SOW for Cloud Migration', 'FAR Part 15 Guidance', "
+    "'IGCE Cost Estimate Review', 'New IT Services Acquisition'."
+)
+
+
+@app.post("/api/generate-title")
+async def api_generate_session_title(
+    req: GenerateTitleRequest,
+    user: UserContext = Depends(get_user_from_header),
+):
+    """Use Bedrock to generate a short session title from the user's first message."""
+    user_text = req.message.strip()[:500]
+    if not user_text:
+        return {"title": "New Session"}
+
+    prompt = f"User message: {user_text}"
+    if req.response_snippet:
+        prompt += f"\n\nAssistant response preview: {req.response_snippet[:300]}"
+
+    try:
+        client = _get_bedrock_client()
+        model_id = os.getenv("EAGLE_BEDROCK_MODEL_ID", "us.amazon.nova-pro-v1:0")
+        resp = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: client.converse(
+                modelId=model_id,
+                messages=[{"role": "user", "content": [{"text": prompt}]}],
+                system=[{"text": _TITLE_SYSTEM_PROMPT}],
+                inferenceConfig={"maxTokens": 30, "temperature": 0.3},
+            ),
+        )
+        content_blocks = resp["output"]["message"]["content"]
+        title = next(
+            (b["text"] for b in content_blocks if "text" in b),
+            "New Session",
+        ).strip().strip('"\'.')
+        if len(title) > 60:
+            title = title[:57] + "..."
+        return {"title": title}
+    except Exception as e:
+        logger.warning("Failed to generate session title: %s", e)
+        return {"title": "New Session"}
+
+
 @app.get("/api/sessions/{session_id}")
 async def api_get_session(
     session_id: str,
@@ -549,6 +604,7 @@ async def api_get_messages(
         messages = SESSIONS[session_id][-limit:]
 
     return {"session_id": session_id, "messages": messages}
+
 
 
 # ── Document export endpoints ────────────────────────────────────────
@@ -686,6 +742,38 @@ async def api_get_document(doc_key: str, user: UserContext = Depends(get_user_fr
     except ClientError as e:
         if e.response["Error"]["Code"] == "NoSuchKey":
             raise HTTPException(status_code=404, detail="Document not found")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── S3 Presigned URL ─────────────────────────────────────────────────
+
+@app.get("/api/documents/presign")
+async def api_presign_document(
+    key: str,
+    user: UserContext = Depends(get_user_from_header),
+):
+    """Generate a time-limited presigned URL for an S3 document."""
+    import boto3
+    from botocore.exceptions import ClientError
+
+    tenant_id = user.tenant_id
+    user_id = user.user_id
+
+    # Security: ensure key is within user's prefix
+    if not key.startswith(f"eagle/{tenant_id}/{user_id}/"):
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    bucket = os.getenv("S3_BUCKET", "nci-documents")
+    try:
+        s3 = boto3.client("s3", region_name=os.getenv("AWS_REGION", "us-east-1"))
+        url = s3.generate_presigned_url(
+            "get_object",
+            Params={"Bucket": bucket, "Key": key},
+            ExpiresIn=3600,  # 1 hour
+        )
+        return {"url": url, "key": key, "expires_in": 3600}
+    except ClientError as e:
+        logger.error("Presign error: %s", e)
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -625,11 +625,16 @@ def _make_service_tool(
     tenant_id: str,
     user_id: str,
     session_id: str | None,
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
 ):
     """Create a Strands @tool that calls agentic_service handlers directly.
 
     The handler receives the real tenant_id (from Cognito auth) and a
     composite session_id (tenant-tier-user-session) for per-user S3 scoping.
+
+    If result_queue and loop are provided, tool results for create_document
+    are emitted as tool_result chunks so the frontend can render document cards.
     """
     from .agentic_service import TOOL_DISPATCH, TOOLS_NEEDING_SESSION
 
@@ -646,6 +651,15 @@ def _make_service_tool(
                 result = handler(parsed, tenant_id, session_id)
             else:
                 result = handler(parsed, tenant_id)
+
+            # Emit tool_result for create_document so frontend renders DocumentCard
+            # Only emit for successful results (not error responses)
+            if tool_name == "create_document" and result_queue and loop and "error" not in result:
+                loop.call_soon_threadsafe(
+                    result_queue.put_nowait,
+                    {"type": "tool_result", "name": tool_name, "result": result},
+                )
+
             return json.dumps(result, indent=2, default=str)
         except Exception as exc:
             logger.error("Service tool %s failed: %s", tool_name, exc, exc_info=True)
@@ -689,11 +703,17 @@ _SERVICE_TOOL_DEFS = {
 }
 
 
-def _build_service_tools(tenant_id: str, user_id: str, session_id: str | None) -> list:
+def _build_service_tools(
+    tenant_id: str,
+    user_id: str,
+    session_id: str | None,
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+) -> list:
     """Build @tool wrappers for AWS service tools, scoped to the current tenant/user/session."""
     tools = []
     for name, desc in _SERVICE_TOOL_DEFS.items():
-        tools.append(_make_service_tool(name, desc, tenant_id, user_id, session_id))
+        tools.append(_make_service_tool(name, desc, tenant_id, user_id, session_id, result_queue, loop))
     return tools
 
 
@@ -1065,7 +1085,7 @@ async def sdk_query_streaming(
 
         # Add AWS service tools (S3, DynamoDB, doc generation, FAR search, intake)
         composite_session = f"{tenant_id}#{tier}#{user_id}#{session_id or 'none'}"
-        service_tools = _build_service_tools(tenant_id, user_id, composite_session)
+        service_tools = _build_service_tools(tenant_id, user_id, composite_session, chunk_queue, loop)
         all_tools = skill_tools + service_tools
 
         system_prompt = build_supervisor_prompt(
@@ -1125,6 +1145,8 @@ async def sdk_query_streaming(
             yield chunk
         elif chunk.get("type") == "tool_use":
             tools_called.append(chunk.get("name", ""))
+            yield chunk
+        elif chunk.get("type") == "tool_result":
             yield chunk
 
     thread.join(timeout=5)

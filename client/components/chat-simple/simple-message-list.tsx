@@ -115,6 +115,7 @@ export default function SimpleMessageList({
                                                 status={tc.status}
                                                 result={tc.result}
                                                 isClientSide={tc.isClientSide}
+                                                sessionId={sessionId}
                                             />
                                             <CodeOutput tc={tc} />
                                         </div>

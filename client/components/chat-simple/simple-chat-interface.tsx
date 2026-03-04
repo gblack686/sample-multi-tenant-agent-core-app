@@ -5,6 +5,7 @@ import SimpleMessageList from './simple-message-list';
 import SimpleWelcome from './simple-welcome';
 import SimpleQuickActions from './simple-quick-actions';
 import SlashCommandPicker from '@/components/chat/slash-command-picker';
+import CommandPalette from './command-palette';
 import { useAgentStream, ToolUseEvent } from '@/hooks/use-agent-stream';
 import { useSlashCommands } from '@/hooks/use-slash-commands';
 import { useSession } from '@/contexts/session-context';
@@ -46,11 +47,29 @@ export default function SimpleChatInterface() {
     // Stable ID for the current streaming message — reset on each sendQuery call.
     const streamingMsgIdRef = useRef<string>(`stream-${Date.now()}`);
 
-    const { currentSessionId, saveSession, loadSession, writeMessageOptimistic } = useSession();
+    const { currentSessionId, saveSession, loadSession, writeMessageOptimistic, renameSession } = useSession();
     const { getToken } = useAuth();
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const lastAssistantIdRef = useRef<string | null>(null);
+    /** Track whether AI title has been generated for this session. */
+    const titleGeneratedRef = useRef<Set<string>>(new Set());
+    /** Store the first user message for title generation. */
+    const firstUserMsgRef = useRef<string | null>(null);
+    /** Ctrl+K command palette state. */
+    const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+
+    // Global Ctrl+K keyboard shortcut
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                setIsCommandPaletteOpen((v) => !v);
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, []);
 
     // Load session data
     useEffect(() => {
@@ -62,10 +81,15 @@ export default function SimpleChatInterface() {
         if (sessionData) {
             setMessages(sessionData.messages);
             setDocuments(sessionData.documents || {});
+            // Mark existing sessions as already titled (don't re-generate)
+            if (sessionData.messages.length > 0) {
+                titleGeneratedRef.current.add(currentSessionId);
+            }
         } else {
             setMessages([]);
             setDocuments({});
         }
+        firstUserMsgRef.current = null;
         setIsLoadingSession(false);
     }, [currentSessionId, loadSession]);
 
@@ -169,6 +193,28 @@ export default function SimpleChatInterface() {
                     next[completedMsg.id] = finalized;
                     return next;
                 });
+
+                // AI title generation — fire-and-forget on first assistant response
+                const sid = currentSessionId;
+                const userMsg = firstUserMsgRef.current;
+                if (sid && userMsg && !titleGeneratedRef.current.has(sid)) {
+                    titleGeneratedRef.current.add(sid);
+                    fetch('/api/sessions/generate-title', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            message: userMsg,
+                            response_snippet: completedMsg.content.slice(0, 200),
+                        }),
+                    })
+                        .then((res) => res.json())
+                        .then((data) => {
+                            if (data.title && data.title !== 'New Session') {
+                                renameSession(sid, data.title);
+                            }
+                        })
+                        .catch(() => { /* title generation is best-effort */ });
+                }
             }
             streamingMsgRef.current = null;
             setStreamingMsg(null);
@@ -223,12 +269,14 @@ export default function SimpleChatInterface() {
     });
 
 
-    // Auto-resize textarea
+    // Auto-resize textarea — show scrollbar only when content exceeds max height
     const adjustTextareaHeight = () => {
         const el = textareaRef.current;
         if (el) {
             el.style.height = 'auto';
-            el.style.height = Math.min(el.scrollHeight, 160) + 'px';
+            const clamped = Math.min(el.scrollHeight, 160);
+            el.style.height = clamped + 'px';
+            el.style.overflowY = el.scrollHeight > 160 ? 'auto' : 'hidden';
         }
     };
 
@@ -246,6 +294,10 @@ export default function SimpleChatInterface() {
             timestamp: new Date(),
         };
         lastAssistantIdRef.current = null;
+        // Capture first user message for AI title generation
+        if (messages.length === 0) {
+            firstUserMsgRef.current = input;
+        }
         // Reset streaming message ID for the new turn
         streamingMsgIdRef.current = `stream-${Date.now()}`;
         setMessages((prev) => [...prev, userMessage]);
@@ -265,10 +317,19 @@ export default function SimpleChatInterface() {
     const displayMessages = streamingMsg ? [...messages, streamingMsg] : messages;
     const hasMessages = displayMessages.length > 0;
 
+    const handlePaletteSelect = (cmd: SlashCommand) => {
+        setInput(cmd.name + ' ');
+        textareaRef.current?.focus();
+    };
+
     return (
         <div className="h-full flex flex-col bg-[#F5F7FA]">
-            {/* Quick actions bar */}
-            <SimpleQuickActions onAction={insertText} />
+            {/* Ctrl+K command palette */}
+            <CommandPalette
+                isOpen={isCommandPaletteOpen}
+                onClose={() => setIsCommandPaletteOpen(false)}
+                onSelect={handlePaletteSelect}
+            />
 
             {/* Main content area */}
             {!hasMessages && !isLoadingSession ? (
@@ -291,6 +352,10 @@ export default function SimpleChatInterface() {
                             {error}
                         </div>
                     )}
+
+                    {/* Quick action pills — above the input */}
+                    <SimpleQuickActions onAction={insertText} />
+
                     <div className="relative flex items-end gap-3">
                         {/* Slash command picker */}
                         {isCommandPickerOpen && (
@@ -318,10 +383,10 @@ export default function SimpleChatInterface() {
                                     handleSend();
                                 }
                             }}
-                            placeholder={isStreaming ? 'Waiting for response\u2026' : 'Ask EAGLE about acquisitions, or type / for commands\u2026'}
+                            placeholder={isStreaming ? 'Waiting for response\u2026' : 'Ask EAGLE about acquisitions, type / or press Ctrl+K for commands\u2026'}
                             disabled={isStreaming}
                             rows={1}
-                            className={`flex-1 resize-none px-4 py-3 bg-white border border-[#D8DEE6] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2196F3]/30 focus:border-[#2196F3] transition-all text-sm leading-relaxed ${isStreaming ? 'opacity-50' : ''}`}
+                            className={`flex-1 resize-none overflow-hidden px-4 py-3 bg-white border border-[#D8DEE6] rounded-xl focus:outline-none focus:ring-2 focus:ring-[#2196F3]/30 focus:border-[#2196F3] transition-all text-sm leading-relaxed ${isStreaming ? 'opacity-50' : ''}`}
                             style={{ maxHeight: 160 }}
                         />
                         <button
@@ -333,7 +398,7 @@ export default function SimpleChatInterface() {
                         </button>
                     </div>
                     <p className="text-center text-[10px] text-[#8896A6] mt-2">
-                        EAGLE &middot; National Cancer Institute &middot; Powered by Claude (Anthropic SDK)
+                        EAGLE &middot; National Cancer Institute
                     </p>
                 </div>
             </footer>

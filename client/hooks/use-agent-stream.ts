@@ -67,10 +67,16 @@ function parseDocumentToolResult(event: StreamEvent): DocumentInfo | null {
     const data = typeof tr.result === 'string' ? JSON.parse(tr.result) : tr.result;
     if (!data || typeof data !== 'object') return null;
 
+    // Reject error responses (e.g. "Unknown document type")
+    if (data.error) return null;
+
+    // Require at least a real title or document_type — reject empty/stub results
+    if (!data.title && !data.document_type && !data.s3_key) return null;
+
     return {
       document_id: data.document_id ?? data.s3_key ?? undefined,
       document_type: data.document_type ?? 'unknown',
-      title: data.title ?? 'Untitled Document',
+      title: data.title ?? data.document_type ?? 'Document',
       content: data.content ?? undefined,
       status: data.status ?? undefined,
       word_count: data.word_count ?? undefined,
@@ -383,25 +389,32 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
         }
       }
 
-      // Handle complete event — REST fallback path
-      // When streaming fails and the REST endpoint is used, tool_result events
-      // are not sent. Instead the complete event carries tools_called metadata.
+      // Handle complete event — REST/fallback path
+      // When tool_result events were already received (streaming path), skip
+      // text-based parsing to avoid duplicate document cards.
       if (event.type === 'complete') {
         const toolsCalled = event.metadata?.tools_called;
         if (Array.isArray(toolsCalled) && toolsCalled.includes('create_document')) {
           const expectedCount = toolsCalled.filter((t: string) => t === 'create_document').length;
 
-          // Try immediate text-based parsing first (S3 filename patterns)
-          const docs = parseDocumentsFromText(accumulatedText);
-          for (const doc of docs) {
-            if (doc.s3_key) emittedDocKeys.add(doc.s3_key);
-            setLastDocument(doc);
-            options.onDocumentGenerated?.(doc);
-          }
+          // Skip text parsing if tool_result events already provided the docs
+          if (emittedDocKeys.size < expectedCount) {
+            const docs = parseDocumentsFromText(accumulatedText);
+            for (const doc of docs) {
+              // Skip if this filename matches an already-emitted key
+              const name = doc.s3_key || '';
+              const alreadyEmitted = [...emittedDocKeys].some(k => k.endsWith(name));
+              if (alreadyEmitted) continue;
 
-          // If text parsing found fewer docs than expected, flag for API + template fallback
-          if (docs.length < expectedCount) {
-            shouldFetchDocs = true;
+              if (doc.s3_key) emittedDocKeys.add(doc.s3_key);
+              setLastDocument(doc);
+              options.onDocumentGenerated?.(doc);
+            }
+
+            // If still fewer docs than expected, flag for API fallback
+            if (emittedDocKeys.size < expectedCount) {
+              shouldFetchDocs = true;
+            }
           }
         }
       }
@@ -455,9 +468,13 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
             const prefix = prefixMatch?.[1]?.toLowerCase() || '';
             const typeInfo = DOC_TYPE_MAP[prefix];
 
+            // Skip documents without a recognizable type — avoids "unknown / Untitled" cards
+            const docType = typeInfo?.type || doc.type;
+            if (!docType) continue;
+
             const docInfo: DocumentInfo = {
               document_id: name || key,
-              document_type: typeInfo?.type || doc.type || 'unknown',
+              document_type: docType,
               title: typeInfo?.label || name || 'Document',
               s3_key: key,
               status: 'saved',
