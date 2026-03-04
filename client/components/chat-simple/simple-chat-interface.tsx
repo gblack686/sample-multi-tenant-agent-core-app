@@ -5,13 +5,32 @@ import SimpleMessageList from './simple-message-list';
 import SimpleWelcome from './simple-welcome';
 import SimpleQuickActions from './simple-quick-actions';
 import SlashCommandPicker from '@/components/chat/slash-command-picker';
-import { useAgentStream } from '@/hooks/use-agent-stream';
+import { useAgentStream, ToolUseEvent } from '@/hooks/use-agent-stream';
 import { useSlashCommands } from '@/hooks/use-slash-commands';
 import { useSession } from '@/contexts/session-context';
 import { useAuth } from '@/contexts/auth-context';
 import { SlashCommand } from '@/lib/slash-commands';
 import { ChatMessage, DocumentInfo } from '@/types/chat';
 import { saveGeneratedDocument } from '@/lib/document-store';
+import { ClientToolResult } from '@/lib/client-tools';
+import { ToolStatus } from './tool-use-display';
+
+// -----------------------------------------------------------------------
+// Types for per-message tool call tracking
+// -----------------------------------------------------------------------
+
+export interface TrackedToolCall {
+    /** Unique tool invocation ID (from SSE event or generated). */
+    toolUseId: string;
+    toolName: string;
+    input: Record<string, unknown>;
+    status: ToolStatus;
+    isClientSide: boolean;
+    result?: ClientToolResult | null;
+}
+
+/** Tool calls keyed by the parent message ID they belong to. */
+export type ToolCallsByMessageId = Record<string, TrackedToolCall[]>;
 
 export default function SimpleChatInterface() {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -22,7 +41,12 @@ export default function SimpleChatInterface() {
     const [isLoadingSession, setIsLoadingSession] = useState(true);
     const [documents, setDocuments] = useState<Record<string, DocumentInfo[]>>({});
 
-    const { currentSessionId, saveSession, loadSession } = useSession();
+    // Tool calls grouped by message ID — populated as SSE tool_use events arrive.
+    const [toolCallsByMsg, setToolCallsByMsg] = useState<ToolCallsByMessageId>({});
+    // Stable ID for the current streaming message — reset on each sendQuery call.
+    const streamingMsgIdRef = useRef<string>(`stream-${Date.now()}`);
+
+    const { currentSessionId, saveSession, loadSession, writeMessageOptimistic } = useSession();
     const { getToken } = useAuth();
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -73,9 +97,40 @@ export default function SimpleChatInterface() {
         closeCommandPicker,
     } = useSlashCommands({ onCommandSelect: handleCommandSelect });
 
+    // -----------------------------------------------------------------------
+    // Tool call tracking
+    // -----------------------------------------------------------------------
+
+    const upsertToolCall = useCallback((
+        msgId: string,
+        toolUseId: string,
+        patch: Partial<TrackedToolCall>,
+    ) => {
+        setToolCallsByMsg((prev) => {
+            const existing = prev[msgId] ?? [];
+            const idx = existing.findIndex((t) => t.toolUseId === toolUseId);
+            if (idx === -1) {
+                const newEntry: TrackedToolCall = {
+                    toolUseId,
+                    toolName: patch.toolName ?? '',
+                    input: patch.input ?? {},
+                    status: patch.status ?? 'pending',
+                    isClientSide: patch.isClientSide ?? false,
+                    result: patch.result,
+                };
+                return { ...prev, [msgId]: [...existing, newEntry] };
+            }
+            const updated = existing.slice();
+            updated[idx] = { ...updated[idx], ...patch };
+            return { ...prev, [msgId]: updated };
+        });
+    }, []);
+
     // Agent stream
     const { sendQuery, isStreaming, error } = useAgentStream({
         getToken,
+        sessionId: currentSessionId ?? undefined,
+
         onMessage: (msg) => {
             const newMessage: ChatMessage = {
                 id: msg.id,
@@ -90,19 +145,34 @@ export default function SimpleChatInterface() {
             streamingMsgRef.current = newMessage;
             setStreamingMsg(newMessage);
         },
+
         onComplete: () => {
             const completedMsg = streamingMsgRef.current;
             if (completedMsg) {
                 lastAssistantIdRef.current = completedMsg.id;
                 setMessages((prev) => [...prev, completedMsg]);
+
+                // Migrate tool calls from the streaming ID to the committed message ID.
+                const streamId = streamingMsgIdRef.current;
+                if (streamId !== completedMsg.id) {
+                    setToolCallsByMsg((prev) => {
+                        if (!prev[streamId]) return prev;
+                        const next = { ...prev };
+                        next[completedMsg.id] = prev[streamId];
+                        delete next[streamId];
+                        return next;
+                    });
+                }
             }
             streamingMsgRef.current = null;
             setStreamingMsg(null);
         },
+
         onError: () => {
             streamingMsgRef.current = null;
             setStreamingMsg(null);
         },
+
         onDocumentGenerated: (doc) => {
             // Attach document to latest assistant message
             const attachTo = lastAssistantIdRef.current;
@@ -119,6 +189,29 @@ export default function SimpleChatInterface() {
                     messages.find((m) => m.role === 'user')?.content.slice(0, 80) ||
                     'Untitled Package';
                 saveGeneratedDocument(doc, currentSessionId, title);
+            }
+        },
+
+        onToolUse: (toolEvent: ToolUseEvent) => {
+            // Associate tool calls with the current streaming message ID.
+            const parentId = streamingMsgIdRef.current;
+
+            if (toolEvent.result === undefined) {
+                // Tool is starting — create entry with pending/running status.
+                upsertToolCall(parentId, toolEvent.toolUseId, {
+                    toolName: toolEvent.toolName,
+                    input: toolEvent.input,
+                    status: toolEvent.isClientSide ? 'running' : 'pending',
+                    isClientSide: toolEvent.isClientSide,
+                    result: undefined,
+                });
+            } else {
+                // Client-side tool finished — update with result.
+                const status: ToolStatus = toolEvent.result.success ? 'done' : 'error';
+                upsertToolCall(parentId, toolEvent.toolUseId, {
+                    status,
+                    result: toolEvent.result,
+                });
             }
         },
     });
@@ -147,7 +240,11 @@ export default function SimpleChatInterface() {
             timestamp: new Date(),
         };
         lastAssistantIdRef.current = null;
+        // Reset streaming message ID for the new turn
+        streamingMsgIdRef.current = `stream-${Date.now()}`;
         setMessages((prev) => [...prev, userMessage]);
+        // Optimistic write to IndexedDB — fire-and-forget, never blocks send
+        writeMessageOptimistic(currentSessionId, userMessage);
         const query = input;
         setInput('');
 
@@ -176,6 +273,7 @@ export default function SimpleChatInterface() {
                     isTyping={isStreaming}
                     documents={documents}
                     sessionId={currentSessionId}
+                    toolCallsByMsg={toolCallsByMsg}
                 />
             )}
 

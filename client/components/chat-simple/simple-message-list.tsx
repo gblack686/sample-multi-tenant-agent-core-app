@@ -4,15 +4,51 @@ import { useEffect, useRef, useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { ChatMessage, DocumentInfo } from '@/types/chat';
 import DocumentCard from './document-card';
+import ToolUseDisplay from './tool-use-display';
+import CodeSandboxRenderer from './code-sandbox-renderer';
+import { ToolCallsByMessageId, TrackedToolCall } from './simple-chat-interface';
+import { CodeResult } from '@/lib/client-tools';
 
 interface SimpleMessageListProps {
     messages: ChatMessage[];
     isTyping: boolean;
     documents?: Record<string, DocumentInfo[]>;
     sessionId?: string;
+    /** Tool call state keyed by message ID — populated from SSE tool_use events. */
+    toolCallsByMsg?: ToolCallsByMessageId;
 }
 
-export default function SimpleMessageList({ messages, isTyping, documents, sessionId }: SimpleMessageListProps) {
+/** Render code sandbox output below a code tool call card, if output exists. */
+function CodeOutput({ tc }: { tc: TrackedToolCall }) {
+    if (tc.toolName !== 'code') return null;
+    if (tc.status !== 'done') return null;
+    if (!tc.result?.result) return null;
+
+    const codeResult = tc.result.result as CodeResult;
+    const lang = String(tc.input.language ?? 'javascript');
+
+    const hasOutput =
+        (Array.isArray(codeResult.logs) && codeResult.logs.length > 0) ||
+        Boolean(codeResult.html);
+
+    if (!hasOutput) return null;
+
+    return (
+        <CodeSandboxRenderer
+            language={lang}
+            source={String(tc.input.source ?? '')}
+            result={codeResult}
+        />
+    );
+}
+
+export default function SimpleMessageList({
+    messages,
+    isTyping,
+    documents,
+    sessionId,
+    toolCallsByMsg = {},
+}: SimpleMessageListProps) {
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const [copiedId, setCopiedId] = useState<string | null>(null);
 
@@ -59,11 +95,33 @@ export default function SimpleMessageList({ messages, isTyping, documents, sessi
                         );
                     }
 
+                    // Retrieve tool calls associated with this assistant message
+                    const toolCalls = toolCallsByMsg[message.id] ?? [];
+
                     return (
                         <div key={message.id} className="group flex flex-col gap-1.5">
                             <span className="text-[10px] font-semibold text-[#003366] uppercase tracking-wider">
-                                🦅 Eagle
+                                Eagle
                             </span>
+
+                            {/* Tool call indicators rendered above the text response */}
+                            {toolCalls.length > 0 && (
+                                <div className="flex flex-col gap-1 mb-1">
+                                    {toolCalls.map((tc) => (
+                                        <div key={tc.toolUseId}>
+                                            <ToolUseDisplay
+                                                toolName={tc.toolName}
+                                                input={tc.input}
+                                                status={tc.status}
+                                                result={tc.result}
+                                                isClientSide={tc.isClientSide}
+                                            />
+                                            <CodeOutput tc={tc} />
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+
                             <div className="text-sm text-gray-800 leading-relaxed">
                                 <ReactMarkdown
                                     components={{
@@ -139,7 +197,7 @@ export default function SimpleMessageList({ messages, isTyping, documents, sessi
                 {isWaitingForFirstToken && (
                     <div className="flex flex-col gap-1.5">
                         <span className="text-[10px] font-semibold text-[#003366] uppercase tracking-wider">
-                            🦅 Eagle
+                            Eagle
                         </span>
                         <div className="flex items-center h-5">
                             <span className="inline-block w-[2px] h-4 bg-[#003366] rounded-sm animate-pulse" />

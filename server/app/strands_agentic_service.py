@@ -26,6 +26,7 @@ import json
 import logging
 import os
 import queue
+import re
 import sys
 import threading
 import time as _time
@@ -86,31 +87,71 @@ _SENTINEL = object()  # Signals end of stream
 
 
 class QueueCallbackHandler:
-    """Strands callback handler that pushes text deltas into a thread-safe queue.
+    """Strands callback handler that pushes text deltas and tool_use events into a thread-safe queue.
 
-    Used by sdk_query_streaming() to yield tokens as they arrive from Bedrock
-    ConverseStream, instead of waiting for the full agent response.
+    Bedrock ConverseStream sends tool input across multiple events:
+      - contentBlockStart  → toolUse.name + toolUse.toolUseId  (block begins)
+      - contentBlockDelta  → toolUse.input  (JSON string fragments, streamed)
+      - contentBlockStop   → (block ends — we emit the assembled tool_use event here)
+
+    Text deltas arrive via the ``data`` kwarg and are emitted immediately.
+    Tool input is accumulated in ``_pending_tool`` and flushed at contentBlockStop.
     """
 
     def __init__(self, chunk_queue: queue.Queue):
         self._queue = chunk_queue
         self.tool_count = 0
+        # Accumulator for in-flight tool block
+        self._pending_tool: dict | None = None   # {"name": str, "id": str, "input_parts": list[str]}
 
     def __call__(self, **kwargs: Any) -> None:
+        event = kwargs.get("event", {})
         data = kwargs.get("data", "")
-        complete = kwargs.get("complete", False)
-        tool_use = kwargs.get("event", {}).get("contentBlockStart", {}).get("start", {}).get("toolUse")
 
+        # Text delta — emit immediately
         if data:
             self._queue.put({"type": "text", "data": data})
 
-        if tool_use:
-            self.tool_count += 1
-            self._queue.put({"type": "tool_use", "name": tool_use.get("name", "")})
+        # contentBlockStart — a new content block (tool or text) is opening
+        content_block_start = event.get("contentBlockStart", {})
+        if content_block_start:
+            tool_use_start = content_block_start.get("start", {}).get("toolUse")
+            if tool_use_start:
+                self._pending_tool = {
+                    "name": tool_use_start.get("name", ""),
+                    "id": tool_use_start.get("toolUseId", ""),
+                    "input_parts": [],
+                }
 
-        if complete and not data:
-            # Stream finished — don't send sentinel here, let the caller handle it
-            pass
+        # contentBlockDelta — JSON input fragment for the current tool block
+        content_block_delta = event.get("contentBlockDelta", {})
+        if content_block_delta and self._pending_tool is not None:
+            delta_tool_use = content_block_delta.get("delta", {}).get("toolUse", {})
+            fragment = delta_tool_use.get("input", "")
+            if fragment:
+                self._pending_tool["input_parts"].append(fragment)
+
+        # contentBlockStop — tool block is complete; assemble and emit
+        if "contentBlockStop" in event and self._pending_tool is not None:
+            tool_name = self._pending_tool["name"]
+            tool_id = self._pending_tool["id"]
+            raw_input = "".join(self._pending_tool["input_parts"])
+
+            parsed_input: dict = {}
+            if raw_input:
+                try:
+                    parsed_input = json.loads(raw_input)
+                except json.JSONDecodeError:
+                    parsed_input = {"_raw": raw_input}
+
+            self.tool_count += 1
+            self._queue.put({
+                "type": "tool_use",
+                "name": tool_name,
+                "tool_use_id": tool_id,
+                "input": parsed_input,
+            })
+            self._pending_tool = None
 
 
 # -- Shared Model (module-level) -------------------------------------
@@ -142,6 +183,53 @@ TIER_BUDGETS = {
     "advanced": 0.25,
     "premium": 0.75,
 }
+
+# -- Trivial Message Fast-Path ------------------------------------------
+# Regex matches greetings, acknowledgments, and simple conversational
+# messages that don't need the full supervisor+tools pipeline.
+_TRIVIAL_RE = re.compile(
+    r"^(hi|hello|hey|howdy|good\s+(morning|afternoon|evening|day)|"
+    r"thanks?|thank\s+you|thx|ok|okay|yes|no|sure|bye|goodbye|"
+    r"what('?s)?\s+up|how\s+are\s+you|nice|great|cool|got\s+it|"
+    r"sounds?\s+good|will\s+do|roger|acknowledged?|understood|yo|sup)[\s!?.]*$",
+    re.IGNORECASE,
+)
+
+_TRIVIAL_SYSTEM_PROMPT = (
+    "You are the EAGLE Acquisition Assistant for the NCI Office of Acquisitions. "
+    "Respond to this greeting or conversational message with a brief, friendly reply. "
+    "Keep it to 1-2 sentences. Be warm and professional. "
+    "If the user seems to need help, mention you can assist with acquisition documents, "
+    "FAR/DFARS guidance, and procurement workflows."
+)
+
+
+def _is_trivial_message(prompt: str) -> bool:
+    """Return True if the message is a simple greeting/acknowledgment."""
+    return bool(_TRIVIAL_RE.match(prompt.strip()))
+
+
+# -- Supervisor Prompt Cache (60s TTL) ----------------------------------
+_supervisor_prompt_cache: dict[str, dict] = {}
+_SUPERVISOR_PROMPT_CACHE_TTL = 60
+
+
+def _sup_cache_key(tenant_id: str, user_id: str, tier: str, workspace_id: str | None, agent_key: str) -> str:
+    return f"{tenant_id}#{user_id}#{tier}#{workspace_id or 'none'}#{agent_key}"
+
+
+def _sup_cache_get(tenant_id: str, user_id: str, tier: str, workspace_id: str | None, agent_key: str) -> str | None:
+    key = _sup_cache_key(tenant_id, user_id, tier, workspace_id, agent_key)
+    entry = _supervisor_prompt_cache.get(key)
+    if entry and _time.time() < entry["ts"] + _SUPERVISOR_PROMPT_CACHE_TTL:
+        return entry["prompt"]
+    return None
+
+
+def _sup_cache_set(tenant_id: str, user_id: str, tier: str, workspace_id: str | None, agent_key: str, prompt: str) -> None:
+    key = _sup_cache_key(tenant_id, user_id, tier, workspace_id, agent_key)
+    _supervisor_prompt_cache[key] = {"ts": _time.time(), "prompt": prompt}
+
 
 # -- Tool Schemas (for health/status endpoints) -------------------------
 # These are the Anthropic tool_use format schemas used by main.py and
@@ -619,8 +707,16 @@ def build_supervisor_prompt(
 
     Loads the base supervisor prompt from the 4-layer resolution chain when
     workspace_id is provided; otherwise falls back to AGENTS bundled content.
+    Results are cached for 60s to avoid repeated DynamoDB calls.
     """
     names = agent_names or list(SKILL_AGENT_REGISTRY.keys())
+    agent_key = ",".join(sorted(n for n in names if n in SKILL_AGENT_REGISTRY))
+
+    # Check cache first
+    cached = _sup_cache_get(tenant_id, user_id, tier, workspace_id, agent_key)
+    if cached is not None:
+        return cached
+
     agent_list = "\n".join(
         f"- {name}: {SKILL_AGENT_REGISTRY[name]['description']}"
         for name in names
@@ -640,7 +736,7 @@ def build_supervisor_prompt(
         supervisor_entry = AGENTS.get("supervisor")
         base_prompt = supervisor_entry["body"].strip() if supervisor_entry else "You are the EAGLE Supervisor Agent for NCI Office of Acquisitions."
 
-    return (
+    result = (
         f"Tenant: {tenant_id} | User: {user_id} | Tier: {tier}\n\n"
         f"{base_prompt}\n\n"
         f"--- DIRECT HANDLING (NO DELEGATION) ---\n"
@@ -656,6 +752,9 @@ def build_supervisor_prompt(
         f"and other substantive work: use the available tool functions to delegate to specialists. "
         f"Include relevant context in the query you pass to each specialist."
     )
+
+    _sup_cache_set(tenant_id, user_id, tier, workspace_id, agent_key, result)
+    return result
 
 
 # -- SDK Query Wrappers (same signatures as sdk_agentic_service.py) --
@@ -804,49 +903,72 @@ async def sdk_query_streaming(
 
     Unlike sdk_query() which waits for the full response, this yields
     {"type": "text", "data": "..."} chunks as they arrive from Bedrock
-    ConverseStream, plus a final {"type": "complete", ...} event.
+    ConverseStream, plus tool_use events with actual input data, and a
+    final {"type": "complete", ...} event.
 
     Runs the synchronous Strands Agent in a background thread and bridges
     to async via a queue.
+
+    Fast-path: trivial messages (greetings, acknowledgments) skip workspace
+    resolution, tool building, and supervisor prompt construction. They use
+    a lightweight no-tools Agent with a short system prompt for ~2-4x faster
+    time-to-first-token.
     """
-    # Resolve workspace
-    resolved_workspace_id = workspace_id
-    if not resolved_workspace_id:
-        try:
-            from .workspace_store import get_or_create_default
-            ws = get_or_create_default(tenant_id, user_id)
-            resolved_workspace_id = ws.get("workspace_id")
-        except Exception as exc:
-            logger.warning("workspace_store.get_or_create_default failed: %s", exc)
+    t0 = _time.time()
+    use_fast_path = _is_trivial_message(prompt) and not skill_names
 
-    skill_tools = build_skill_tools(
-        tier=tier,
-        skill_names=skill_names,
-        tenant_id=tenant_id,
-        user_id=user_id,
-        workspace_id=resolved_workspace_id,
-    )
-
-    system_prompt = build_supervisor_prompt(
-        tenant_id=tenant_id,
-        user_id=user_id,
-        tier=tier,
-        agent_names=[t.__name__ for t in skill_tools],
-        workspace_id=resolved_workspace_id,
-    )
-
-    strands_history = _to_strands_messages(messages) if messages else None
     chunk_queue: queue.Queue = queue.Queue()
-
     handler = QueueCallbackHandler(chunk_queue)
+    strands_history = _to_strands_messages(messages) if messages else None
 
-    supervisor = Agent(
-        model=_model,
-        system_prompt=system_prompt,
-        tools=skill_tools,
-        callback_handler=handler,
-        messages=strands_history,
-    )
+    if use_fast_path:
+        # Fast path: no workspace, no tools, short prompt
+        logger.info("fast-path: trivial message detected (%r), skipping full pipeline", prompt[:40])
+        supervisor = Agent(
+            model=_model,
+            system_prompt=_TRIVIAL_SYSTEM_PROMPT,
+            tools=[],
+            callback_handler=handler,
+            messages=strands_history,
+        )
+        skill_tools = []
+    else:
+        # Full path: resolve workspace, build tools, build prompt
+        resolved_workspace_id = workspace_id
+        if not resolved_workspace_id:
+            try:
+                from .workspace_store import get_or_create_default
+                ws = get_or_create_default(tenant_id, user_id)
+                resolved_workspace_id = ws.get("workspace_id")
+            except Exception as exc:
+                logger.warning("workspace_store.get_or_create_default failed: %s", exc)
+
+        skill_tools = build_skill_tools(
+            tier=tier,
+            skill_names=skill_names,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            workspace_id=resolved_workspace_id,
+        )
+
+        system_prompt = build_supervisor_prompt(
+            tenant_id=tenant_id,
+            user_id=user_id,
+            tier=tier,
+            agent_names=[t.__name__ for t in skill_tools],
+            workspace_id=resolved_workspace_id,
+        )
+
+        supervisor = Agent(
+            model=_model,
+            system_prompt=system_prompt,
+            tools=skill_tools,
+            callback_handler=handler,
+            messages=strands_history,
+        )
+
+    t_setup = _time.time() - t0
+    logger.info("agent setup took %.3fs (fast_path=%s, tools=%d)", t_setup, use_fast_path, len(skill_tools))
 
     # Run synchronous Strands agent in a background thread
     result_holder: list = []
@@ -886,6 +1008,7 @@ async def sdk_query_streaming(
             yield chunk
         elif chunk.get("type") == "tool_use":
             tools_called.append(chunk.get("name", ""))
+            # Yield the full chunk including tool_use_id and input
             yield chunk
 
     # Wait for thread to finish

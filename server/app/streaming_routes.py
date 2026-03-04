@@ -47,7 +47,7 @@ async def stream_generator(
       1. Yield a metadata event (initial connection handshake).
       2. Consume sdk_query_streaming() async generator for real-time text deltas.
       3. text chunks → TEXT SSE events (streamed as they arrive from Bedrock).
-      4. tool_use events → TOOL_USE SSE events.
+      4. tool_use events → TOOL_USE SSE events with actual input data.
       5. complete/error → COMPLETE/ERROR SSE event.
     """
     writer = MultiAgentStreamWriter("eagle", "EAGLE Acquisition Assistant")
@@ -73,7 +73,17 @@ async def stream_generator(
                 yield await sse_queue.get()
 
             elif chunk_type == "tool_use":
-                await writer.write_tool_use(sse_queue, chunk.get("name", ""), {})
+                # Pass the actual tool input dict from the callback handler.
+                # QueueCallbackHandler now assembles tool input from Bedrock
+                # contentBlockDelta events and includes it in the chunk.
+                tool_input = chunk.get("input", {})
+                tool_use_id = chunk.get("tool_use_id", "")
+                await writer.write_tool_use(
+                    sse_queue,
+                    chunk.get("name", ""),
+                    tool_input,
+                    tool_use_id=tool_use_id,
+                )
                 yield await sse_queue.get()
 
             elif chunk_type == "complete":

@@ -4,7 +4,7 @@ parent: "[[frontend/_index]]"
 file-type: expertise
 human_reviewed: false
 tags: [expert-file, mental-model, frontend, nextjs, tailwind, chat, dashboard, test-results]
-last_updated: 2026-02-25T00:00:00
+last_updated: 2026-03-04T04:30:00
 ---
 
 # Frontend Expertise (Complete Mental Model)
@@ -259,32 +259,52 @@ Followed by `SuggestedPrompts` component.
 
 **File**: `client/app/admin/tests/page.tsx`
 
-**Purpose**: Display SDK test results from trace_logs.json
+**Purpose**: Display pytest run history with drill-down into individual test results. Data persisted to DynamoDB via `conftest.py` hooks.
 
-**Data Loading**: Fetches from `/api/trace-logs` on mount
+**Data Loading**: Fetches from `/api/admin/test-runs` (list) and `/api/admin/test-runs/{run_id}` (detail)
 
-**Interface**:
+**Interfaces**:
 
 ```typescript
-interface TestResult {
-    status: 'pass' | 'fail' | 'error';
-    logs: string[];
+interface TestRun {
+    run_id: string;
+    timestamp: string;
+    total: number;
+    passed: number;
+    failed: number;
+    skipped: number;
+    errors: number;
+    duration_s: number;
+    pass_rate: number;
+    model: string;
+    trigger: string;
 }
 
-interface TraceData {
-    timestamp: string;
-    results: Record<string, TestResult>;
+interface TestResultDetail {
+    nodeid: string;
+    test_file: string;
+    test_name: string;
+    status: string;
+    duration_s: number;
+    error: string;
 }
 ```
 
-**Features**:
-- Stats cards: Total Tests, Passed (green), Failed (red), Total Cost (amber)
-- Metadata row: run timestamp, pass rate percentage
-- Filter bar: All / Pass / Fail (pill buttons)
-- Expand All / Collapse All
-- Each test card: expandable, shows test name, status badge, cost, tokens, log output
-- Cost extracted from logs via regex: `/Cost:\s*\$(\d+\.\d+)/`
-- Tokens extracted via regex: `/Tokens?:\s*(\d+)\s*in\s*\/\s*(\d+)\s*out/`
+**Views**:
+
+1. **Run List View**: Cards for each pytest run showing pass/fail icon, timestamp, model, test counts, pass rate, duration. Click to drill down.
+
+2. **Run Detail View**:
+   - Stats cards: Total, Passed, Failed, Skipped, Duration
+   - Metadata: timestamp, model, pass rate
+   - Filter bar: All / Pass / Fail (pill buttons)
+   - Results grouped by test file
+   - Expandable error traces for failed tests (red background, monospace)
+
+**Backend API**:
+- `GET /api/admin/test-runs?limit=N` → `{ runs: TestRun[], count: number }`
+- `GET /api/admin/test-runs/{run_id}` → `{ run_id, results: TestResultDetail[], count }`
+- Data stored in DynamoDB `eagle` table with `TESTRUN#` PK/SK pattern
 
 **Protected by**: `<AuthGuard>` wrapper + `<TopNav />` header
 
@@ -754,20 +774,28 @@ CloudWatch /eagle/test-runs
 - Readiness panel provides at-a-glance status for all capabilities
 - Full plugin slugs as SKILL_TEST_MAP keys keeps eval page in sync with eagle-plugin/ naming
 - Home page as feature hub (not chat) provides cleaner first-use experience
+- DynamoDB-backed test results page (`/admin/tests`) with run list → detail drill-down (discovered: 2026-03-04)
+- `encodeURIComponent(runId)` for URL-safe run_id in API calls (discovered: 2026-03-04)
+- Grouping test results by `test_file` in detail view improves readability (discovered: 2026-03-04)
 
 ### patterns_to_avoid
 - Don't rely on embedded data in HTML dashboard for production (use API)
 - Don't mix dark and light themes within a single page component
 - Don't use short diagram aliases (intake, docgen) as SKILL_TEST_MAP keys — they differ from plugin slugs
+- Don't forget `errors` field in TestRun interface — DynamoDB returns it alongside `failed`/`skipped` (discovered: 2026-03-04)
 
 ### common_issues
-- trace_logs.json must exist for /admin/tests to show data
+- trace_logs.json must exist for /admin/tests to show data (legacy — new tests page uses DynamoDB)
 - CloudWatch runs require AWS credentials configured in the environment
 - Eval modal tabs show empty state when no run is selected
 - HTML dashboard TEST_DEFS lags behind TEST_NAMES when new UC tests are added — check both before reporting test count
+- `kb-review/[id]/approve` and `kb-review/[id]/reject` routes have TS errors: `params` should be `Promise<{ id: string }>` in Next.js 15+ (pre-existing)
+- `@excalidraw/excalidraw` module not found — optional dependency, not installed (pre-existing)
 
 ### tips
 - Use /admin/eval to demonstrate EAGLE workflow to stakeholders (10 use cases as of 2026-02-25)
 - The eval page's SVG diagram supports export (right-click save as SVG)
 - Run `npm run build` in client/ to verify no TypeScript errors
 - SKILL_TEST_MAP line numbers shift as USE_CASES array grows — always verify line numbers with grep before editing
+- Tests page now uses DynamoDB persistence — no more trace_logs.json dependency for pytest results
+- Run `pytest tests/ -v` to auto-persist results to DDB (controlled by `EAGLE_PERSIST_TEST_RESULTS` env var)

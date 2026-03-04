@@ -4,8 +4,25 @@ import { useState, useCallback, useRef } from 'react';
 import { StreamEvent, AuditLogEntry, parseStreamEvent, streamEventToMessage } from '@/types/stream';
 import { Message, DocumentInfo } from '@/types/chat';
 import { generateUUID } from '@/lib/uuid';
+import {
+  CLIENT_SIDE_TOOLS,
+  executeClientTool,
+  ClientToolResult,
+} from '@/lib/client-tools';
 
 const API_URL = '/api/invoke';
+
+/** Payload emitted to onToolUse for every tool invocation detected in the stream. */
+export interface ToolUseEvent {
+  toolName: string;
+  input: Record<string, unknown>;
+  toolUseId: string;
+  isClientSide: boolean;
+  /** Undefined while running; populated once execution completes (client-side only). */
+  result?: ClientToolResult;
+  /** Execution target tag. */
+  executionTarget: 'client' | 'server';
+}
 
 export interface UseAgentStreamOptions {
   onMessage?: (message: Message) => void;
@@ -13,7 +30,15 @@ export interface UseAgentStreamOptions {
   onComplete?: () => void;
   onError?: (error: string) => void;
   onDocumentGenerated?: (doc: DocumentInfo) => void;
+  /**
+   * Called for every tool_use event.
+   * Fired first with result=undefined (tool is starting), then again once
+   * a client-side tool finishes (result is populated).
+   */
+  onToolUse?: (event: ToolUseEvent) => void;
   getToken?: () => Promise<string>;
+  /** Active session ID — forwarded to client tools for localStorage namespacing. */
+  sessionId?: string;
 }
 
 export interface UseAgentStreamReturn {
@@ -147,6 +172,7 @@ function detectDocumentTypesFromText(text: string): DocumentInfo[] {
  * - SSE streaming via /api/invoke proxy route
  * - Parsing events into typed StreamEvent objects
  * - Converting text events to Message objects
+ * - Client-side tool execution (think, code, editor) via executeClientTool()
  * - Detecting create_document tool results and emitting DocumentInfo
  * - JWT authentication via getToken callback
  * - Collecting all events for audit logging
@@ -187,6 +213,10 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
     const streamingMsgId = `stream-${Date.now()}`;
     let shouldFetchDocs = false;
     const emittedDocKeys = new Set<string>();
+
+    // The session to use for client tool localStorage namespacing.
+    // Prefer the sessionId passed to sendQuery; fall back to options.sessionId.
+    const activeSessionId = finalSessionId || options.sessionId;
 
     try {
       // Build headers with JWT if available
@@ -237,7 +267,7 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
             if (line.startsWith('data: ')) {
               const data = line.slice(6).trim();
               if (data) {
-                processEventData(data);
+                await processEventData(data, activeSessionId);
               }
             }
           }
@@ -251,10 +281,10 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
           if (trimmed.startsWith('data: ')) {
             const data = trimmed.slice(6);
             if (data) {
-              processEventData(data);
+              await processEventData(data, activeSessionId);
             }
           } else if (trimmed.startsWith('{')) {
-            processEventData(trimmed);
+            await processEventData(trimmed, activeSessionId);
           }
         }
       }
@@ -279,7 +309,7 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
       setIsStreaming(false);
     }
 
-    function processEventData(data: string) {
+    async function processEventData(data: string, sid: string | undefined) {
       const event = parseStreamEvent(data);
       if (!event) return;
 
@@ -309,6 +339,37 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
         };
         setLastMessage(message);
         options.onMessage?.(message);
+      }
+
+      // Handle tool_use events — dispatch client-side tools or emit server notification.
+      if (event.type === 'tool_use' && event.tool_use) {
+        const toolName = event.tool_use.name;
+        const toolInput = (event.tool_use.input ?? {}) as Record<string, unknown>;
+        const toolUseId = event.tool_use.tool_use_id ?? `tool-${Date.now()}`;
+        const isClientSide = CLIENT_SIDE_TOOLS.has(toolName);
+
+        // Notify UI that the tool is starting
+        options.onToolUse?.({
+          toolName,
+          input: toolInput,
+          toolUseId,
+          isClientSide,
+          executionTarget: isClientSide ? 'client' : 'server',
+          result: undefined,
+        });
+
+        if (isClientSide) {
+          // Execute the tool in the browser and then notify UI with the result
+          const result = await executeClientTool(toolName, toolInput, sid);
+          options.onToolUse?.({
+            toolName,
+            input: toolInput,
+            toolUseId,
+            isClientSide: true,
+            executionTarget: 'client',
+            result,
+          });
+        }
       }
 
       // Handle create_document tool results (streaming path)

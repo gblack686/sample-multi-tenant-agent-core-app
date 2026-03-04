@@ -36,7 +36,7 @@ import io
 import boto3 as _boto3
 
 # EAGLE modules (new)
-from .strands_agentic_service import sdk_query, MODEL, EAGLE_TOOLS, _skill_tools_cache, build_supervisor_prompt
+from .strands_agentic_service import sdk_query, MODEL, EAGLE_TOOLS, _skill_tools_cache, _supervisor_prompt_cache, build_supervisor_prompt
 from .document_export import export_document
 from .session_store import (
     create_session as eagle_create_session, get_session as eagle_get_session,
@@ -1564,6 +1564,7 @@ async def admin_reload_caches(user: UserContext = Depends(get_user_from_header))
     _template_cache.clear()
     _workspace_cache.clear()
     _skill_tools_cache.clear()
+    _supervisor_prompt_cache.clear()
     write_audit(
         tenant_id=user.tenant_id,
         entity_type="cache",
@@ -1571,7 +1572,7 @@ async def admin_reload_caches(user: UserContext = Depends(get_user_from_header))
         event_type="reload",
         actor_user_id=user.user_id,
     )
-    return {"status": "flushed", "caches": ["plugin", "prompt", "config", "template", "workspace", "skill_tools"]}
+    return {"status": "flushed", "caches": ["plugin", "prompt", "config", "template", "workspace", "skill_tools", "supervisor_prompt"]}
 
 
 @app.post("/api/admin/plugin/sync")
