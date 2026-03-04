@@ -2,6 +2,7 @@
 description: "Update Strands SDK expertise with learnings from usage sessions, migration work, or integration tests"
 allowed-tools: Read, Write, Edit, Grep, Glob
 argument-hint: [component] [outcome: success|failed|partial]
+model: haiku
 ---
 
 # Strands SDK Expert - Self-Improve Mode

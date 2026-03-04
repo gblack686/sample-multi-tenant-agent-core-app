@@ -2,6 +2,7 @@
 allowed-tools: Bash, Read, Grep, Glob
 description: "Check Jira connectivity, validate PAT, list open issues, and report board health"
 argument-hint: [--connect | --issues | --board | --full]
+model: haiku
 ---
 
 # Jira Expert - Maintenance Command

@@ -2,6 +2,7 @@
 allowed-tools: Read, Write, Glob, Grep, Bash
 description: "Validate GitHub Actions workflow syntax, check repository state, and report Git/CI-CD health"
 argument-hint: [--all | --workflows | --branches | --secrets]
+model: haiku
 ---
 
 # Git/CI-CD Expert - Maintenance Command

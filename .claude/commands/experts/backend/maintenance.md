@@ -2,6 +2,7 @@
 allowed-tools: Bash, Read, Grep, Glob
 description: "Run backend checks, validate tool dispatch, and report health status"
 argument-hint: [--syntax | --dispatch | --tools | --full]
+model: haiku
 ---
 
 # Backend Expert - Maintenance Command

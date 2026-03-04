@@ -2,6 +2,7 @@
 allowed-tools: Read, Write, Glob, Grep, Bash
 description: "Check AWS resource status, validate connectivity, and report infrastructure health"
 argument-hint: [--all | --quick | --resources | --credentials]
+model: haiku
 ---
 
 # AWS Expert - Maintenance Command

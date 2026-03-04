@@ -2,6 +2,7 @@
 description: "Update SDK expertise with learnings from SDK usage sessions, test runs, or integration work"
 allowed-tools: Read, Write, Edit, Grep, Glob
 argument-hint: [component] [outcome: success|failed|partial]
+model: haiku
 ---
 
 # Claude SDK Expert - Self-Improve Mode

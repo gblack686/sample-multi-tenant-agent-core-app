@@ -1,6 +1,7 @@
 ---
 description: "Query Claude Agent SDK features, patterns, or get answers without making changes"
 allowed-tools: Read, Glob, Grep, Bash
+model: haiku
 ---
 
 # Claude SDK Expert - Question Mode

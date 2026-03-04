@@ -2,6 +2,7 @@
 description: "Update deployment expertise with learnings from deployments, infrastructure changes, or troubleshooting"
 allowed-tools: Read, Edit, Glob, Grep, Bash
 argument-hint: [component] [outcome: success|failed|partial]
+model: haiku
 ---
 
 # Deployment Expert - Self-Improve Mode

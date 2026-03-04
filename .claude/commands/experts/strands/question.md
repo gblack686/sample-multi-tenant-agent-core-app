@@ -1,6 +1,7 @@
 ---
 description: "Query Strands Agents SDK features, patterns, or get answers without making changes"
 allowed-tools: Read, Glob, Grep, Bash
+model: haiku
 ---
 
 # Strands SDK Expert - Question Mode

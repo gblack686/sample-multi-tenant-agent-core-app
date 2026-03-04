@@ -2,6 +2,7 @@
 description: "Update CloudWatch expertise with learnings from telemetry work, pipeline changes, or discovered issues"
 allowed-tools: Read, Edit, Glob, Grep, Bash
 argument-hint: [component] [outcome: success|failed|partial]
+model: haiku
 ---
 
 # CloudWatch Expert - Self-Improve Mode

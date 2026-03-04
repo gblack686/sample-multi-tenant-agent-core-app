@@ -5,6 +5,7 @@ file-type: command
 command-name: "question"
 human_reviewed: false
 tags: [expert-file, command, read-only, hooks]
+model: haiku
 ---
 
 # Hooks Expert - Question Mode

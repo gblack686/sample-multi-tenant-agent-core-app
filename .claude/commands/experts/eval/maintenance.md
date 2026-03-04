@@ -2,6 +2,7 @@
 allowed-tools: Read, Write, Glob, Grep, Bash
 description: "Run eval suite, analyze results, and report status"
 argument-hint: [--all | --aws | --sdk | --skills | --tests 1,2,3]
+model: haiku
 ---
 
 # Eval Expert - Maintenance Command

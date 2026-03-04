@@ -1,6 +1,7 @@
 ---
 description: "Query backend architecture, tool handlers, AWS integrations, or get answers without making changes"
 allowed-tools: Read, Glob, Grep, Bash
+model: haiku
 ---
 
 # Backend Expert - Question Mode

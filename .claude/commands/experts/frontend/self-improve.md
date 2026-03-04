@@ -2,6 +2,7 @@
 description: "Update frontend expertise with learnings from development, build results, or discovered issues"
 allowed-tools: Read, Edit, Glob, Grep, Bash
 argument-hint: [component] [outcome: success|failed|partial]
+model: haiku
 ---
 
 # Frontend Expert - Self-Improve Mode

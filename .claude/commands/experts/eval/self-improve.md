@@ -2,6 +2,7 @@
 description: "Update eval expertise with learnings from test runs, new patterns, or discovered issues"
 allowed-tools: Read, Edit, Glob, Grep, Bash
 argument-hint: [component] [outcome: success|failed|partial]
+model: haiku
 ---
 
 # Eval Expert - Self-Improve Mode

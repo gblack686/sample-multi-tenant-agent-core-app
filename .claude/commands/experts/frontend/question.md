@@ -1,6 +1,7 @@
 ---
 description: "Query frontend architecture, components, mappings, or styling without making changes"
 allowed-tools: Read, Glob, Grep, Bash
+model: haiku
 ---
 
 # Frontend Expert - Question Mode

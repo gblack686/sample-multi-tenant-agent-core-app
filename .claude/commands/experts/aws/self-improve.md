@@ -2,6 +2,7 @@
 description: "Update AWS expertise with learnings from infrastructure changes, CDK deployments, or troubleshooting"
 allowed-tools: Read, Edit, Glob, Grep, Bash
 argument-hint: [component] [outcome: success|failed|partial]
+model: haiku
 ---
 
 # AWS Expert - Self-Improve Mode

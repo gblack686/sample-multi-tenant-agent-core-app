@@ -1,6 +1,7 @@
 ---
 description: "Query CloudWatch telemetry, event schemas, emission pipeline, or boto3 patterns without making changes"
 allowed-tools: Read, Glob, Grep, Bash
+model: haiku
 ---
 
 # CloudWatch Expert - Question Mode

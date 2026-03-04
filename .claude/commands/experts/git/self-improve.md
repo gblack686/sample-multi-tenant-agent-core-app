@@ -2,6 +2,7 @@
 description: "Update Git/CI-CD expertise with learnings from workflow changes, pipeline runs, or troubleshooting"
 allowed-tools: Read, Edit, Glob, Grep, Bash
 argument-hint: [component] [outcome: success|failed|partial]
+model: haiku
 ---
 
 # Git/CI-CD Expert - Self-Improve Mode

@@ -5,6 +5,7 @@ file-type: command
 command-name: "self-improve"
 human_reviewed: false
 tags: [expert-file, command, self-improve, hooks]
+model: haiku
 ---
 
 # Hooks Expert - Self-Improve Mode

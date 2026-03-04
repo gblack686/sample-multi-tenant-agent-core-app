@@ -1,6 +1,7 @@
 ---
 description: "Query TAC methodology concepts, tactics, frameworks, or patterns without making changes"
 allowed-tools: Read, Glob, Grep
+model: haiku
 ---
 
 # TAC Expert - Question Mode

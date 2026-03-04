@@ -1,6 +1,7 @@
 ---
 description: "Query Git operations, GitHub Actions, CI/CD pipelines, or release management without making changes"
 allowed-tools: Read, Glob, Grep, Bash
+model: haiku
 ---
 
 # Git/CI-CD Expert - Question Mode

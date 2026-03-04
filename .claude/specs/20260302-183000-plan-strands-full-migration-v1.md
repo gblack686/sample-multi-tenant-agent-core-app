@@ -371,19 +371,19 @@ Update `streaming_routes.py:187` to remove `"anthropic": True`:
 
 ## Migration Checklist
 
-- [ ] **Phase 1**: Multi-agent POC test passes on 3 models
-- [ ] **Phase 2a**: Module-level `BedrockModel` (shared)
-- [ ] **Phase 2b**: `build_skill_tools()` replaces `build_skill_agents()`
-- [ ] **Phase 2c**: `_make_subagent_tool()` factory with proper docstrings
-- [ ] **Phase 2d**: `sdk_query()` with adapter messages
-- [ ] **Phase 2e**: `sdk_query_single_skill()` with adapter messages
-- [ ] **Phase 3a**: `streaming_routes.py` works with Strands
-- [ ] **Phase 3b**: `main.py` REST endpoint works with Strands
-- [ ] **Phase 3c**: Health check updated (no "anthropic" reference)
-- [ ] **Phase 4**: Eval suite ported (28 tests pass)
-- [ ] **Phase 5a**: `claude-agent-sdk` removed from requirements
-- [ ] **Phase 5b**: CLAUDE.md updated
-- [ ] **Phase 5c**: Old test files archived
+- [x] **Phase 1**: Multi-agent POC test passes on 3 models (commit `48395e9`)
+- [x] **Phase 2a**: Module-level `BedrockModel` (shared) (commit `ea8d316`)
+- [x] **Phase 2b**: `build_skill_tools()` replaces `build_skill_agents()` (commit `ea8d316`)
+- [x] **Phase 2c**: `_make_subagent_tool()` factory with proper docstrings (commit `ea8d316`)
+- [x] **Phase 2d**: `sdk_query()` with adapter messages (commit `ea8d316`)
+- [x] **Phase 2e**: `sdk_query_single_skill()` with adapter messages (commit `ea8d316`)
+- [x] **Phase 3a**: `streaming_routes.py` works with Strands (commit `ea8d316`)
+- [x] **Phase 3b**: `main.py` REST endpoint works with Strands (commit `ea8d316`)
+- [ ] **Phase 3c**: Health check updated (no "anthropic" reference) — deferred: health check still imports from legacy agentic_service.py
+- [x] **Phase 4**: Eval suite ported (28 tests, syntax OK) (commit `ae222ee`) — live test pending SSO refresh
+- [x] **Phase 5a**: `claude-agent-sdk` removed from requirements (commit `ae222ee`)
+- [x] **Phase 5b**: CLAUDE.md updated (commit `ae222ee`)
+- [x] **Phase 5c**: Old test files archived with `_archived_` prefix (commit `ae222ee`)
 
 ## Validation Commands
 

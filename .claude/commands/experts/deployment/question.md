@@ -1,6 +1,7 @@
 ---
 description: "Query deployment, infrastructure, AWS resources, CDK, or CI/CD without making changes"
 allowed-tools: Read, Glob, Grep, Bash
+model: haiku
 ---
 
 # Deployment Expert - Question Mode

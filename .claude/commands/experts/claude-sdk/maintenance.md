@@ -2,6 +2,7 @@
 allowed-tools: Bash, Read, Grep, Glob
 description: "Check SDK health — verify imports, test basic query, validate Bedrock connectivity, check hook types"
 argument-hint: [--import | --bedrock | --query | --full]
+model: haiku
 ---
 
 # Claude SDK Expert - Maintenance Command

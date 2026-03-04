@@ -2,6 +2,7 @@
 description: "Validate TAC compliance — check expert structure, hook patterns, command coverage, and methodology adherence"
 allowed-tools: Read, Write, Glob, Grep, Bash
 argument-hint: [--all | --experts | --hooks | --commands | --compliance]
+model: haiku
 ---
 
 # TAC Expert - Maintenance Command

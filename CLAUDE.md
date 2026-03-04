@@ -91,7 +91,29 @@ See `.claude/commands/scribe.md` for the full spec.
 ## Agent Routing (MANDATORY)
 
 **Before using raw Bash/Grep/Glob for domain tasks, check this table.**
-If the user's request matches a domain keyword, invoke the **Agent tool** with that `subagent_type`.
+Classify the user's intent first, then route to the correct primitive.
+
+### Tier 1 — Skills (question / status / maintenance)
+
+For questions, status checks, and health checks: use **skills** (inline, model: haiku).
+
+| Keywords | Skill | Example |
+|----------|-------|---------|
+| frontend, client/, nextjs, UI | `/experts:frontend:question` or `:maintenance` | "what's up with the frontend" |
+| backend, server/, FastAPI | `/experts:backend:question` or `:maintenance` | "backend status" |
+| CDK, aws, stack, IAM | `/experts:aws:question` or `:maintenance` | "what stacks are deployed" |
+| strands, agent SDK, BedrockModel | `/experts:strands:question` or `:maintenance` | "is Strands SDK working" |
+| deploy, ECS, Fargate, docker | `/experts:deployment:question` or `:maintenance` | "deployment status" |
+| cloudwatch, logs, telemetry | `/experts:cloudwatch:question` or `:maintenance` | "latest eval run results" |
+| eval, test suite, test results | `/experts:eval:question` or `:maintenance` | "how many tests pass" |
+| git, branch, PR, workflow | `/experts:git:question` or `:maintenance` | "what branch am I on" |
+| hooks, pre/post tool use | `/experts:hooks:question` | "what hooks are configured" |
+| TAC, methodology | `/experts:tac:question` or `:maintenance` | "what is ACT-LEARN-REUSE" |
+| jira, sprint, stories | `/experts:jira:question` or `:maintenance` | "jira status" |
+
+### Tier 2 — Agents (plan / build / improve)
+
+For planning, building, or modifying code: use **agents** (isolated context, sonnet+).
 
 | Keywords | `subagent_type` | Expert path |
 |----------|-----------------|-------------|
@@ -105,9 +127,14 @@ If the user's request matches a domain keyword, invoke the **Agent tool** with t
 | git, branch, PR, workflow, actions, CI/CD | `git-expert-agent` | `experts/git/` |
 | hooks, pre/post tool use, lifecycle | `hooks-expert-agent` | `experts/hooks/` |
 | TAC, methodology, plan-build-improve | `tac-expert-agent` | `experts/tac/` |
-| diagram, architecture visual, excalidraw | `excalidraw-agent` | — |
-| browser, screenshot, UI test, smoke test | `claude-bowser-agent` | — |
-| format, standardize, report, slide deck | `scribe` | — |
+
+### Utility Agents (no expert tier — always agent)
+
+| Keywords | `subagent_type` |
+|----------|-----------------|
+| diagram, architecture visual, excalidraw | `excalidraw-agent` |
+| browser, screenshot, UI test, smoke test | `claude-bowser-agent` |
+| format, standardize, report, slide deck | `scribe` |
 
 **Fallback to raw tools only when**: task is a single-file read/grep (< 3 ops), no domain matches, or user explicitly asks.
 

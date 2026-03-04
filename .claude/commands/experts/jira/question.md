@@ -1,6 +1,7 @@
 ---
 description: "Query Jira configuration, issue structure, story patterns, or sync rules without making changes"
 allowed-tools: Read, Glob, Grep, Bash
+model: haiku
 ---
 
 # Jira Expert - Question Mode

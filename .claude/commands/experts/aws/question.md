@@ -1,6 +1,7 @@
 ---
 description: "Query AWS infrastructure, CDK, DynamoDB, IAM, or S3 without making changes"
 allowed-tools: Read, Glob, Grep, Bash
+model: haiku
 ---
 
 # AWS Expert - Question Mode

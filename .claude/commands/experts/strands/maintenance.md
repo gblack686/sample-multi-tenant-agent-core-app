@@ -2,6 +2,7 @@
 allowed-tools: Bash, Read, Grep, Glob
 description: "Check Strands SDK health — verify imports, test BedrockModel, validate basic Agent invocation"
 argument-hint: [--import | --bedrock | --agent | --full]
+model: haiku
 ---
 
 # Strands SDK Expert - Maintenance Command

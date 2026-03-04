@@ -2,6 +2,7 @@
 description: "Update Jira expertise with learnings from sync runs, story batches, or sprint planning"
 allowed-tools: Read, Write, Edit, Grep, Glob
 argument-hint: [component] [outcome: success|failed|partial]
+model: haiku
 ---
 
 # Jira Expert - Self-Improve Mode

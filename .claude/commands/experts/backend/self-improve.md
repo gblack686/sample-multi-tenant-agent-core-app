@@ -2,6 +2,7 @@
 description: "Update backend expertise with learnings from implementations, debugging, or architecture changes"
 allowed-tools: Read, Write, Edit, Grep, Glob
 argument-hint: [component] [outcome: success|failed|partial]
+model: haiku
 ---
 
 # Backend Expert - Self-Improve Mode

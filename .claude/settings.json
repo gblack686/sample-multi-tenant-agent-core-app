@@ -1,5 +1,18 @@
 {
   "permissions": {},
+  "hooks": {
+    "SubagentStop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/subagent_stop.py"
+          }
+        ]
+      }
+    ]
+  },
   "mcpServers": {
     "atlassian": {
       "type": "http",

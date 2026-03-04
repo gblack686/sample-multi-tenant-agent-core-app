@@ -2,7 +2,7 @@
 type: expert-file
 file-type: expertise
 domain: strands
-last_updated: "2026-03-02T20:00:00"
+last_updated: "2026-03-02"
 sdk_version: "1.28.0"
 tags: [strands-agents-sdk, agent, tool, bedrock, swarm, graph, multi-agent, streaming, sessions, hooks, agentskills, migration]
 ---
@@ -1009,6 +1009,10 @@ For streaming, the bridge tool should collect `ResultMessage.result` and return 
 - **Adapter dataclasses for drop-in replacement**: Use `@dataclass` classes named exactly `AssistantMessage` and `ResultMessage` (matching Claude SDK class names) so callers checking `type(msg).__name__` work unchanged. `TextBlock` and `ToolUseBlock` adapt content blocks. Zero changes needed in `streaming_routes.py` or `main.py`. (discovered: 2026-03-02, component: service-migration)
 - **Skill name hyphen-to-underscore for @tool names**: Strands `@tool(name=...)` must use Python-valid identifiers. Use `skill_name.replace("-", "_")` (e.g., "oa-intake" -> "oa_intake"). The supervisor still sees the underscore name in the tool schema. (discovered: 2026-03-02, component: service-migration)
 - **sdk_query() as async generator with sync Agent inside**: Even though Strands `agent()` is sync, the wrapper is `async def ... -> AsyncGenerator` with `yield`. This preserves the async generator interface for callers without needing `stream_async()`. Works because Python allows `yield` in `async def`. (discovered: 2026-03-02, component: service-migration)
+- **StrandsResultCollector adapter**: Process sync Strands `Agent` result into the same interface as Claude SDK `TraceCollector` (result_text, tool_use_blocks, input/output tokens, cost). Keeps CloudWatch telemetry compatible without changing downstream consumers. (discovered: 2026-03-02, component: eval-suite)
+- **@tool-wrapped subagents for multi-agent eval tests**: `@tool(name="safe_name") def safe_name_tool(query: str) -> str:` with `Agent()` inside. Same agents-as-tools pattern works for the test harness as for production — no special eval scaffolding needed. (discovered: 2026-03-02, component: eval-suite)
+- **SDK-independent tool dispatch via execute_tool()**: `execute_tool()` from `agentic_service.py` works unchanged across both SDKs — good separation of concerns for AWS tool tests (S3, DynamoDB, CloudWatch). (discovered: 2026-03-02, component: eval-suite)
+- **Adapter message dataclasses checked by __name__**: `AssistantMessage`, `ResultMessage`, `TextBlock`, `ToolUseBlock` dataclasses checked by callers via `type(msg).__name__` — same pattern works for `streaming_routes.py`, `main.py`, and eval tests. (discovered: 2026-03-02, component: eval-suite)
 
 ### patterns_to_avoid
 
@@ -1018,6 +1022,8 @@ For streaming, the bridge tool should collect `ResultMessage.result` and return 
 - **system_prompt setter in concurrent context**: `agent.system_prompt = "..."` is not thread-safe. Race condition between setting prompt and invoking agent. (reason: data race)
 - **Calling async sdk_query() from sync @tool without bridge**: Strands `@tool` functions are sync. `sdk_query()` is an async generator. You can't just `await` inside a sync tool. Must use `asyncio.run()` or collect results in an async wrapper. (reason: RuntimeError — event loop mismatch)
 - **Duplicating skill definitions in Strands**: Don't redefine skills that already exist in `eagle-plugin/`. Use the bridge pattern to call them via `sdk_query_single_skill()`. (reason: drift between two sources of truth)
+- **Importing claude_agent_sdk in Strands test files**: Don't try to import `claude_agent_sdk` in test files that use Strands — it has been removed from requirements. Use Strands imports only. (reason: ImportError at runtime)
+- **Building large files in a single agent turn**: Don't generate a 2800+ line eval file in one turn — it exceeds the 32k output token limit. Break large file generation into chunks or use resume. (reason: output truncation / incomplete file)
 
 ### common_issues
 
@@ -1027,6 +1033,8 @@ For streaming, the bridge tool should collect `ResultMessage.result` and return 
 - **`strands.__version__` does not exist**: Unlike most packages, `import strands; strands.__version__` raises `AttributeError`. Use `pip show strands-agents` to check version. (component: installation)
 - **`max_parallel_tools` is not a valid Agent parameter in v1.28.0**: Despite appearing in some docs/examples, it raises `TypeError: Agent.__init__() got an unexpected keyword argument`. Use `tool_executor=ConcurrentToolExecutor()` from `strands.tools.executors` instead. (component: agent-constructor, discovered: 2026-03-02)
 - **Windows cp1252 encoding breaks on Unicode in test output**: `print()` with Unicode chars (arrows, emojis) on Windows raises `UnicodeEncodeError: 'charmap'`. Use `PYTHONIOENCODING=utf-8` env var or `.encode('ascii', 'replace').decode()` for test output. (component: testing, discovered: 2026-03-02)
+- **AWS SSO token expiry blocks Bedrock calls**: `TokenRetrievalError: Error when retrieving token from sso: Token has expired and refresh failed`. Fix: `aws sso login --profile eagle` (requires browser). Note: `aws sts get-caller-identity` may succeed with cached CLI creds while Python boto3 within Strands fails — they use separate credential chains. (component: auth, discovered: 2026-03-02)
+- **Health check endpoint still imports from legacy agentic_service.py**: `streaming_routes.py` and `main.py` health check handlers import `MODEL` and `EAGLE_TOOLS` from `agentic_service.py` — cannot fully remove that dependency until these are moved to `strands_agentic_service.py` or a shared utility. (component: migration, discovered: 2026-03-02)
 
 ### tips
 
@@ -1053,3 +1061,7 @@ For streaming, the bridge tool should collect `ResultMessage.result` and return 
 - `ConcurrentToolExecutor()` and `SequentialToolExecutor()` are zero-arg constructors — just instantiate and pass to Agent. Available at `from strands.tools.executors import ConcurrentToolExecutor`
 - Multi-agent supervisor+subagent latency on Nova Pro: ~18-24s per test (1 supervisor call + 1 subagent call). Plan for ~5-10s per LLM call in latency estimates
 - Always use ASCII in test output on Windows — `PYTHONIOENCODING=utf-8` helps but `print()` with Unicode arrows/emojis still fails on cp1252 terminals
+- Archive old test files with `_archived_` prefix rather than deleting — keeps git history clean and allows comparison between old and new eval suites
+- Test numbering must match between old and new eval suites for CloudWatch dashboard compatibility (test 1 = test 1, etc.) — renumbering breaks metric correlation
+- `callback_handler=None` in test `Agent()` calls prevents console spam during eval runs — always set this in non-interactive test contexts
+- Run `aws sso login --profile eagle` before long eval runs — SSO tokens expire and boto3 inside Strands will fail with `TokenRetrievalError` even if the AWS CLI still works with cached creds

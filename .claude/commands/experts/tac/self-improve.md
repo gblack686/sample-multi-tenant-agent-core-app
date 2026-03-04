@@ -2,6 +2,7 @@
 description: "Update TAC expertise with new learnings, patterns discovered, or methodology refinements"
 allowed-tools: Read, Write, Edit, Grep, Glob
 argument-hint: [component] [outcome: success|failed|partial]
+model: haiku
 ---
 
 # TAC Expert - Self-Improve Mode

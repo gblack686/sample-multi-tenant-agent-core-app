@@ -2,6 +2,7 @@
 allowed-tools: Read, Write, Glob, Grep, Bash
 description: "Check frontend builds, validate test result mappings, and verify consistency across frontends"
 argument-hint: [--build | --mappings | --all | --html]
+model: haiku
 ---
 
 # Frontend Expert - Maintenance Command

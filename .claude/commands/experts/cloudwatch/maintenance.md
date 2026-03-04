@@ -2,6 +2,7 @@
 allowed-tools: Read, Write, Glob, Grep, Bash
 description: "Check CloudWatch connectivity, query recent runs, validate telemetry pipeline"
 argument-hint: [--connectivity | --recent | --validate | --failures | --history]
+model: haiku
 ---
 
 # CloudWatch Expert - Maintenance Command

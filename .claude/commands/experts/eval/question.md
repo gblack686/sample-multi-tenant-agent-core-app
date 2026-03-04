@@ -1,6 +1,7 @@
 ---
 description: "Query eval suite features, test patterns, AWS tools, or get answers without making changes"
 allowed-tools: Read, Glob, Grep, Bash
+model: haiku
 ---
 
 # Eval Expert - Question Mode
