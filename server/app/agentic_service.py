@@ -376,6 +376,28 @@ EAGLE_TOOLS = [
             "required": ["action"],
         },
     },
+    {
+        "name": "query_compliance_matrix",
+        "description": (
+            "Query NCI/NIH contract requirements decision tree. "
+            "Pass a JSON params string with operation (query/list_methods/list_types/"
+            "list_thresholds/search_far/suggest_vehicle) and operation-specific fields."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "params": {
+                    "type": "string",
+                    "description": (
+                        'JSON string. For query: {"operation":"query","contract_value":85000,'
+                        '"acquisition_method":"sap","contract_type":"ffp","is_services":true}. '
+                        'For search: {"operation":"search_far","keyword":"sole source"}.'
+                    ),
+                },
+            },
+            "required": ["params"],
+        },
+    },
 ]
 
 
@@ -2160,6 +2182,19 @@ def _exec_intake_workflow(params: dict, tenant_id: str) -> dict:
         }
 
 
+# ── Compliance Matrix Handler ────────────────────────────────────────
+
+def _exec_query_compliance_matrix(params: dict, tenant_id: str) -> dict:
+    """Execute a compliance matrix operation (read-only, no tenant scoping)."""
+    from .compliance_matrix import execute_operation
+
+    # Support both direct dict and single-string-param wrapper
+    raw = params.get("params", params)
+    if isinstance(raw, str):
+        raw = json.loads(raw)
+    return execute_operation(raw)
+
+
 # ── Tool Dispatch ────────────────────────────────────────────────────
 
 # Map of tool name → handler function
@@ -2172,6 +2207,7 @@ TOOL_DISPATCH = {
     "create_document": _exec_create_document,
     "get_intake_status": _exec_get_intake_status,
     "intake_workflow": _exec_intake_workflow,
+    "query_compliance_matrix": _exec_query_compliance_matrix,
 }
 
 # Tools that need session_id for per-user scoping
