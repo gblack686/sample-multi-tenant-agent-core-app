@@ -260,7 +260,12 @@ async def _fast_trivial_response(message: str) -> dict | None:
         ),
     )
 
-    output_text = resp["output"]["message"]["content"][0]["text"]
+    # Some models (e.g. MiniMax) return reasoningContent blocks before text
+    content_blocks = resp["output"]["message"]["content"]
+    output_text = next(
+        (b["text"] for b in content_blocks if "text" in b),
+        str(content_blocks),
+    )
     usage = resp.get("usage", {})
     return {
         "text": output_text,
@@ -2252,6 +2257,24 @@ async def update_user_preferences(
 async def reset_user_preferences(user: UserContext = Depends(get_user_from_header)):
     """Reset all user preferences to system defaults."""
     return reset_prefs(user.tenant_id, user.user_id)
+
+
+# ── Test Run Viewer Endpoints ─────────────────────────────────────
+
+@app.get("/api/admin/test-runs")
+async def list_test_runs_endpoint(limit: int = 20):
+    """List recent test runs from DynamoDB."""
+    from .test_result_store import list_test_runs
+    runs = list_test_runs(limit=limit)
+    return {"runs": runs, "count": len(runs)}
+
+
+@app.get("/api/admin/test-runs/{run_id}")
+async def get_test_run_detail(run_id: str):
+    """Get individual test results for a specific run."""
+    from .test_result_store import get_test_run_results
+    results = get_test_run_results(run_id)
+    return {"run_id": run_id, "results": results, "count": len(results)}
 
 
 if __name__ == "__main__":
