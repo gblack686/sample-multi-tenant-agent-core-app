@@ -700,6 +700,21 @@ _SERVICE_TOOL_DEFS = {
         "Search the FAR and DFARS for clauses, requirements, and guidance. "
         "Pass JSON with 'query' and optional 'parts' array."
     ),
+    "manage_skills": (
+        "Create, list, update, delete, or publish custom skills. "
+        "Pass JSON: {action, skill_id?, name?, display_name?, description?, prompt_body?, triggers?, tools?, model?, visibility?}. "
+        "Actions: list, get, create, update, delete, submit, publish, disable."
+    ),
+    "manage_prompts": (
+        "List, view, set, or delete agent prompt overrides. "
+        "Pass JSON: {action, agent_name?, prompt_body?, is_append?}. "
+        "Actions: list, get, set, delete, resolve."
+    ),
+    "manage_templates": (
+        "List, view, set, or delete document templates. "
+        "Pass JSON: {action, doc_type?, template_body?, display_name?, user_id?}. "
+        "Actions: list, get, set, delete, resolve."
+    ),
 }
 
 
