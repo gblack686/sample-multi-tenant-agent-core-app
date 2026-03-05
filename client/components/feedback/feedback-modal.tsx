@@ -144,7 +144,13 @@ export default function FeedbackModal() {
               rows={3}
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              placeholder="Tell us more..."
+              onKeyDown={(e) => {
+                if (e.ctrlKey && e.key === 'Enter') {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+              placeholder="Tell us more... (Ctrl+Enter to submit)"
               className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
             />
           </div>
