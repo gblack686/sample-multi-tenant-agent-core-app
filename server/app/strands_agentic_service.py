@@ -508,13 +508,20 @@ def _make_service_tool(
     if not handler:
         raise ValueError(f"No handler for tool: {tool_name}")
 
+    # Ensure legacy handlers receive a composite session id format:
+    # {tenant_id}#{tier}#{user_id}#{session}
+    # This preserves per-user S3 scoping and avoids demo-user fallback.
+    scoped_session_id = session_id
+    if not scoped_session_id or "#" not in scoped_session_id:
+        scoped_session_id = f"{tenant_id}#advanced#{user_id}#{session_id or ''}"
+
     @tool(name=tool_name)
     def service_tool(params: str) -> str:
         """Placeholder docstring replaced below."""
         parsed = json.loads(params) if isinstance(params, str) else params
         try:
             if tool_name in TOOLS_NEEDING_SESSION:
-                result = handler(parsed, tenant_id, session_id)
+                result = handler(parsed, tenant_id, scoped_session_id)
             else:
                 result = handler(parsed, tenant_id)
 
@@ -787,6 +794,13 @@ async def sdk_query(
         workspace_id=resolved_workspace_id,
     )
 
+    # Build service tools (S3, DynamoDB, create_document, search_far, etc.)
+    service_tools = _build_service_tools(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        session_id=session_id,
+    )
+
     system_prompt = build_supervisor_prompt(
         tenant_id=tenant_id,
         user_id=user_id,
@@ -801,7 +815,7 @@ async def sdk_query(
     supervisor = Agent(
         model=_model,
         system_prompt=system_prompt,
-        tools=skill_tools,
+        tools=skill_tools + service_tools,
         callback_handler=None,
         messages=strands_history,
     )
@@ -885,6 +899,18 @@ async def sdk_query_streaming(
         workspace_id=resolved_workspace_id,
     )
 
+    # Build service tools (S3, DynamoDB, create_document, search_far, etc.)
+    # Pass an async result queue so create_document can emit tool_result chunks.
+    result_queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+    service_tools = _build_service_tools(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        session_id=session_id,
+        result_queue=result_queue,
+        loop=loop,
+    )
+
     system_prompt = build_supervisor_prompt(
         tenant_id=tenant_id,
         user_id=user_id,
@@ -901,7 +927,7 @@ async def sdk_query_streaming(
     supervisor = Agent(
         model=_model,
         system_prompt=system_prompt,
-        tools=skill_tools,
+        tools=skill_tools + service_tools,
         callback_handler=handler,
         messages=strands_history,
     )
@@ -926,7 +952,19 @@ async def sdk_query_streaming(
     full_text_parts: list[str] = []
     tools_called: list[str] = []
 
+    def _drain_tool_results() -> list[dict]:
+        drained: list[dict] = []
+        while True:
+            try:
+                drained.append(result_queue.get_nowait())
+            except asyncio.QueueEmpty:
+                break
+        return drained
+
     while True:
+        for tool_result_chunk in _drain_tool_results():
+            yield tool_result_chunk
+
         try:
             # Poll queue with short timeout to stay async-friendly
             chunk = await asyncio.to_thread(chunk_queue.get, timeout=0.1)
@@ -946,8 +984,13 @@ async def sdk_query_streaming(
             tools_called.append(chunk.get("name", ""))
             yield chunk
 
+        for tool_result_chunk in _drain_tool_results():
+            yield tool_result_chunk
+
     # Wait for thread to finish
     thread.join(timeout=5)
+    for tool_result_chunk in _drain_tool_results():
+        yield tool_result_chunk
 
     # Extract usage from result
     usage = {}

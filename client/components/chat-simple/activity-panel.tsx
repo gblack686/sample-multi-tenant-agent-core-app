@@ -14,6 +14,7 @@ interface ActivityPanelProps {
   logs: AuditLogEntry[];
   clearLogs: () => void;
   documents: Record<string, DocumentInfo[]>;
+  sessionId?: string;
   isStreaming: boolean;
   isOpen: boolean;
   onToggle: () => void;
@@ -47,8 +48,22 @@ function getDocIcon(type: string): string {
 // Sub-components
 // ---------------------------------------------------------------------------
 
-function DocumentsTab({ documents }: { documents: Record<string, DocumentInfo[]> }) {
+function DocumentsTab({
+  documents,
+  sessionId,
+}: {
+  documents: Record<string, DocumentInfo[]>;
+  sessionId?: string;
+}) {
   const allDocs = Object.values(documents).flat();
+
+  const openDoc = (doc: DocumentInfo) => {
+    const raw = doc.document_id || doc.s3_key || doc.title;
+    const docId = encodeURIComponent(raw);
+    const params = new URLSearchParams();
+    if (sessionId) params.set('session', sessionId);
+    window.open(`/documents/${docId}?${params.toString()}`, '_blank');
+  };
 
   if (allDocs.length === 0) {
     return (
@@ -65,7 +80,13 @@ function DocumentsTab({ documents }: { documents: Record<string, DocumentInfo[]>
   return (
     <div className="space-y-2">
       {allDocs.map((doc, i) => (
-        <div key={doc.document_id ?? i} className="rounded-lg border border-[#D8DEE6] bg-white p-3 hover:shadow-sm transition">
+        <button
+          key={doc.document_id ?? i}
+          type="button"
+          onClick={() => openDoc(doc)}
+          className="w-full text-left rounded-lg border border-[#D8DEE6] bg-white p-3 hover:shadow-sm transition"
+          title="Open document"
+        >
           <div className="flex items-start gap-2">
             <span className="text-lg shrink-0">{getDocIcon(doc.document_type)}</span>
             <div className="min-w-0 flex-1">
@@ -90,7 +111,7 @@ function DocumentsTab({ documents }: { documents: Record<string, DocumentInfo[]>
               )}
             </div>
           </div>
-        </div>
+        </button>
       ))}
     </div>
   );
@@ -212,6 +233,7 @@ export default function ActivityPanel({
   logs,
   clearLogs,
   documents,
+  sessionId,
   isStreaming,
   isOpen,
   onToggle,
@@ -296,7 +318,7 @@ export default function ActivityPanel({
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-4">
-        {activeTab === 'documents' && <DocumentsTab documents={documents} />}
+        {activeTab === 'documents' && <DocumentsTab documents={documents} sessionId={sessionId} />}
         {activeTab === 'notifications' && <NotificationsTab documents={documents} />}
         {activeTab === 'logs' && <AgentLogs logs={logs} />}
       </div>

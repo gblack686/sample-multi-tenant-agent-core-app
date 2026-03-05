@@ -231,14 +231,13 @@ export default function SimpleChatInterface() {
         },
 
         onDocumentGenerated: (doc) => {
-            // Attach document to latest assistant message
-            const attachTo = lastAssistantIdRef.current;
-            if (attachTo) {
-                setDocuments((prev) => ({
-                    ...prev,
-                    [attachTo]: [...(prev[attachTo] || []), doc],
-                }));
-            }
+            // Attach to the active streaming message when tool_result arrives
+            // before the first text chunk sets lastAssistantIdRef.
+            const attachTo = lastAssistantIdRef.current ?? streamingMsgIdRef.current;
+            setDocuments((prev) => ({
+                ...prev,
+                [attachTo]: [...(prev[attachTo] || []), doc],
+            }));
 
             // Persist to localStorage for Packages & Documents pages
             if (currentSessionId) {
@@ -465,6 +464,7 @@ export default function SimpleChatInterface() {
                 logs={logs}
                 clearLogs={clearLogs}
                 documents={documents}
+                sessionId={currentSessionId ?? ''}
                 isStreaming={isStreaming}
                 isOpen={isPanelOpen}
                 onToggle={() => setIsPanelOpen(v => !v)}
