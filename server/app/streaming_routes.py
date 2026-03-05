@@ -108,6 +108,14 @@ async def stream_generator(
                 await writer.write_tool_use(sse_queue, chunk.get("name", ""), {})
                 yield await sse_queue.get()
 
+            elif chunk_type == "tool_result":
+                await writer.write_tool_result(
+                    sse_queue,
+                    chunk.get("name", ""),
+                    chunk.get("result", {}),
+                )
+                yield await sse_queue.get()
+
             elif chunk_type == "complete":
                 # Persist assistant response to DynamoDB
                 if session_id and full_response_parts:

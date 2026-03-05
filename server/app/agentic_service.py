@@ -11,7 +11,6 @@ import uuid
 from datetime import datetime
 from typing import Any, List
 
-import anthropic
 import boto3
 from botocore.exceptions import ClientError, BotoCoreError
 
@@ -1082,44 +1081,100 @@ def _exec_search_far(params: dict, tenant_id: str) -> dict:
 
 
 def _exec_create_document(params: dict, tenant_id: str, session_id: str = None) -> dict:
-    """Generate acquisition documents and save to S3."""
+    """Generate acquisition documents and save to S3.
+
+    Uses official S3 templates when available (DOCX/XLSX), falling back to
+    markdown generators when templates are unavailable or fail to load.
+    """
+    from app.template_service import TemplateService
+
     doc_type = params.get("doc_type", "sow")
     title = params.get("title", "Untitled Acquisition")
     data = params.get("data", {})
+    output_format = params.get("output_format", "docx")  # docx, xlsx, or md
     timestamp = time.strftime("%Y%m%d_%H%M%S")
 
-    # Generate document based on type
-    if doc_type == "sow":
-        content = _generate_sow(title, data)
-    elif doc_type == "igce":
-        content = _generate_igce(title, data)
-    elif doc_type == "market_research":
-        content = _generate_market_research(title, data)
-    elif doc_type == "justification":
-        content = _generate_justification(title, data)
-    elif doc_type == "acquisition_plan":
-        content = _generate_acquisition_plan(title, data)
-    elif doc_type == "eval_criteria":
-        content = _generate_eval_criteria(title, data)
-    elif doc_type == "security_checklist":
-        content = _generate_security_checklist(title, data)
-    elif doc_type == "section_508":
-        content = _generate_section_508(title, data)
-    elif doc_type == "cor_certification":
-        content = _generate_cor_certification(title, data)
-    elif doc_type == "contract_type_justification":
-        content = _generate_contract_type_justification(title, data)
-    else:
-        return {"error": f"Unknown document type: {doc_type}. Supported: sow, igce, market_research, justification, acquisition_plan, eval_criteria, security_checklist, section_508, cor_certification, contract_type_justification."}
+    # Validate doc_type
+    valid_doc_types = {
+        "sow", "igce", "market_research", "justification", "acquisition_plan",
+        "eval_criteria", "security_checklist", "section_508", "cor_certification",
+        "contract_type_justification",
+    }
+    if doc_type not in valid_doc_types:
+        return {"error": f"Unknown document type: {doc_type}. Supported: {', '.join(sorted(valid_doc_types))}."}
 
-    # Save to S3 - per-user path
+    # Map doc_type to markdown generator functions (for fallback)
+    markdown_generators = {
+        "sow": _generate_sow,
+        "igce": _generate_igce,
+        "market_research": _generate_market_research,
+        "justification": _generate_justification,
+        "acquisition_plan": _generate_acquisition_plan,
+        "eval_criteria": _generate_eval_criteria,
+        "security_checklist": _generate_security_checklist,
+        "section_508": _generate_section_508,
+        "cor_certification": _generate_cor_certification,
+        "contract_type_justification": _generate_contract_type_justification,
+    }
+
+    # Get user_id for S3 path
     user_id = _extract_user_id(session_id)
-    s3_key = f"eagle/{tenant_id}/{user_id}/documents/{doc_type}_{timestamp}.md"
+
+    # Try template-based generation first
+    try:
+        service = TemplateService(tenant_id, user_id, markdown_generators)
+        result = service.generate_document(doc_type, title, data, output_format)
+
+        if not result.success:
+            # Template service failed, use direct markdown fallback
+            generator = markdown_generators.get(doc_type)
+            if generator:
+                content = generator(title, data)
+                file_type = "md"
+                source = "markdown_fallback"
+                template_path = None
+            else:
+                return {"error": f"No generator available for {doc_type}: {result.error}"}
+        else:
+            content = result.preview  # For response display
+            file_type = result.file_type
+            source = result.source
+            template_path = result.template_path
+
+    except ImportError as e:
+        # python-docx or openpyxl not available, use markdown
+        logger.warning("Template libraries unavailable: %s, using markdown fallback", e)
+        generator = markdown_generators.get(doc_type)
+        if generator:
+            content = generator(title, data)
+            file_type = "md"
+            source = "markdown_fallback"
+            template_path = None
+            result = None
+        else:
+            return {"error": f"No generator available for {doc_type}"}
+
+    # Determine file extension and content to save
+    ext = file_type if file_type in ("docx", "xlsx") else "md"
+    s3_key = f"eagle/{tenant_id}/{user_id}/documents/{doc_type}_{timestamp}.{ext}"
     bucket = os.getenv("S3_BUCKET", "eagle-documents-695681773636-dev")
 
+    # Save to S3
     try:
         s3 = _get_s3()
-        s3.put_object(Bucket=bucket, Key=s3_key, Body=content.encode("utf-8"))
+        if result and result.success and file_type in ("docx", "xlsx"):
+            # Save binary content (DOCX/XLSX)
+            s3.put_object(
+                Bucket=bucket,
+                Key=s3_key,
+                Body=result.content,
+                ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                if file_type == "docx"
+                else "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        else:
+            # Save markdown content
+            s3.put_object(Bucket=bucket, Key=s3_key, Body=content.encode("utf-8"))
         save_status = "saved"
         save_location = f"s3://{bucket}/{s3_key}"
     except (ClientError, BotoCoreError) as e:
@@ -1127,17 +1182,24 @@ def _exec_create_document(params: dict, tenant_id: str, session_id: str = None) 
         save_location = f"S3 save failed: {str(e)}"
         logger.warning("Failed to save document to S3: %s", e)
 
-    return {
+    response = {
         "document_type": doc_type,
         "title": title,
         "status": save_status,
         "s3_location": save_location,
         "s3_key": s3_key,
+        "file_type": file_type,
+        "source": source,
         "content": content,
         "word_count": len(content.split()),
         "generated_at": datetime.utcnow().isoformat(),
         "note": "This is a draft document. Review and customize before official use.",
     }
+
+    if template_path:
+        response["template_path"] = template_path
+
+    return response
 
 
 def _generate_sow(title: str, data: dict) -> str:
@@ -2456,13 +2518,21 @@ def execute_tool(tool_name: str, tool_input: dict, session_id: str = None) -> st
 
 # ── Anthropic Client ─────────────────────────────────────────────────
 
-def get_client() -> anthropic.Anthropic:
+def get_client() -> Any:
     """Create an Anthropic client.
 
     When USE_BEDROCK=true, returns an AnthropicBedrock client that routes
     requests through Amazon Bedrock using AWS credentials (no API key needed).
     Otherwise, uses the direct Anthropic API with ANTHROPIC_API_KEY.
     """
+    try:
+        import anthropic
+    except ModuleNotFoundError as exc:
+        raise RuntimeError(
+            "Anthropic SDK is required for legacy agentic_service chat path. "
+            "Install 'anthropic' or use the Strands chat path."
+        ) from exc
+
     if _USE_BEDROCK:
         return anthropic.AnthropicBedrock(aws_region=_BEDROCK_REGION)
     api_key = os.getenv("ANTHROPIC_API_KEY")
