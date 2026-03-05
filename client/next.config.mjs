@@ -7,7 +7,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const nextConfig = {
     output: 'standalone',
     eslint: { ignoreDuringBuilds: true },
-    trailingSlash: true,
+    trailingSlash: false,
     images: {
         unoptimized: true,
     },

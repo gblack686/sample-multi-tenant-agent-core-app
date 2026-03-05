@@ -155,7 +155,7 @@ export class EagleCoreStack extends cdk.Stack {
       ],
     }));
 
-    // Bedrock: Invoke models — restricted to Haiku 4.5 only to prevent Opus/Sonnet charges.
+    // Bedrock: Invoke models — restricted to Sonnet 4.6 only.
     // To allow other models, add their ARNs here and re-deploy the core stack.
     this.appRole.addToPolicy(new iam.PolicyStatement({
       actions: [
@@ -164,10 +164,10 @@ export class EagleCoreStack extends cdk.Stack {
         'bedrock:InvokeAgent',
       ],
       resources: [
-        // Haiku 4.5 foundation model (direct invocation)
-        'arn:aws:bedrock:*::foundation-model/anthropic.claude-haiku-4-5-20251001-v1:0',
-        // Haiku 4.5 cross-region inference profile (us.* prefix used by SDK)
-        `arn:aws:bedrock:us-east-1:${this.account}:inference-profile/us.anthropic.claude-haiku-4-5-20251001-v1:0`,
+        // Sonnet 4.6 foundation model (direct invocation)
+        'arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-6',
+        // Sonnet 4.6 cross-region inference profile (us.* prefix used by SDK)
+        `arn:aws:bedrock:us-east-1:${this.account}:inference-profile/us.anthropic.claude-sonnet-4-6`,
         // Bedrock agents (routing, not model-specific)
         `arn:aws:bedrock:us-east-1:${this.account}:agent/*`,
       ],
