@@ -2803,6 +2803,81 @@ async def test_34_store_crud_functions_exist():
 
 
 # ============================================================
+# Test 35: UC-01 New Acquisition Package (Compliance Matrix)
+# ============================================================
+
+async def test_35_uc01_new_acquisition_package():
+    """UC-01: New acquisition package — $2.5M CT scanner, negotiated CPFF.
+
+    Deterministic compliance matrix test: validates that a $2.5M negotiated
+    procurement triggers the correct thresholds (TINA), documents, competition
+    rules (FAR Part 15), and approval requirements.
+    """
+    print("\n" + "=" * 70)
+    print("TEST 35: UC-01 New Acquisition Package ($2.5M CT Scanner, Negotiated CPFF)")
+    print("=" * 70)
+
+    from app.compliance_matrix import execute_operation
+    result = execute_operation({
+        "operation": "query",
+        "contract_value": 2500000,
+        "acquisition_method": "negotiated",
+        "contract_type": "cpff",
+        "is_services": True,
+        "is_it": True,
+    })
+
+    steps_passed = []
+
+    # Step 1: no errors
+    errors = result.get("errors", [])
+    no_errors = len(errors) == 0
+    steps_passed.append(("no_errors", no_errors))
+    print(f"  Step 1: errors={errors} {'PASS' if no_errors else 'FAIL'}")
+
+    # Step 2: documents_required includes at least 5 items (SOW, IGCE, AP, market research, etc.)
+    docs = result.get("documents_required", [])
+    docs_lower = [d.lower() if isinstance(d, str) else str(d).lower() for d in docs]
+    has_enough_docs = isinstance(docs, list) and len(docs) >= 5
+    steps_passed.append(("documents_at_least_5", has_enough_docs))
+    print(f"  Step 2: documents_required count={len(docs)} (need >=5) {'PASS' if has_enough_docs else 'FAIL'}")
+    for d in docs:
+        print(f"    - {d}")
+
+    # Step 3: thresholds_triggered includes TINA ($2.5M > $750K TINA threshold)
+    triggered = result.get("thresholds_triggered", [])
+    triggered_labels = [t.get("short", "") for t in triggered]
+    triggered_lower = " ".join(triggered_labels).lower()
+    tina_triggered = any("tina" in lbl.lower() or "$750" in lbl for lbl in triggered_labels)
+    steps_passed.append(("tina_triggered", tina_triggered))
+    print(f"  Step 3: thresholds_triggered={triggered_labels} TINA={'found' if tina_triggered else 'missing'} {'PASS' if tina_triggered else 'FAIL'}")
+
+    # Step 4: competition_rules mentions full and open or FAR 15
+    competition = result.get("competition_rules", "")
+    competition_lower = competition.lower() if isinstance(competition, str) else ""
+    has_competition = any(
+        phrase in competition_lower
+        for phrase in ["full and open", "far 15", "far part 15", "negotiated", "competitive"]
+    )
+    steps_passed.append(("competition_far15", has_competition))
+    print(f"  Step 4: competition_rules mentions FAR 15/full-and-open={'yes' if has_competition else 'no'} {'PASS' if has_competition else 'FAIL'}")
+
+    # Step 5: approvals_required is non-empty
+    approvals = result.get("approvals_required", [])
+    has_approvals = isinstance(approvals, list) and len(approvals) > 0
+    steps_passed.append(("approvals_required", has_approvals))
+    print(f"  Step 5: approvals_required count={len(approvals)} {'PASS' if has_approvals else 'FAIL'}")
+    for a in approvals:
+        print(f"    - {a}")
+
+    passed = all(ok for _, ok in steps_passed)
+    indicators_found = sum(1 for _, ok in steps_passed if ok)
+    print(f"  UC-01 indicators: {indicators_found}/5")
+    print(f"  {'PASS' if passed else 'FAIL'} - UC-01 New Acquisition Package")
+    return passed
+
+
+# ============================================================
 # Main infrastructure
 # ============================================================
 
@@ -2866,6 +2941,7 @@ test_names = {
     32: "32_admin_manager_skill_registered",
     33: "33_workspace_store_default_creation",
     34: "34_store_crud_functions_exist",
+    35: "35_uc01_new_acquisition_package",
 }
 
 
@@ -3041,6 +3117,7 @@ async def _run_test(test_id: int, capture: "CapturingStream", session_id: str = 
         32: ("32_admin_manager_skill_registered", test_32_admin_manager_skill_registered),
         33: ("33_workspace_store_default_creation", test_33_workspace_store_default_creation),
         34: ("34_store_crud_functions_exist", test_34_store_crud_functions_exist),
+        35: ("35_uc01_new_acquisition_package", test_35_uc01_new_acquisition_package),
     }
 
     result_key, test_fn = TEST_REGISTRY[test_id]
@@ -3260,6 +3337,45 @@ async def main():
 
     # Emit to CloudWatch (non-fatal)
     emit_to_cloudwatch(trace_output, results)
+
+    # Persist to DynamoDB (same store as pytest — visible on /admin/tests)
+    try:
+        from app.test_result_store import save_test_run, save_test_result
+
+        eval_run_id = trace_output["run_id"]
+        eval_summary = {
+            "timestamp": run_ts,
+            "total": len(results),
+            "passed": passed,
+            "failed": failed,
+            "skipped": skipped,
+            "errors": 0,
+            "duration_s": 0,
+            "pass_rate": round((passed / len(results)) * 100, 1) if results else 0,
+            "model": MODEL_ID,
+            "trigger": "eval",
+            "hostname": __import__("socket").gethostname(),
+        }
+        save_test_run(eval_run_id, eval_summary)
+
+        for test_id_num, log_lines in capture.per_test_logs.items():
+            result_key = test_names.get(test_id_num, str(test_id_num))
+            result_val = results.get(result_key)
+            status = "passed" if result_val is True else ("skipped" if result_val is None else "failed")
+            error_text = ""
+            if status == "failed":
+                error_text = "\n".join(log_lines[-20:])  # last 20 log lines as error context
+            save_test_result(eval_run_id, f"eval::{result_key}", {
+                "test_file": "test_strands_eval.py",
+                "test_name": result_key,
+                "status": status,
+                "duration_s": 0,
+                "error": error_text,
+            })
+
+        print(f"Eval results persisted to DynamoDB: run_id={eval_run_id} ({passed}/{len(results)} passed)")
+    except Exception as e:
+        print(f"Failed to persist eval results to DynamoDB (non-fatal): {e}")
 
     # Publish metrics + archive to S3 (non-fatal, no-op without boto3)
     if _HAS_AWS_PUBLISHER:
