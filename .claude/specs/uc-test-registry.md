@@ -78,19 +78,19 @@
   - `uc-option-exercise.spec.ts` -- option year 3, NCI-2024-0847, cost escalation, COR change
 - **MCP Browser**:
   - `eagle-uc-workflows-test` -- UC-03 phase (option exercise, escalation, COR, package docs)
-- **Status**: PARTIAL (no pytest unit tests for option exercise logic)
+- **Status**: PARTIAL (no deterministic backend logic to unit test — LLM-driven workflow)
 
 ### UC-04: Contract Modification
 - **Jira**: EAGLE-17
 - **Actor**: Core/CO
-- **Pytest**: ---
+- **Pytest**: --- (no deterministic backend logic — LLM-driven workflow)
 - **Eval**:
   - Test 23: `test_23_uc04_contract_modification` -- add $150K funding, extend PoP 6 months
 - **Playwright**:
   - `uc-contract-modification.spec.ts` -- add $150K, extend PoP 6 months, bilateral mod
 - **MCP Browser**:
   - `eagle-uc-workflows-test` -- UC-04 phase (modification type, funding, PoP extension, scope)
-- **Status**: PARTIAL (no pytest unit tests for modification logic)
+- **Status**: PARTIAL (no deterministic backend logic to unit test — LLM-driven workflow)
 
 ---
 
