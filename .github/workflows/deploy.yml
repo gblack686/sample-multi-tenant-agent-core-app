@@ -197,6 +197,54 @@ jobs:
           --region ${{ env.AWS_REGION }}
         echo "Frontend deployment stable"
 
+    - name: Sync EAGLE-DEV-ALB target group to new task IP
+      run: |
+        TG_ARN="arn:aws:elasticloadbalancing:us-east-1:695681773636:targetgroup/EAGLE-DEV-FRONTEND-IP/0e76ba2b0ab49d0c"
+
+        # Get the running task's private IP
+        TASK_ARN=$(aws ecs list-tasks \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --service-name ${{ env.FRONTEND_SERVICE }} \
+          --desired-status RUNNING \
+          --region ${{ env.AWS_REGION }} \
+          --query 'taskArns[0]' --output text)
+
+        NEW_IP=$(aws ecs describe-tasks \
+          --cluster ${{ env.CLUSTER_NAME }} \
+          --tasks "$TASK_ARN" \
+          --region ${{ env.AWS_REGION }} \
+          --query 'tasks[0].attachments[0].details[?name==`privateIPv4Address`].value' \
+          --output text)
+
+        echo "New frontend task IP: $NEW_IP"
+
+        # Deregister all current targets
+        OLD_TARGETS=$(aws elbv2 describe-target-health \
+          --target-group-arn "$TG_ARN" \
+          --region ${{ env.AWS_REGION }} \
+          --query 'TargetHealthDescriptions[*].{Id:Target.Id,Port:Target.Port}' \
+          --output json)
+
+        for row in $(echo "$OLD_TARGETS" | jq -c '.[]'); do
+          OLD_IP=$(echo "$row" | jq -r '.Id')
+          OLD_PORT=$(echo "$row" | jq -r '.Port')
+          if [ "$OLD_IP" != "$NEW_IP" ]; then
+            echo "Deregistering old target $OLD_IP:$OLD_PORT"
+            aws elbv2 deregister-targets \
+              --target-group-arn "$TG_ARN" \
+              --targets Id="$OLD_IP",Port="$OLD_PORT" \
+              --region ${{ env.AWS_REGION }}
+          fi
+        done
+
+        # Register new IP
+        aws elbv2 register-targets \
+          --target-group-arn "$TG_ARN" \
+          --targets Id="$NEW_IP",Port=3000 \
+          --region ${{ env.AWS_REGION }}
+
+        echo "EAGLE-DEV-ALB now targeting $NEW_IP:3000"
+
   # ── Post-Deploy Verification ────────────────────────────────
   verify:
     needs: [deploy-infra, deploy-backend, deploy-frontend]
