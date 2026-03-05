@@ -4,7 +4,7 @@ parent: "[[test/_index]]"
 file-type: expertise
 human_reviewed: false
 tags: [expert-file, mental-model, test, pytest, playwright, smoke, performance, cache]
-last_updated: 2026-03-04T19:30:00
+last_updated: 2026-03-05T08:46:00
 ---
 
 # Test Expertise (Complete Mental Model)
@@ -22,7 +22,7 @@ last_updated: 2026-03-04T19:30:00
 | `test_perf_simple_message.py` | 10 | Unit (mocked) | No | Full — mock DDB, Bedrock |
 | `test_chat_endpoints.py` | ~15 | Unit + integration | No | Partial — mock auth |
 | `test_test_result_persistence.py` | 18 | Unit (mocked) | No | Full — mock DDB, FastAPI TestClient |
-| `test_document_pipeline.py` | ~12 | Unit + integration | No | Partial — mock S3 |
+| `test_document_pipeline.py` | 26 | Unit + integration | No | Partial — mock S3, TestClient |
 | `test_strands_eval.py` | 38 | Integration + eval | Yes | None — real AWS |
 | `test_strands_poc.py` | 1 | Integration | Yes | None — real Bedrock |
 | `test_strands_multi_agent.py` | 3 | Integration | Yes | None — real Bedrock |
@@ -255,13 +255,19 @@ Tests tagged to use cases via `.claude/specs/uc-test-registry.md`. Each UC requi
 | Workspace override changes supervisor prompt | Overrides silently ignored | MEDIUM |
 | Prompt injection via tenant_id/user_id | Security | LOW |
 
-### Document Versioning
+### Document Export
 
-| Gap | Risk | Priority |
-|-----|------|----------|
-| Version increment on re-generation | Overwritten documents | HIGH |
-| Naming convention compliance | Inconsistent artifact names | MEDIUM |
-| Export returns latest version | Wrong version downloaded | MEDIUM |
+| Gap | Risk | Priority | Status |
+|-----|------|----------|--------|
+| ~~DOCX checkbox ordering bug~~ | Checkboxes render as bullets | HIGH | **FIXED 2026-03-05** |
+| ~~PDF numbered lists lose numbers~~ | List items render without numbering | HIGH | **FIXED 2026-03-05** |
+| ~~PDF missing checkbox handling~~ | Checkboxes fall through to bullets | MEDIUM | **FIXED 2026-03-05** |
+| ~~PDF missing blockquote handling~~ | Blockquotes render as plain text | MEDIUM | **FIXED 2026-03-05** |
+| Export format visual quality (DOCX+PDF) | No branding, plain headers/tables | MEDIUM | **FIXED 2026-03-05** — NCI branding added |
+| Version increment on re-generation | Overwritten documents | HIGH | Open |
+| Naming convention compliance | Inconsistent artifact names | MEDIUM | Open |
+| Export returns latest version | Wrong version downloaded | MEDIUM | Open |
+| Export unit test for checkbox/blockquote output | Bugs could regress without specific assertions | MEDIUM | Open |
 
 ---
 
@@ -325,6 +331,8 @@ cd client && npx tsc --noEmit
 - UC test registry (`.claude/specs/uc-test-registry.md`) maps use cases → tests across all 4 suites (discovered: 2026-03-04)
 - Direct import from `app.compliance_matrix` in eval tests avoids relative import failure in standalone mode (discovered: 2026-03-04)
 - Trigger badge pattern (eval=purple, pytest=blue) for visual suite differentiation in admin UI (discovered: 2026-03-04)
+- Markdown parser elif ordering matters: checkbox patterns (`- [ ] `) must come before bullet patterns (`- `) since checkbox strings start with `- ` (discovered: 2026-03-05, component: document_export)
+- Existing export tests pass after full rewrite because they assert on HTTP status/content-type/non-empty body, not on internal formatting — resilient test design (discovered: 2026-03-05)
 
 ### patterns_to_avoid
 
@@ -333,6 +341,7 @@ cd client && npx tsc --noEmit
 - Using `asyncio.to_thread` assertions when code was changed to `invoke_async`
 - Running full eval suite (`test_strands_eval.py`) during unit test passes — costs money
 - Using `import tests.conftest` — `tests/` is not a Python package; use `importlib.util.spec_from_file_location()` instead
+- Putting more-specific `startswith()` checks after less-specific ones in elif chains — e.g. `- [ ] ` must be checked before `- ` (discovered: 2026-03-05, component: document_export)
 
 ### common_issues
 
@@ -351,3 +360,5 @@ cd client && npx tsc --noEmit
 - Disable persistence with `EAGLE_PERSIST_TEST_RESULTS=false` for CI or local-only runs
 - API endpoints: `GET /api/admin/test-runs` (list) and `GET /api/admin/test-runs/{run_id}` (detail)
 - Admin test viewer at `/admin/tests` — run history with drill-down into individual results
+- `document_export.py` rewrite-safe: existing tests assert on HTTP status + content-type + non-empty body, so internal formatting changes pass without test updates
+- New coverage gap: no test asserts checkbox `☐`/`☑` or blockquote content in DOCX/PDF output — add targeted export assertions to prevent regression
