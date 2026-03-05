@@ -313,7 +313,8 @@ EAGLE_TOOLS = [
         "name": "cloudwatch_logs",
         "description": (
             "Read CloudWatch logs filtered by user/session. Use this to inspect "
-            "application logs, debug issues, or audit user activity."
+            "application logs, debug issues, or audit user activity. "
+            "Pass user_id to scope results to a specific user."
         ),
         "input_schema": {
             "type": "object",
@@ -330,6 +331,10 @@ EAGLE_TOOLS = [
                 "filter_pattern": {
                     "type": "string",
                     "description": "CloudWatch filter pattern for searching logs",
+                },
+                "user_id": {
+                    "type": "string",
+                    "description": "Filter logs to this specific user ID",
                 },
                 "start_time": {
                     "type": "string",
@@ -699,6 +704,21 @@ _SERVICE_TOOL_DEFS = {
     "search_far": (
         "Search the FAR and DFARS for clauses, requirements, and guidance. "
         "Pass JSON with 'query' and optional 'parts' array."
+    ),
+    "manage_skills": (
+        "Create, list, update, delete, or publish custom skills. "
+        "Pass JSON: {action, skill_id?, name?, display_name?, description?, prompt_body?, triggers?, tools?, model?, visibility?}. "
+        "Actions: list, get, create, update, delete, submit, publish, disable."
+    ),
+    "manage_prompts": (
+        "List, view, set, or delete agent prompt overrides. "
+        "Pass JSON: {action, agent_name?, prompt_body?, is_append?}. "
+        "Actions: list, get, set, delete, resolve."
+    ),
+    "manage_templates": (
+        "List, view, set, or delete document templates. "
+        "Pass JSON: {action, doc_type?, template_body?, display_name?, user_id?}. "
+        "Actions: list, get, set, delete, resolve."
     ),
 }
 
