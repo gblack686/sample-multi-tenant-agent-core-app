@@ -4,7 +4,7 @@ parent: "[[test/_index]]"
 file-type: expertise
 human_reviewed: false
 tags: [expert-file, mental-model, test, pytest, playwright, smoke, performance, cache]
-last_updated: 2026-03-04T04:15:00
+last_updated: 2026-03-04T19:30:00
 ---
 
 # Test Expertise (Complete Mental Model)
@@ -29,6 +29,9 @@ last_updated: 2026-03-04T04:15:00
 | `test_strands_service_integration.py` | 2 | Integration | Yes | None — real Bedrock |
 | `test_bedrock_hello.py` | 4 | Integration | Yes | None — real Bedrock |
 | `test_bedrock_tools.py` | 1 | Integration | Yes | None — real Bedrock |
+| `test_compliance_matrix.py` | 38 | Unit (pure Python) | No | None — deterministic |
+| `test_feedback_store.py` | 15 | Unit (mocked) | No | Full — mock DDB |
+| `test_new_endpoints.py` | 30 | Unit (mocked) | No | Full — mock Bedrock, DDB |
 
 ### Infrastructure
 
@@ -52,6 +55,14 @@ last_updated: 2026-03-04T04:15:00
 | `uc-intake.spec.ts` | 1 | 90s | Yes | Real |
 | `uc-document.spec.ts` | 1 | 90s | Yes | Real |
 | `uc-far-search.spec.ts` | 1 | 90s | Yes | Real |
+| `admin-workspaces.spec.ts` | 9 | 30s | Yes | Real |
+| `admin-skills.spec.ts` | 11 | 30s | Yes | Real |
+| `admin-templates.spec.ts` | 8 | 30s | Yes | Real |
+| `keyboard-shortcuts.spec.ts` | ~10 | 30s | Yes | Real |
+| `chat-features.spec.ts` | ~13 | 30s | Yes | Real |
+| `uc-micro-purchase.spec.ts` | 3 | 90s | Yes | Real |
+| `uc-option-exercise.spec.ts` | 3 | 90s | Yes | Real |
+| `uc-contract-modification.spec.ts` | 3 | 90s | Yes | Real |
 
 ---
 
@@ -159,9 +170,56 @@ def test_endpoint():
     assert resp.json()["status"] == "healthy"
 ```
 
+### Pattern 8: Eval DynamoDB Persistence
+
+Eval runs now auto-persist to DynamoDB alongside pytest results (trigger: "eval").
+
+```python
+# In test_strands_eval.py main(), after CloudWatch emit:
+from app.test_result_store import save_test_run, save_test_result
+
+save_test_run(run_id, {
+    "timestamp": iso_ts, "total": N, "passed": P, "failed": F,
+    "skipped": S, "errors": 0, "duration_s": 0,
+    "pass_rate": rate, "model": MODEL_ID,
+    "trigger": "eval",                     # <-- distinguishes from pytest
+    "hostname": socket.gethostname(),
+})
+
+# Per-test results use eval:: prefix for nodeids:
+save_test_result(run_id, f"eval::{test_name}", {
+    "test_file": "test_strands_eval.py",
+    "test_name": test_name,
+    "status": "passed" | "failed" | "skipped",
+    "duration_s": 0,
+    "error": error_text,
+})
+```
+
+### Pattern 9: Pure Python Unit Test (No Mocks Needed)
+
+Used for deterministic modules like `compliance_matrix.py`.
+
+```python
+class TestGetRequirements:
+    def test_threshold_logic(self):
+        from app.compliance_matrix import get_requirements
+        result = get_requirements(value=500_000, contract_type="FFP", method="sealed_bid")
+        assert result["threshold_category"] == "SAT"
+        assert "FAR 14" in str(result["applicable_far_parts"])
+```
+
+### Pattern 10: UC Test Registry Cross-Reference
+
+Tests tagged to use cases via `.claude/specs/uc-test-registry.md`. Each UC requires coverage across 4 suites:
+- **Pytest**: deterministic unit tests ($0, <60s)
+- **Eval**: LLM integration tests (~$0.50/test, standalone CLI)
+- **Playwright**: automated E2E browser tests ($0, 1-5min)
+- **MCP Browser**: Claude-driven QA tests ($0, manual trigger)
+
 ---
 
-## Part 3: Key Coverage Gaps (as of 2026-03-03)
+## Part 3: Key Coverage Gaps (as of 2026-03-04)
 
 ### Fast-Path (Trivial Message Detection)
 
@@ -262,6 +320,11 @@ cd client && npx tsc --noEmit
 - `_re.IGNORECASE` with anchored regex (`^...$`) for message classification
 - `mock.patch()` context managers for clean test isolation
 - Import inside test methods to avoid module-level AWS client initialization
+- Pure Python tests (no mocks) for deterministic modules like `compliance_matrix.py` — 38 tests, zero AWS cost (discovered: 2026-03-04)
+- Eval DDB persistence via `save_test_run(trigger="eval")` — unified admin dashboard for both suites (discovered: 2026-03-04)
+- UC test registry (`.claude/specs/uc-test-registry.md`) maps use cases → tests across all 4 suites (discovered: 2026-03-04)
+- Direct import from `app.compliance_matrix` in eval tests avoids relative import failure in standalone mode (discovered: 2026-03-04)
+- Trigger badge pattern (eval=purple, pytest=blue) for visual suite differentiation in admin UI (discovered: 2026-03-04)
 
 ### patterns_to_avoid
 
