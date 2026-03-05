@@ -1025,6 +1025,7 @@ CloudWatch /eagle/test-runs
 - Don't use short diagram aliases (intake, docgen) as SKILL_TEST_MAP keys — they differ from plugin slugs
 - Don't forget `errors` field in TestRun interface — DynamoDB returns it alongside `failed`/`skipped` (discovered: 2026-03-04)
 - Don't add a new Strands agent without updating all three maps in `agent-colors.ts` — unknown agents render amber fallback color
+- Don't put `useEffect` network calls (e.g. health checks) inside components that mount on every page — use a shared context provider instead (discovered: 2026-03-05)
 
 ### common_issues
 - trace_logs.json must exist for /admin/tests to show data (legacy — new tests page uses DynamoDB)
@@ -1034,6 +1035,7 @@ CloudWatch /eagle/test-runs
 - `kb-review/[id]/approve` and `kb-review/[id]/reject` routes have TS errors: `params` should be `Promise<{ id: string }>` in Next.js 15+ (pre-existing)
 - `@excalidraw/excalidraw` module not found — optional dependency, not installed (pre-existing)
 - ActivityPanel internal default tab is 'logs' — if you want a different default, change `useState<TabId>('logs')` in `activity-panel.tsx`
+- Navigation between protected pages feels slow: TopNav was re-mounting on every page (not in shared layout), firing checkBackendHealth() on each nav — fixed by BackendStatusContext (2026-03-05)
 
 ### tips
 - Use /admin/eval to demonstrate EAGLE workflow to stakeholders (10 use cases as of 2026-02-25)
