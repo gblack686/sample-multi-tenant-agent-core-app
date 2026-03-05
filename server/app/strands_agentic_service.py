@@ -217,7 +217,8 @@ EAGLE_TOOLS = [
         "name": "cloudwatch_logs",
         "description": (
             "Read CloudWatch logs filtered by user/session. Use this to inspect "
-            "application logs, debug issues, or audit user activity."
+            "application logs, debug issues, or audit user activity. "
+            "Pass user_id to scope results to a specific user."
         ),
         "input_schema": {
             "type": "object",
@@ -234,6 +235,10 @@ EAGLE_TOOLS = [
                 "filter_pattern": {
                     "type": "string",
                     "description": "CloudWatch filter pattern for searching logs",
+                },
+                "user_id": {
+                    "type": "string",
+                    "description": "Filter logs to this specific user ID",
                 },
                 "start_time": {
                     "type": "string",
