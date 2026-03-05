@@ -209,24 +209,23 @@ jobs:
         role-to-assume: ${{ secrets.DEPLOY_ROLE_ARN }}
         aws-region: ${{ env.AWS_REGION }}
 
-    - name: HTTP health check
+    - name: Wait for ECS services to stabilize
       run: |
-        BACKEND_URL="${{ needs.deploy-infra.outputs.backend-url }}"
-        FRONTEND_URL="${{ needs.deploy-infra.outputs.frontend-url }}"
-
-        echo "--- Backend Health Check ---"
-        curl -sf "${BACKEND_URL}/api/health" | jq . || echo "Backend health check failed"
-
-        echo "--- Frontend Check ---"
-        curl -sf "${FRONTEND_URL}/" -o /dev/null -w "HTTP %{http_code}" || echo "Frontend check failed"
-
-        echo ""
-        echo "=== Deployment Complete ==="
-        echo "Frontend: ${FRONTEND_URL}"
-        echo "Backend:  ${BACKEND_URL}"
+        echo "=== Waiting for ECS rollout to complete ==="
+        for SVC in ${{ env.BACKEND_SERVICE }} ${{ env.FRONTEND_SERVICE }}; do
+          echo "--- Waiting on $SVC ---"
+          aws ecs wait services-stable \
+            --cluster ${{ env.CLUSTER_NAME }} \
+            --services "$SVC" \
+            --region ${{ env.AWS_REGION }} \
+          && echo "$SVC: stable" || echo "$SVC: wait timed out (may still be deploying)"
+        done
 
     - name: ECS service and ALB target health
       run: |
+        FRONTEND_URL="${{ needs.deploy-infra.outputs.frontend-url }}"
+        BACKEND_URL="${{ needs.deploy-infra.outputs.backend-url }}"
+
         echo "=== ECS Service Health ==="
         for SVC in ${{ env.BACKEND_SERVICE }} ${{ env.FRONTEND_SERVICE }}; do
           echo "--- $SVC ---"
@@ -242,9 +241,9 @@ jobs:
             --services "$SVC" \
             --region ${{ env.AWS_REGION }} \
             --query 'services[0].loadBalancers[0].targetGroupArn' \
-            --output text 2>/dev/null || echo "None")
+            --output text 2>/dev/null)
 
-          if [ "$TG_ARN" != "None" ] && [ "$TG_ARN" != "null" ] && [ -n "$TG_ARN" ]; then
+          if [ -n "$TG_ARN" ] && [ "$TG_ARN" != "None" ] && [ "$TG_ARN" != "null" ]; then
             echo "  ALB target group: $TG_ARN"
             aws elbv2 describe-target-health \
               --target-group-arn "$TG_ARN" \
@@ -253,6 +252,12 @@ jobs:
               --output table || echo "Could not describe target health for $SVC"
           fi
         done
+
+        echo ""
+        echo "=== Deployment Complete ==="
+        echo "Frontend: ${FRONTEND_URL}"
+        echo "Backend:  ${BACKEND_URL}"
+        echo "(ALBs are VPC-internal — access via NIH VPN)"
 
   # ── Post-Deploy Eval Suite ───────────────────────────────────
   post-deploy-eval:
