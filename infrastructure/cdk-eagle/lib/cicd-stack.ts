@@ -123,13 +123,17 @@ export class EagleCiCdStack extends cdk.Stack {
       ],
     }));
 
-    // ALB: Read target group health (post-deploy verify job)
+    // ALB: Read + manage target groups (post-deploy sync + verify)
     this.deployRole.addToPolicy(new iam.PolicyStatement({
-      sid: 'ALBInspect',
+      sid: 'ALBManage',
       actions: [
         'elasticloadbalancing:DescribeTargetHealth',
         'elasticloadbalancingv2:DescribeTargetHealth',
         'elasticloadbalancingv2:DescribeTargetGroups',
+        'elasticloadbalancing:RegisterTargets',
+        'elasticloadbalancingv2:RegisterTargets',
+        'elasticloadbalancing:DeregisterTargets',
+        'elasticloadbalancingv2:DeregisterTargets',
       ],
       resources: ['*'],
     }));
