@@ -836,6 +836,8 @@ def _build_service_tools(
                 loop,
             )
         )
+    # Add compliance matrix — fast-path tool for thresholds, required docs, vehicles
+    tools.append(_compliance_matrix_tool)
     return tools
 
 
@@ -963,6 +965,13 @@ def build_supervisor_prompt(
         "1) If the user asks to generate/draft/create a document, you MUST call create_document.\n"
         "2) Do not paste full document bodies in chat unless the user explicitly asks for inline text.\n"
         "3) After create_document, respond briefly and direct the user to open/edit the document card.\n\n"
+        f"FAST vs DEEP routing:\n"
+        f"  FAST (seconds): Use query_compliance_matrix for thresholds, required docs, approval levels.\n"
+        f"    Use search_far for specific FAR/DFARS clause lookups by part number or keyword.\n"
+        f"    Use knowledge_search → knowledge_fetch to discover and retrieve KB documents.\n"
+        f"  DEEP (specialist): Use specialist agents only for complex analysis, multi-factor evaluation,\n"
+        f"    or when the user needs expert reasoning — not simple factual lookups.\n"
+        f"  ALWAYS prefer FAST tools first. Only delegate to a specialist when FAST tools don't suffice.\n\n"
         f"IMPORTANT: Use the available tool functions to delegate to specialists. "
         f"Include relevant context in the query you pass to each specialist. "
         f"Do not try to answer specialized questions yourself -- delegate to the expert."
