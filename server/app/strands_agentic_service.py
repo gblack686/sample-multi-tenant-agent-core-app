@@ -25,10 +25,8 @@ import asyncio
 import json
 import logging
 import os
-import queue
 import re
 import sys
-import threading
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator
 
@@ -40,7 +38,7 @@ _server_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 if _server_dir not in sys.path:
     sys.path.insert(0, _server_dir)
 
-from eagle_skill_constants import SKILL_CONSTANTS, AGENTS, SKILLS, PLUGIN_CONTENTS
+from eagle_skill_constants import AGENTS, SKILLS, PLUGIN_CONTENTS
 from .tools.knowledge_tools import KNOWLEDGE_FETCH_TOOL, KNOWLEDGE_SEARCH_TOOL
 
 logger = logging.getLogger("eagle.strands_agent")
@@ -79,63 +77,6 @@ class ResultMessage:
     """Adapter matching Claude SDK ResultMessage interface."""
     result: str = ""
     usage: dict = field(default_factory=dict)
-
-
-# -- Streaming Callback Handler ----------------------------------------
-
-_SENTINEL = object()  # Signals end of stream
-
-
-class QueueCallbackHandler:
-    """Strands callback handler that pushes text deltas into a thread-safe queue.
-
-    Used by sdk_query_streaming() to yield tokens as they arrive from Bedrock
-    ConverseStream, instead of waiting for the full agent response.
-    """
-
-    def __init__(self, chunk_queue: queue.Queue):
-        self._queue = chunk_queue
-        self.tool_count = 0
-        self._current_tool_id: str | None = None  # dedup guard
-
-    def __call__(self, **kwargs: Any) -> None:
-        data = kwargs.get("data", "")
-        complete = kwargs.get("complete", False)
-
-        if data:
-            self._queue.put({"type": "text", "data": data})
-
-        # Strands ToolUseStreamEvent — has structured current_tool_use with input
-        current_tool = kwargs.get("current_tool_use")
-        if current_tool and isinstance(current_tool, dict):
-            tool_id = current_tool.get("toolUseId", "")
-            if tool_id and tool_id != self._current_tool_id:
-                self._current_tool_id = tool_id
-                self.tool_count += 1
-                self._queue.put({
-                    "type": "tool_use",
-                    "name": current_tool.get("name", ""),
-                    "input": current_tool.get("input", ""),
-                    "tool_use_id": tool_id,
-                })
-            return  # Don't double-emit from contentBlockStart below
-
-        # Fallback: raw Bedrock contentBlockStart (legacy path)
-        tool_use = kwargs.get("event", {}).get("contentBlockStart", {}).get("start", {}).get("toolUse")
-        if tool_use:
-            tool_id = tool_use.get("toolUseId", "")
-            if tool_id != self._current_tool_id:
-                self._current_tool_id = tool_id
-                self.tool_count += 1
-                self._queue.put({
-                    "type": "tool_use",
-                    "name": tool_use.get("name", ""),
-                    "tool_use_id": tool_id,
-                })
-
-        if complete and not data:
-            # Stream finished — don't send sentinel here, let the caller handle it
-            pass
 
 
 # -- Model Selection -------------------------------------------------
@@ -1535,7 +1476,10 @@ async def sdk_query_streaming(
         except Exception as exc:
             logger.warning("workspace_store.get_or_create_default failed: %s", exc)
 
-    # Build an async result queue so tools can emit tool_result chunks to the frontend.
+    # --- stream_async() approach: SDK handles sync→async bridge ---
+    # No chunk_queue, no result_queue, no background thread.
+    # AfterToolCallEvent hook captures tool results inline.
+
     result_queue: asyncio.Queue = asyncio.Queue()
     loop = asyncio.get_running_loop()
 
@@ -1568,101 +1512,108 @@ async def sdk_query_streaming(
     )
 
     strands_history = _to_strands_messages(messages) if messages else None
-    chunk_queue: queue.Queue = queue.Queue()
-
-    handler = QueueCallbackHandler(chunk_queue)
 
     supervisor = Agent(
         model=_model,
         system_prompt=system_prompt,
         tools=skill_tools + service_tools,
-        callback_handler=handler,
+        callback_handler=None,  # stream_async yields events directly
         messages=strands_history,
     )
 
-    # Run synchronous Strands agent in a background thread
-    result_holder: list = []
-    error_holder: list = []
-
-    def _run_agent():
-        try:
-            result = supervisor(prompt)
-            result_holder.append(result)
-        except Exception as exc:
-            error_holder.append(exc)
-        finally:
-            chunk_queue.put(_SENTINEL)
-
-    thread = threading.Thread(target=_run_agent, daemon=True)
-    thread.start()
-
-    # Yield chunks as they arrive from the callback handler
+    # Yield chunks via stream_async — SDK bridges sync→async internally
     full_text_parts: list[str] = []
     tools_called: list[str] = []
+    _current_tool_id: str | None = None
+    error_holder: list[Exception] = []
+    agent_result = None
 
     def _drain_tool_results() -> list[dict]:
+        """Drain tool results that were pushed by factory tools via result_queue."""
         drained: list[dict] = []
         while True:
             try:
                 item = result_queue.get_nowait()
                 name = item.get("name")
                 if not name:
-                    continue  # Skip empty-name results (raw Strands callback artifacts)
+                    continue
                 tools_called.append(name)
                 drained.append(item)
             except asyncio.QueueEmpty:
                 break
         return drained
 
-    while True:
-        for tool_result_chunk in _drain_tool_results():
-            yield tool_result_chunk
+    try:
+        async for event in supervisor.stream_async(prompt):
+            # Drain tool results that may have been pushed by factory tools
+            for tool_result_chunk in _drain_tool_results():
+                yield tool_result_chunk
 
-        try:
-            # Poll queue with short timeout to stay async-friendly
-            chunk = await asyncio.to_thread(chunk_queue.get, timeout=0.1)
-        except Exception:
-            # queue.Empty on timeout — check if thread is still alive
-            if not thread.is_alive():
-                break
-            continue
+            # --- Text streaming ---
+            data = event.get("data")
+            if data and isinstance(data, str):
+                full_text_parts.append(data)
+                yield {"type": "text", "data": data}
+                continue
 
-        if chunk is _SENTINEL:
-            break
+            # --- Tool use start (ToolUseStreamEvent) ---
+            current_tool = event.get("current_tool_use")
+            if current_tool and isinstance(current_tool, dict):
+                tool_id = current_tool.get("toolUseId", "")
+                if tool_id and tool_id != _current_tool_id:
+                    _current_tool_id = tool_id
+                    tool_name = current_tool.get("name", "")
+                    tools_called.append(tool_name)
+                    yield {
+                        "type": "tool_use",
+                        "name": tool_name,
+                        "input": current_tool.get("input", ""),
+                        "tool_use_id": tool_id,
+                    }
+                continue
 
-        if chunk.get("type") == "text":
-            full_text_parts.append(chunk["data"])
-            yield chunk
-        elif chunk.get("type") == "tool_use":
-            tools_called.append(chunk.get("name", ""))
-            yield chunk
+            # --- Bedrock contentBlockStart fallback ---
+            tool_use = event.get("event", {})
+            if isinstance(tool_use, dict):
+                tool_use = tool_use.get("contentBlockStart", {}).get("start", {}).get("toolUse")
+                if tool_use:
+                    tool_id = tool_use.get("toolUseId", "")
+                    if tool_id != _current_tool_id:
+                        _current_tool_id = tool_id
+                        tool_name = tool_use.get("name", "")
+                        tools_called.append(tool_name)
+                        yield {
+                            "type": "tool_use",
+                            "name": tool_name,
+                            "tool_use_id": tool_id,
+                        }
+                    continue
 
-        for tool_result_chunk in _drain_tool_results():
-            yield tool_result_chunk
+            # --- Agent result (final event) ---
+            if "result" in event and hasattr(event.get("result"), "metrics"):
+                agent_result = event["result"]
 
-    # Wait for thread to finish
-    thread.join(timeout=5)
+    except Exception as exc:
+        error_holder.append(exc)
+        logger.error("stream_async error: %s", exc)
+
+    # Final drain of any remaining tool results
     for tool_result_chunk in _drain_tool_results():
         yield tool_result_chunk
 
     # Extract usage from result
     usage = {}
-    if result_holder:
-        result = result_holder[0]
+    if agent_result is not None:
         if not full_text_parts:
-            # Some Strands responses may not emit token deltas through callback_handler.
-            # Fall back to the final rendered result text so streaming clients still
-            # receive assistant content before COMPLETE.
             try:
-                final_text = str(result)
+                final_text = str(agent_result)
                 if final_text:
                     full_text_parts.append(final_text)
-                    # Yield as text event so SSE consumers receive it before COMPLETE
                     yield {"type": "text", "data": final_text}
             except Exception:
                 pass
         try:
-            metrics = getattr(result, "metrics", None)
+            metrics = getattr(agent_result, "metrics", None)
             if metrics:
                 acc = getattr(metrics, "accumulated_usage", None)
                 if acc and isinstance(acc, dict):
