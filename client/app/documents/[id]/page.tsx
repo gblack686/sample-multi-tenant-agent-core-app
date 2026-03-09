@@ -114,6 +114,7 @@ export default function DocumentViewerPage({ params }: PageProps) {
     const [chatInput, setChatInput] = useState('');
     const [streamingAssistantMsg, setStreamingAssistantMsg] = useState<ChatMessage | null>(null);
     const streamingAssistantMsgRef = useRef<ChatMessage | null>(null);
+    const generatedDocFetchSeqRef = useRef(0);
     const chatEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -124,6 +125,77 @@ export default function DocumentViewerPage({ params }: PageProps) {
 
     const { getToken } = useAuth();
     const { loadSession } = useSession();
+
+    const applyDocumentUpdate = useCallback((doc: Partial<DocumentInfo> & { content: string }) => {
+        if (doc.package_id) {
+            setPackageId(doc.package_id);
+        }
+        if (doc.title) {
+            setDocumentTitle(doc.title);
+        }
+        if (doc.document_type) {
+            setDocumentType(doc.document_type);
+        }
+
+        setDocumentContent(doc.content);
+        setEditContent(doc.content);
+
+        const targetRawId = doc.s3_key || doc.document_id || decodeURIComponent(id);
+        const targetId = encodeURIComponent(targetRawId);
+        const persistedDoc: DocumentInfo = {
+            document_id: doc.document_id || targetRawId,
+            package_id: doc.package_id,
+            document_type: doc.document_type || documentType || 'document',
+            title: doc.title || documentTitle || 'Document',
+            content: doc.content,
+            s3_key: doc.s3_key,
+            status: doc.status,
+            version: doc.version,
+            generated_at: doc.generated_at,
+        };
+
+        try {
+            // Update both current-route cache and resolved-target cache.
+            sessionStorage.setItem(`doc-content-${id}`, JSON.stringify(persistedDoc));
+            sessionStorage.setItem(`doc-content-${targetId}`, JSON.stringify(persistedDoc));
+        } catch {
+            // sessionStorage unavailable
+        }
+
+        setDocUpdated(true);
+        setTimeout(() => setDocUpdated(false), 2000);
+    }, [documentTitle, documentType, id]);
+
+    const refreshGeneratedDocumentFromS3 = useCallback(async (doc: DocumentInfo) => {
+        const rawId = doc.s3_key || doc.document_id;
+        if (!rawId) return;
+
+        const fetchSeq = ++generatedDocFetchSeqRef.current;
+        try {
+            const token = await getToken();
+            const res = await fetch(`/api/documents/${encodeURIComponent(rawId)}?content=true`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
+            if (!res.ok) return;
+
+            const data = await res.json();
+            if (fetchSeq !== generatedDocFetchSeqRef.current) return;
+
+            if (typeof data.content === 'string' && data.content.length > 0) {
+                applyDocumentUpdate({
+                    ...doc,
+                    title: data.title || doc.title,
+                    document_type: data.document_type || doc.document_type,
+                    package_id: data.package_id || doc.package_id,
+                    document_id: data.document_id || doc.document_id || rawId,
+                    s3_key: data.s3_key || doc.s3_key || rawId,
+                    content: data.content,
+                });
+            }
+        } catch {
+            // Best-effort refresh: keep existing content if fetch fails.
+        }
+    }, [applyDocumentUpdate, getToken]);
 
     // Load document from sessionStorage or API
     useEffect(() => {
@@ -283,20 +355,13 @@ export default function DocumentViewerPage({ params }: PageProps) {
             setStreamingAssistantMsg(null);
         },
         onDocumentGenerated: (doc) => {
-            // LLM regenerated the document — update the left panel
-            if (doc.package_id) {
-                setPackageId(doc.package_id);
+            // LLM regenerated/updated the document.
+            // Some streams include full content directly; others only include key metadata.
+            if (doc.content && doc.content.length > 0) {
+                applyDocumentUpdate(doc as DocumentInfo & { content: string });
+                return;
             }
-            if (doc.content) {
-                setDocumentContent(doc.content);
-                setEditContent(doc.content);
-                if (doc.title) setDocumentTitle(doc.title);
-                if (doc.document_type) setDocumentType(doc.document_type);
-
-                // Flash update indicator
-                setDocUpdated(true);
-                setTimeout(() => setDocUpdated(false), 2000);
-            }
+            void refreshGeneratedDocumentFromS3(doc);
         },
     });
 
