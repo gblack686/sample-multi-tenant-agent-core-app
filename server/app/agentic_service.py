@@ -277,6 +277,42 @@ def _extract_period(text: str) -> str | None:
     return None
 
 
+def _extract_section_bullets(text: str) -> dict[str, list[str]]:
+    """Extract bullet lists grouped by heading from free-form user prompts."""
+    sections: dict[str, list[str]] = {}
+    current: str | None = None
+
+    aliases = {
+        "project description": "project_description",
+        "technical requirements": "technical_requirements",
+        "scope of work": "scope_of_work",
+        "deliverables": "deliverables",
+        "environment tiers": "environment_tiers",
+        "security": "security",
+    }
+
+    for raw_line in (text or "").splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+
+        heading_key = line.rstrip(":").strip().lower()
+        if heading_key in aliases:
+            current = aliases[heading_key]
+            sections.setdefault(current, [])
+            continue
+
+        if line.startswith("- ") or line.startswith("* "):
+            item = line[2:].strip().strip('"')
+            if not item:
+                continue
+            bucket = current or "general"
+            sections.setdefault(bucket, []).append(item)
+            continue
+
+    return sections
+
+
 def _augment_document_data_from_context(
     doc_type: str,
     title: str,
@@ -316,12 +352,37 @@ def _augment_document_data_from_context(
         merged.setdefault("period_of_performance", period)
         merged.setdefault("timeline", period)
 
+    parsed_sections = _extract_section_bullets("\n".join(context_messages[-3:]))
+
+    project_description = " ".join(parsed_sections.get("project_description", [])).strip()
+    if project_description:
+        existing_desc = str(merged.get("description", "")).strip()
+        if (
+            not existing_desc
+            or "project description" in existing_desc.lower()
+            or len(existing_desc) > 320
+        ):
+            merged["description"] = project_description[:500]
+        merged.setdefault("requirement", project_description[:500])
+        merged.setdefault("objective", project_description[:500])
+    if parsed_sections.get("deliverables"):
+        merged.setdefault("deliverables", parsed_sections["deliverables"][:15])
+    if parsed_sections.get("security"):
+        merged.setdefault("security_requirements", "; ".join(parsed_sections["security"])[:600])
+    if parsed_sections.get("environment_tiers"):
+        merged.setdefault("place_of_performance", "; ".join(parsed_sections["environment_tiers"])[:300])
+
     # Minimal doc-type hints for better first-pass drafts.
     if doc_type == "igce":
         merged.setdefault("item_name", title or "Primary acquisition item")
     if doc_type == "market_research":
         merged.setdefault("requirement_summary", requirement or title)
     if doc_type == "sow":
+        scope_items = parsed_sections.get("scope_of_work", [])
+        tech_items = parsed_sections.get("technical_requirements", [])
+        combined_tasks = (scope_items + tech_items)[:20]
+        if combined_tasks:
+            merged.setdefault("tasks", combined_tasks)
         merged.setdefault("scope", requirement or title)
 
     return merged
