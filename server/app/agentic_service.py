@@ -990,7 +990,33 @@ def _exec_cloudwatch_logs(params: dict, tenant_id: str) -> dict:
 
 
 def _exec_search_far(params: dict, tenant_id: str) -> dict:
-    """Search Federal Acquisition Regulation — comprehensive structured mock data."""
+    """Search Federal Acquisition Regulation using shared far-database.json."""
+    from .compliance_matrix import search_far as _cm_search_far
+
+    query = params.get("query", "")
+    parts_filter = params.get("parts", None)
+
+    results = _cm_search_far(query, parts_filter)
+
+    if not results:
+        results = [
+            {"part": "1", "section": "1.102", "title": "Statement of Guiding Principles",
+             "summary": "Deliver best value to the Government, satisfy the customer, minimize administrative costs, conduct business with integrity.",
+             "applicability": "All federal acquisitions"},
+        ]
+
+    return {
+        "query": query,
+        "parts_searched": parts_filter or ["all"],
+        "results_count": len(results),
+        "clauses": results[:15],
+        "source": "FAR/DFARS/HHSAR reference database (eagle-plugin/data/far-database.json)",
+        "note": "Reference data — always verify against current FAR/DFARS at acquisition.gov",
+    }
+
+
+def _exec_search_far_LEGACY(params: dict, tenant_id: str) -> dict:
+    """LEGACY — old inline mock data kept for reference. Not called."""
     query = params.get("query", "").lower()
     parts_filter = params.get("parts", [])
 
