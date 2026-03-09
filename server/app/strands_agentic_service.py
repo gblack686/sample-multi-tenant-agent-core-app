@@ -772,130 +772,204 @@ def _make_subagent_tool(
 # plugin data WITHOUT spawning subagents or bloating the system prompt.
 # Pattern: Layer 1 (system prompt hints) → Layer 2 (list_skills) →
 #          Layer 3 (load_skill) → Layer 4 (load_data)
+#
+# Each is a factory function that closes over result_queue/loop so
+# tool_result events reach the frontend for tool card observability.
 
-@tool(name="list_skills")
-def _list_skills_tool(category: str = "") -> str:
-    """List available skills, agents, and data files with descriptions and triggers. Use this to discover what capabilities and reference data are available before diving deeper.
 
-    Args:
-        category: Filter by category: "skills", "agents", "data", or "" for all
-    """
-    result: dict[str, Any] = {}
+def _emit_tool_result(
+    tool_name: str,
+    result_str: str,
+    result_queue: asyncio.Queue | None,
+    loop: asyncio.AbstractEventLoop | None,
+):
+    """Emit a tool_result event to the frontend via result_queue."""
+    if not result_queue or not loop:
+        return
+    try:
+        parsed = json.loads(result_str) if isinstance(result_str, str) else result_str
+    except (json.JSONDecodeError, TypeError):
+        parsed = {"raw": result_str[:2000]} if result_str else {}
+    # Truncate large text fields to avoid SSE bloat
+    if isinstance(parsed, dict):
+        for key in ("content", "text", "body"):
+            val = parsed.get(key)
+            if isinstance(val, str) and len(val) > 2000:
+                parsed = {**parsed, key: val[:2000] + "..."}
+                break
+    loop.call_soon_threadsafe(
+        result_queue.put_nowait,
+        {"type": "tool_result", "name": tool_name, "result": parsed},
+    )
 
-    if category in ("", "skills"):
-        skills_list = []
-        for name, entry in SKILLS.items():
-            skills_list.append({
-                "name": name,
-                "description": entry.get("description", ""),
-                "triggers": entry.get("triggers", []),
+
+def _make_list_skills_tool(
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+):
+    @tool(name="list_skills")
+    def list_skills_tool(category: str = "") -> str:
+        """List available skills, agents, and data files with descriptions and triggers. Use this to discover what capabilities and reference data are available before diving deeper.
+
+        Args:
+            category: Filter by category: "skills", "agents", "data", or "" for all
+        """
+        result: dict[str, Any] = {}
+
+        if category in ("", "skills"):
+            skills_list = []
+            for name, entry in SKILLS.items():
+                skills_list.append({
+                    "name": name,
+                    "description": entry.get("description", ""),
+                    "triggers": entry.get("triggers", []),
+                })
+            result["skills"] = skills_list
+
+        if category in ("", "agents"):
+            agents_list = []
+            for name, entry in AGENTS.items():
+                if name == "supervisor":
+                    continue
+                agents_list.append({
+                    "name": name,
+                    "description": entry.get("description", ""),
+                    "triggers": entry.get("triggers", []),
+                })
+            result["agents"] = agents_list
+
+        if category in ("", "data"):
+            config = _load_plugin_config()
+            data_index = config.get("data", {})
+            data_list = []
+            if isinstance(data_index, dict):
+                for name, meta in data_index.items():
+                    data_list.append({
+                        "name": name,
+                        "description": meta.get("description", ""),
+                        "sections": meta.get("sections", []),
+                    })
+            result["data"] = data_list
+
+        out = json.dumps(result, indent=2)
+        _emit_tool_result("list_skills", out, result_queue, loop)
+        return out
+
+    return list_skills_tool
+
+
+def _make_load_skill_tool(
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+):
+    @tool(name="load_skill")
+    def load_skill_tool(name: str) -> str:
+        """Load full skill or agent instructions by name. Returns the complete SKILL.md or agent.md content so you can follow the workflow yourself without spawning a subagent. Use this when you need to understand a skill's detailed procedures, decision trees, or templates.
+
+        Args:
+            name: Skill or agent name (e.g. "oa-intake", "legal-counsel", "compliance")
+        """
+        entry = PLUGIN_CONTENTS.get(name)
+        if not entry:
+            available = sorted(PLUGIN_CONTENTS.keys())
+            out = json.dumps({
+                "error": f"No skill or agent named '{name}'",
+                "available": available,
             })
-        result["skills"] = skills_list
+        else:
+            out = entry["body"]
+        _emit_tool_result("load_skill", out, result_queue, loop)
+        return out
 
-    if category in ("", "agents"):
-        agents_list = []
-        for name, entry in AGENTS.items():
-            if name == "supervisor":
-                continue
-            agents_list.append({
-                "name": name,
-                "description": entry.get("description", ""),
-                "triggers": entry.get("triggers", []),
-            })
-        result["agents"] = agents_list
+    return load_skill_tool
 
-    if category in ("", "data"):
+
+def _make_load_data_tool(
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+):
+    @tool(name="load_data")
+    def load_data_tool(name: str, section: str = "") -> str:
+        """Load reference data from the eagle-plugin data directory. Use this to access thresholds, contract types, document requirements, approval chains, contract vehicles, and other acquisition reference data on demand.
+
+        Args:
+            name: Data file name (e.g. "matrix", "thresholds", "contract-vehicles")
+            section: Optional top-level key to extract (e.g. "thresholds", "doc_rules", "approval_chains", "contract_types"). Omit to get the full file.
+        """
         config = _load_plugin_config()
         data_index = config.get("data", {})
-        data_list = []
-        if isinstance(data_index, dict):
-            for name, meta in data_index.items():
-                data_list.append({
-                    "name": name,
-                    "description": meta.get("description", ""),
-                    "sections": meta.get("sections", []),
-                })
-        result["data"] = data_list
 
-    return json.dumps(result, indent=2)
+        if isinstance(data_index, list):
+            out = json.dumps({"error": "Data index not configured. Available files: " + str(data_index)})
+            _emit_tool_result("load_data", out, result_queue, loop)
+            return out
 
-
-@tool(name="load_skill")
-def _load_skill_tool(name: str) -> str:
-    """Load full skill or agent instructions by name. Returns the complete SKILL.md or agent.md content so you can follow the workflow yourself without spawning a subagent. Use this when you need to understand a skill's detailed procedures, decision trees, or templates.
-
-    Args:
-        name: Skill or agent name (e.g. "oa-intake", "legal-counsel", "compliance")
-    """
-    entry = PLUGIN_CONTENTS.get(name)
-    if not entry:
-        available = sorted(PLUGIN_CONTENTS.keys())
-        return json.dumps({
-            "error": f"No skill or agent named '{name}'",
-            "available": available,
-        })
-    return entry["body"]
-
-
-@tool(name="load_data")
-def _load_data_tool(name: str, section: str = "") -> str:
-    """Load reference data from the eagle-plugin data directory. Use this to access thresholds, contract types, document requirements, approval chains, contract vehicles, and other acquisition reference data on demand.
-
-    Args:
-        name: Data file name (e.g. "matrix", "thresholds", "contract-vehicles")
-        section: Optional top-level key to extract (e.g. "thresholds", "doc_rules", "approval_chains", "contract_types"). Omit to get the full file.
-    """
-    config = _load_plugin_config()
-    data_index = config.get("data", {})
-
-    if isinstance(data_index, list):
-        # Legacy format — flat list of filenames
-        return json.dumps({"error": "Data index not configured. Available files: " + str(data_index)})
-
-    meta = data_index.get(name)
-    if not meta:
-        return json.dumps({
-            "error": f"No data file named '{name}'",
-            "available": sorted(data_index.keys()),
-        })
-
-    file_rel = meta.get("file", f"data/{name}.json")
-    file_path = os.path.join(_PLUGIN_DIR, file_rel)
-
-    try:
-        with open(file_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except FileNotFoundError:
-        return json.dumps({"error": f"Data file not found: {file_rel}"})
-    except json.JSONDecodeError as exc:
-        return json.dumps({"error": f"Invalid JSON in {file_rel}: {str(exc)}"})
-
-    if section:
-        value = data.get(section)
-        if value is None:
-            return json.dumps({
-                "error": f"Section '{section}' not found in '{name}'",
-                "available_sections": list(data.keys()),
+        meta = data_index.get(name)
+        if not meta:
+            out = json.dumps({
+                "error": f"No data file named '{name}'",
+                "available": sorted(data_index.keys()),
             })
-        return json.dumps({section: value}, indent=2, default=str)
+            _emit_tool_result("load_data", out, result_queue, loop)
+            return out
 
-    return json.dumps(data, indent=2, default=str)
+        file_rel = meta.get("file", f"data/{name}.json")
+        file_path = os.path.join(_PLUGIN_DIR, file_rel)
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            out = json.dumps({"error": f"Data file not found: {file_rel}"})
+            _emit_tool_result("load_data", out, result_queue, loop)
+            return out
+        except json.JSONDecodeError as exc:
+            out = json.dumps({"error": f"Invalid JSON in {file_rel}: {str(exc)}"})
+            _emit_tool_result("load_data", out, result_queue, loop)
+            return out
+
+        if section:
+            value = data.get(section)
+            if value is None:
+                out = json.dumps({
+                    "error": f"Section '{section}' not found in '{name}'",
+                    "available_sections": list(data.keys()),
+                })
+                _emit_tool_result("load_data", out, result_queue, loop)
+                return out
+            out = json.dumps({section: value}, indent=2, default=str)
+            _emit_tool_result("load_data", out, result_queue, loop)
+            return out
+
+        out = json.dumps(data, indent=2, default=str)
+        _emit_tool_result("load_data", out, result_queue, loop)
+        return out
+
+    return load_data_tool
 
 
 # -- Compliance Matrix @tool (available to all agents) ----------------
 
-@tool(name="query_compliance_matrix")
-def _compliance_matrix_tool(params: str) -> str:
-    """Query NCI/NIH contract requirements decision tree. Pass a JSON string with keys: operation (required), contract_value, acquisition_method, contract_type, is_it, is_small_business, is_rd, is_human_subjects, is_services, keyword. Operations: query, list_methods, list_types, list_thresholds, search_far, suggest_vehicle.
+def _make_compliance_matrix_tool(
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+):
+    @tool(name="query_compliance_matrix")
+    def compliance_matrix_tool(params: str) -> str:
+        """Query NCI/NIH contract requirements decision tree. Pass a JSON string with keys: operation (required), contract_value, acquisition_method, contract_type, is_it, is_small_business, is_rd, is_human_subjects, is_services, keyword. Operations: query, list_methods, list_types, list_thresholds, search_far, suggest_vehicle.
 
-    Args:
-        params: JSON string, e.g. {"operation":"query","contract_value":85000,"acquisition_method":"sap","contract_type":"ffp","is_services":true}
-    """
-    from .compliance_matrix import execute_operation
+        Args:
+            params: JSON string, e.g. {"operation":"query","contract_value":85000,"acquisition_method":"sap","contract_type":"ffp","is_services":true}
+        """
+        from .compliance_matrix import execute_operation
 
-    parsed = json.loads(params) if isinstance(params, str) else params
-    result = execute_operation(parsed)
-    return json.dumps(result, indent=2, default=str)
+        parsed = json.loads(params) if isinstance(params, str) else params
+        result = execute_operation(parsed)
+        out = json.dumps(result, indent=2, default=str)
+        _emit_tool_result("query_compliance_matrix", out, result_queue, loop)
+        return out
+
+    return compliance_matrix_tool
 
 
 # -- AWS Service @tools (S3, DynamoDB, CloudWatch, Documents) ----------
@@ -1033,53 +1107,6 @@ _SERVICE_TOOL_DEFS = {
 }
 
 
-def _wrap_tool_with_result_emit(
-    original_tool,
-    result_queue: asyncio.Queue | None = None,
-    loop: asyncio.AbstractEventLoop | None = None,
-):
-    """Wrap a standalone @tool so it emits tool_result events to the frontend.
-
-    The Strands @tool decorator produces a ToolUse object. We create a new
-    @tool with the same name/docstring that delegates to the original and
-    pushes the return value onto result_queue.
-    """
-    if not result_queue or not loop:
-        return original_tool  # No queue — return as-is
-
-    tool_name = original_tool.tool_name
-
-    @tool(name=tool_name)
-    def wrapper(**kwargs) -> str:
-        # Delegate to the original tool's underlying function
-        result_str = original_tool._tool_func(**kwargs)
-
-        # Emit tool_result to the frontend
-        try:
-            parsed = json.loads(result_str) if isinstance(result_str, str) else result_str
-        except (json.JSONDecodeError, TypeError):
-            parsed = {"raw": result_str[:2000]} if result_str else {}
-
-        # Truncate large payloads to avoid SSE bloat
-        emit_result = parsed
-        if isinstance(parsed, dict):
-            for key in ("content", "text", "body"):
-                val = parsed.get(key)
-                if isinstance(val, str) and len(val) > 2000:
-                    emit_result = {**parsed, key: val[:2000] + "..."}
-                    break
-
-        loop.call_soon_threadsafe(
-            result_queue.put_nowait,
-            {"type": "tool_result", "name": tool_name, "result": emit_result},
-        )
-        return result_str
-
-    # Preserve the original docstring for the Strands schema
-    wrapper._tool_func.__doc__ = original_tool._tool_func.__doc__
-    return wrapper
-
-
 def _build_service_tools(
     tenant_id: str,
     user_id: str,
@@ -1104,15 +1131,11 @@ def _build_service_tools(
             )
         )
     # Add compliance matrix and progressive disclosure tools.
-    # Wrap them so they emit tool_result events to the frontend.
-    standalone_tools = [
-        _compliance_matrix_tool,
-        _list_skills_tool,
-        _load_skill_tool,
-        _load_data_tool,
-    ]
-    for t in standalone_tools:
-        tools.append(_wrap_tool_with_result_emit(t, result_queue, loop))
+    # These use factory functions that close over result_queue/loop for observability.
+    tools.append(_make_compliance_matrix_tool(result_queue, loop))
+    tools.append(_make_list_skills_tool(result_queue, loop))
+    tools.append(_make_load_skill_tool(result_queue, loop))
+    tools.append(_make_load_data_tool(result_queue, loop))
     return tools
 
 
