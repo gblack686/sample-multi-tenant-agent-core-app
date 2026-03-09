@@ -1033,6 +1033,53 @@ _SERVICE_TOOL_DEFS = {
 }
 
 
+def _wrap_tool_with_result_emit(
+    original_tool,
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+):
+    """Wrap a standalone @tool so it emits tool_result events to the frontend.
+
+    The Strands @tool decorator produces a ToolUse object. We create a new
+    @tool with the same name/docstring that delegates to the original and
+    pushes the return value onto result_queue.
+    """
+    if not result_queue or not loop:
+        return original_tool  # No queue — return as-is
+
+    tool_name = original_tool.tool_name
+
+    @tool(name=tool_name)
+    def wrapper(**kwargs) -> str:
+        # Delegate to the original tool's underlying function
+        result_str = original_tool._tool_func(**kwargs)
+
+        # Emit tool_result to the frontend
+        try:
+            parsed = json.loads(result_str) if isinstance(result_str, str) else result_str
+        except (json.JSONDecodeError, TypeError):
+            parsed = {"raw": result_str[:2000]} if result_str else {}
+
+        # Truncate large payloads to avoid SSE bloat
+        emit_result = parsed
+        if isinstance(parsed, dict):
+            for key in ("content", "text", "body"):
+                val = parsed.get(key)
+                if isinstance(val, str) and len(val) > 2000:
+                    emit_result = {**parsed, key: val[:2000] + "..."}
+                    break
+
+        loop.call_soon_threadsafe(
+            result_queue.put_nowait,
+            {"type": "tool_result", "name": tool_name, "result": emit_result},
+        )
+        return result_str
+
+    # Preserve the original docstring for the Strands schema
+    wrapper._tool_func.__doc__ = original_tool._tool_func.__doc__
+    return wrapper
+
+
 def _build_service_tools(
     tenant_id: str,
     user_id: str,
@@ -1056,10 +1103,16 @@ def _build_service_tools(
                 loop,
             )
         )
-    # Add compliance matrix — fast-path tool for thresholds, required docs, vehicles
-    tools.append(_compliance_matrix_tool)
-    # Add progressive disclosure tools — list/load skills and data on demand
-    tools.extend([_list_skills_tool, _load_skill_tool, _load_data_tool])
+    # Add compliance matrix and progressive disclosure tools.
+    # Wrap them so they emit tool_result events to the frontend.
+    standalone_tools = [
+        _compliance_matrix_tool,
+        _list_skills_tool,
+        _load_skill_tool,
+        _load_data_tool,
+    ]
+    for t in standalone_tools:
+        tools.append(_wrap_tool_with_result_emit(t, result_queue, loop))
     return tools
 
 
