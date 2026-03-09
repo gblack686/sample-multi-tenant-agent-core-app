@@ -25,10 +25,8 @@ import asyncio
 import json
 import logging
 import os
-import queue
 import re
 import sys
-import threading
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator
 
@@ -40,7 +38,7 @@ _server_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 if _server_dir not in sys.path:
     sys.path.insert(0, _server_dir)
 
-from eagle_skill_constants import SKILL_CONSTANTS, AGENTS, SKILLS, PLUGIN_CONTENTS
+from eagle_skill_constants import AGENTS, SKILLS, PLUGIN_CONTENTS
 from .tools.knowledge_tools import KNOWLEDGE_FETCH_TOOL, KNOWLEDGE_SEARCH_TOOL
 
 logger = logging.getLogger("eagle.strands_agent")
@@ -81,39 +79,6 @@ class ResultMessage:
     usage: dict = field(default_factory=dict)
 
 
-# -- Streaming Callback Handler ----------------------------------------
-
-_SENTINEL = object()  # Signals end of stream
-
-
-class QueueCallbackHandler:
-    """Strands callback handler that pushes text deltas into a thread-safe queue.
-
-    Used by sdk_query_streaming() to yield tokens as they arrive from Bedrock
-    ConverseStream, instead of waiting for the full agent response.
-    """
-
-    def __init__(self, chunk_queue: queue.Queue):
-        self._queue = chunk_queue
-        self.tool_count = 0
-
-    def __call__(self, **kwargs: Any) -> None:
-        data = kwargs.get("data", "")
-        complete = kwargs.get("complete", False)
-        tool_use = kwargs.get("event", {}).get("contentBlockStart", {}).get("start", {}).get("toolUse")
-
-        if data:
-            self._queue.put({"type": "text", "data": data})
-
-        if tool_use:
-            self.tool_count += 1
-            self._queue.put({"type": "tool_use", "name": tool_use.get("name", "")})
-
-        if complete and not data:
-            # Stream finished — don't send sentinel here, let the caller handle it
-            pass
-
-
 # -- Model Selection -------------------------------------------------
 # If EAGLE_BEDROCK_MODEL_ID is explicitly set, use it.
 # Otherwise, default to Sonnet 4.6 on the NCI account (695681773636)
@@ -125,8 +90,9 @@ _HAIKU = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
 
 def _default_model() -> str:
-    if os.getenv("EAGLE_BEDROCK_MODEL_ID"):
-        return os.getenv("EAGLE_BEDROCK_MODEL_ID")
+    env_model = os.getenv("EAGLE_BEDROCK_MODEL_ID")
+    if env_model:
+        return env_model
     try:
         import boto3
         account = boto3.client("sts").get_caller_identity()["Account"]
@@ -459,6 +425,62 @@ EAGLE_TOOLS = [
             "required": ["operation"],
         },
     },
+    # Progressive disclosure tools
+    {
+        "name": "list_skills",
+        "description": (
+            "List available skills, agents, and data files with descriptions and triggers. "
+            "Use to discover capabilities before diving deeper."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "category": {
+                    "type": "string",
+                    "enum": ["skills", "agents", "data", ""],
+                    "description": "Filter: 'skills', 'agents', 'data', or '' for all",
+                },
+            },
+        },
+    },
+    {
+        "name": "load_skill",
+        "description": (
+            "Load full skill or agent instructions by name. Returns the complete "
+            "SKILL.md or agent.md content for following workflows without spawning a subagent."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Skill or agent name (e.g. 'oa-intake', 'compliance')",
+                },
+            },
+            "required": ["name"],
+        },
+    },
+    {
+        "name": "load_data",
+        "description": (
+            "Load reference data from the plugin data directory. Access thresholds, "
+            "contract types, document requirements, approval chains, contract vehicles."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "name": {
+                    "type": "string",
+                    "description": "Data file name (e.g. 'matrix', 'thresholds', 'contract-vehicles')",
+                },
+                "section": {
+                    "type": "string",
+                    "description": "Optional section key (e.g. 'thresholds', 'doc_rules', 'approval_chains')",
+                },
+            },
+            "required": ["name"],
+        },
+    },
     {
         "name": "search_far",
         "description": (
@@ -570,26 +592,38 @@ MAX_SKILL_PROMPT_CHARS = 4000
 
 # -- Skill -> @tool Registry (built from plugin metadata) ------------
 
-_PLUGIN_JSON_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), "..", "..", "eagle-plugin", "plugin.json"
+_PLUGIN_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "..", "eagle-plugin"
 )
+_PLUGIN_JSON_PATH = os.path.join(_PLUGIN_DIR, "plugin.json")
 
 
 def _load_plugin_config() -> dict:
-    """Load plugin manifest -- prefers DynamoDB PLUGIN#manifest, falls back to bundled file."""
+    """Load plugin config, merging DynamoDB manifest with bundled plugin.json.
+
+    The DynamoDB PLUGIN#manifest only stores version/agent_count/skill_count —
+    it does NOT include the 'data' index needed by load_data(). Always load
+    the bundled plugin.json as the base, then overlay any DynamoDB manifest
+    fields on top.
+    """
+    # Always start from the bundled plugin.json (has 'data', 'capabilities', etc.)
+    config: dict = {}
+    try:
+        with open(_PLUGIN_JSON_PATH, "r", encoding="utf-8") as f:
+            config = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+    # Overlay DynamoDB manifest fields (version, agent_count, skill_count)
     try:
         from .plugin_store import get_plugin_manifest
         manifest = get_plugin_manifest()
         if manifest:
-            return manifest
+            config.update(manifest)
     except Exception:
         pass
 
-    try:
-        with open(_PLUGIN_JSON_PATH, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        return {}
+    return config
 
 
 def _build_registry() -> dict:
@@ -641,7 +675,13 @@ def _truncate_skill(content: str, max_chars: int = MAX_SKILL_PROMPT_CHARS) -> st
 
 # -- @tool Factory ---------------------------------------------------
 
-def _make_subagent_tool(skill_name: str, description: str, prompt_body: str):
+def _make_subagent_tool(
+    skill_name: str,
+    description: str,
+    prompt_body: str,
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+):
     """Create a @tool-wrapped subagent from skill registry entry.
 
     Each invocation constructs a fresh Agent with the resolved prompt.
@@ -657,7 +697,17 @@ def _make_subagent_tool(skill_name: str, description: str, prompt_body: str):
             system_prompt=prompt_body,
             callback_handler=None,
         )
-        return str(agent(query))
+        raw = str(agent(query))
+
+        # Emit tool_result so the frontend can show the specialist's report
+        if result_queue and loop:
+            truncated = raw[:3000] + "..." if len(raw) > 3000 else raw
+            loop.call_soon_threadsafe(
+                result_queue.put_nowait,
+                {"type": "tool_result", "name": safe_name, "result": {"report": truncated}},
+            )
+
+        return raw
 
     # Override docstring (required for Strands schema extraction)
     subagent_tool.__doc__ = (
@@ -669,20 +719,209 @@ def _make_subagent_tool(skill_name: str, description: str, prompt_body: str):
 
 
 
+# -- Progressive Disclosure @tools ------------------------------------
+# These give the supervisor on-demand access to skill metadata and
+# plugin data WITHOUT spawning subagents or bloating the system prompt.
+# Pattern: Layer 1 (system prompt hints) → Layer 2 (list_skills) →
+#          Layer 3 (load_skill) → Layer 4 (load_data)
+#
+# Each is a factory function that closes over result_queue/loop so
+# tool_result events reach the frontend for tool card observability.
+
+
+def _emit_tool_result(
+    tool_name: str,
+    result_str: str,
+    result_queue: asyncio.Queue | None,
+    loop: asyncio.AbstractEventLoop | None,
+):
+    """Emit a tool_result event to the frontend via result_queue."""
+    if not result_queue or not loop:
+        return
+    try:
+        parsed = json.loads(result_str) if isinstance(result_str, str) else result_str
+    except (json.JSONDecodeError, TypeError):
+        parsed = {"raw": result_str[:2000]} if result_str else {}
+    # Truncate large text fields to avoid SSE bloat
+    if isinstance(parsed, dict):
+        for key in ("content", "text", "body"):
+            val = parsed.get(key)
+            if isinstance(val, str) and len(val) > 2000:
+                parsed = {**parsed, key: val[:2000] + "..."}
+                break
+    loop.call_soon_threadsafe(
+        result_queue.put_nowait,
+        {"type": "tool_result", "name": tool_name, "result": parsed},
+    )
+
+
+def _make_list_skills_tool(
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+):
+    @tool(name="list_skills")
+    def list_skills_tool(category: str = "") -> str:
+        """List available skills, agents, and data files with descriptions and triggers. Use this to discover what capabilities and reference data are available before diving deeper.
+
+        Args:
+            category: Filter by category: "skills", "agents", "data", or "" for all
+        """
+        result: dict[str, Any] = {}
+
+        if category in ("", "skills"):
+            skills_list = []
+            for name, entry in SKILLS.items():
+                skills_list.append({
+                    "name": name,
+                    "description": entry.get("description", ""),
+                    "triggers": entry.get("triggers", []),
+                })
+            result["skills"] = skills_list
+
+        if category in ("", "agents"):
+            agents_list = []
+            for name, entry in AGENTS.items():
+                if name == "supervisor":
+                    continue
+                agents_list.append({
+                    "name": name,
+                    "description": entry.get("description", ""),
+                    "triggers": entry.get("triggers", []),
+                })
+            result["agents"] = agents_list
+
+        if category in ("", "data"):
+            config = _load_plugin_config()
+            data_index = config.get("data", {})
+            data_list = []
+            if isinstance(data_index, dict):
+                for name, meta in data_index.items():
+                    data_list.append({
+                        "name": name,
+                        "description": meta.get("description", ""),
+                        "sections": meta.get("sections", []),
+                    })
+            result["data"] = data_list
+
+        out = json.dumps(result, indent=2)
+        _emit_tool_result("list_skills", out, result_queue, loop)
+        return out
+
+    return list_skills_tool
+
+
+def _make_load_skill_tool(
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+):
+    @tool(name="load_skill")
+    def load_skill_tool(name: str) -> str:
+        """Load full skill or agent instructions by name. Returns the complete SKILL.md or agent.md content so you can follow the workflow yourself without spawning a subagent. Use this when you need to understand a skill's detailed procedures, decision trees, or templates.
+
+        Args:
+            name: Skill or agent name (e.g. "oa-intake", "legal-counsel", "compliance")
+        """
+        entry = PLUGIN_CONTENTS.get(name)
+        if not entry:
+            available = sorted(PLUGIN_CONTENTS.keys())
+            out = json.dumps({
+                "error": f"No skill or agent named '{name}'",
+                "available": available,
+            })
+        else:
+            out = entry["body"]
+        _emit_tool_result("load_skill", out, result_queue, loop)
+        return out
+
+    return load_skill_tool
+
+
+def _make_load_data_tool(
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+):
+    @tool(name="load_data")
+    def load_data_tool(name: str, section: str = "") -> str:
+        """Load reference data from the eagle-plugin data directory. Use this to access thresholds, contract types, document requirements, approval chains, contract vehicles, and other acquisition reference data on demand.
+
+        Args:
+            name: Data file name (e.g. "matrix", "thresholds", "contract-vehicles")
+            section: Optional top-level key to extract (e.g. "thresholds", "doc_rules", "approval_chains", "contract_types"). Omit to get the full file.
+        """
+        config = _load_plugin_config()
+        data_index = config.get("data", {})
+
+        if isinstance(data_index, list):
+            out = json.dumps({"error": "Data index not configured. Available files: " + str(data_index)})
+            _emit_tool_result("load_data", out, result_queue, loop)
+            return out
+
+        meta = data_index.get(name)
+        if not meta:
+            out = json.dumps({
+                "error": f"No data file named '{name}'",
+                "available": sorted(data_index.keys()),
+            })
+            _emit_tool_result("load_data", out, result_queue, loop)
+            return out
+
+        file_rel = meta.get("file", f"data/{name}.json")
+        file_path = os.path.join(_PLUGIN_DIR, file_rel)
+
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except FileNotFoundError:
+            out = json.dumps({"error": f"Data file not found: {file_rel}"})
+            _emit_tool_result("load_data", out, result_queue, loop)
+            return out
+        except json.JSONDecodeError as exc:
+            out = json.dumps({"error": f"Invalid JSON in {file_rel}: {str(exc)}"})
+            _emit_tool_result("load_data", out, result_queue, loop)
+            return out
+
+        if section:
+            value = data.get(section)
+            if value is None:
+                out = json.dumps({
+                    "error": f"Section '{section}' not found in '{name}'",
+                    "available_sections": list(data.keys()),
+                })
+                _emit_tool_result("load_data", out, result_queue, loop)
+                return out
+            out = json.dumps({section: value}, indent=2, default=str)
+            _emit_tool_result("load_data", out, result_queue, loop)
+            return out
+
+        out = json.dumps(data, indent=2, default=str)
+        _emit_tool_result("load_data", out, result_queue, loop)
+        return out
+
+    return load_data_tool
+
+
 # -- Compliance Matrix @tool (available to all agents) ----------------
 
-@tool(name="query_compliance_matrix")
-def _compliance_matrix_tool(params: str) -> str:
-    """Query NCI/NIH contract requirements decision tree. Pass a JSON string with keys: operation (required), contract_value, acquisition_method, contract_type, is_it, is_small_business, is_rd, is_human_subjects, is_services, keyword. Operations: query, list_methods, list_types, list_thresholds, search_far, suggest_vehicle.
+def _make_compliance_matrix_tool(
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+):
+    @tool(name="query_compliance_matrix")
+    def compliance_matrix_tool(params: str) -> str:
+        """Query NCI/NIH contract requirements decision tree. Pass a JSON string with keys: operation (required), contract_value, acquisition_method, contract_type, is_it, is_small_business, is_rd, is_human_subjects, is_services, keyword. Operations: query, list_methods, list_types, list_thresholds, search_far, suggest_vehicle.
 
-    Args:
-        params: JSON string, e.g. {"operation":"query","contract_value":85000,"acquisition_method":"sap","contract_type":"ffp","is_services":true}
-    """
-    from .compliance_matrix import execute_operation
+        Args:
+            params: JSON string, e.g. {"operation":"query","contract_value":85000,"acquisition_method":"sap","contract_type":"ffp","is_services":true}
+        """
+        from .compliance_matrix import execute_operation
 
-    parsed = json.loads(params) if isinstance(params, str) else params
-    result = execute_operation(parsed)
-    return json.dumps(result, indent=2, default=str)
+        parsed = json.loads(params) if isinstance(params, str) else params
+        result = execute_operation(parsed)
+        out = json.dumps(result, indent=2, default=str)
+        _emit_tool_result("query_compliance_matrix", out, result_queue, loop)
+        return out
+
+    return compliance_matrix_tool
 
 
 # -- AWS Service @tools (S3, DynamoDB, CloudWatch, Documents) ----------
@@ -739,12 +978,19 @@ def _make_service_tool(
             else:
                 result = handler(parsed, tenant_id)
 
-            # Emit tool_result for create_document so frontend renders DocumentCard
-            # Only emit for successful results (not error responses)
-            if tool_name == "create_document" and result_queue and loop and "error" not in result:
+            # Emit tool_result so the frontend can display results in the tool card
+            if result_queue and loop:
+                # Truncate large results for non-document tools to avoid SSE bloat
+                emit_result = result
+                if tool_name != "create_document" and isinstance(result, dict):
+                    text_val = result.get("content") or result.get("text") or result.get("result")
+                    if isinstance(text_val, str) and len(text_val) > 2000:
+                        emit_result = {**result}
+                        key = "content" if "content" in result else "text" if "text" in result else "result"
+                        emit_result[key] = text_val[:2000] + "..."
                 loop.call_soon_threadsafe(
                     result_queue.put_nowait,
-                    {"type": "tool_result", "name": tool_name, "result": result},
+                    {"type": "tool_result", "name": tool_name, "result": emit_result},
                 )
 
             return json.dumps(result, indent=2, default=str)
@@ -793,7 +1039,8 @@ _SERVICE_TOOL_DEFS = {
     ),
     "knowledge_fetch": (
         "Fetch full knowledge document content from S3. "
-        "Pass JSON with s3_key (or document_id)."
+        "REQUIRES an s3_key from a prior knowledge_search result — do NOT call without one. "
+        "Pass JSON: {\"s3_key\": \"path/to/document.md\"}."
     ),
     "manage_skills": (
         "Create, list, update, delete, or publish custom skills. "
@@ -836,6 +1083,12 @@ def _build_service_tools(
                 loop,
             )
         )
+    # Add compliance matrix and progressive disclosure tools.
+    # These use factory functions that close over result_queue/loop for observability.
+    tools.append(_make_compliance_matrix_tool(result_queue, loop))
+    tools.append(_make_list_skills_tool(result_queue, loop))
+    tools.append(_make_load_skill_tool(result_queue, loop))
+    tools.append(_make_load_data_tool(result_queue, loop))
     return tools
 
 
@@ -847,6 +1100,8 @@ def build_skill_tools(
     tenant_id: str = "demo-tenant",
     user_id: str = "demo-user",
     workspace_id: str | None = None,
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
 ) -> list:
     """Build @tool-wrapped subagent functions from skill registry.
 
@@ -887,6 +1142,8 @@ def build_skill_tools(
             skill_name=name,
             description=meta["description"],
             prompt_body=_truncate_skill(prompt_body),
+            result_queue=result_queue,
+            loop=loop,
         ))
 
     # Merge active user-created SKILL# items
@@ -906,6 +1163,8 @@ def build_skill_tools(
                 skill_name=name,
                 description=skill.get("description", f"{name} specialist"),
                 prompt_body=_truncate_skill(skill_prompt),
+                result_queue=result_queue,
+                loop=loop,
             ))
     except Exception as exc:
         logger.warning("skill_store.list_active_skills failed for %s: %s -- skipping user skills", tenant_id, exc)
@@ -952,6 +1211,13 @@ def build_supervisor_prompt(
         f"{base_prompt}\n\n"
         f"--- ACTIVE SPECIALISTS ---\n"
         f"Available specialists for delegation:\n{agent_list}\n\n"
+        "Progressive Disclosure (how to find information):\n"
+        "  You have layered access to skills and data. Use the lightest layer that answers the question:\n"
+        "  Layer 1 — System prompt hints (you already have short descriptions above).\n"
+        "  Layer 2 — list_skills(): Discover available skills, agents, and data files with descriptions.\n"
+        "  Layer 3 — load_skill(name): Read full skill instructions/workflows to follow them yourself.\n"
+        "  Layer 4 — load_data(name, section?): Fetch reference data (thresholds, vehicles, doc rules).\n"
+        "  Only spawn a specialist subagent when you need expert reasoning, not for simple lookups.\n\n"
         "KB Retrieval Rules:\n"
         "1) For policy/regulation/procedure/template questions, call knowledge_search first.\n"
         "2) If search returns results, call knowledge_fetch on the top 1-3 relevant docs.\n"
@@ -963,6 +1229,17 @@ def build_supervisor_prompt(
         "1) If the user asks to generate/draft/create a document, you MUST call create_document.\n"
         "2) Do not paste full document bodies in chat unless the user explicitly asks for inline text.\n"
         "3) After create_document, respond briefly and direct the user to open/edit the document card.\n\n"
+        f"FAST vs DEEP routing:\n"
+        f"  FAST (seconds):\n"
+        f"    - load_data('matrix', 'thresholds') for threshold lookups.\n"
+        f"    - load_data('contract-vehicles', 'nitaac') for vehicle details.\n"
+        f"    - query_compliance_matrix for computed compliance decisions.\n"
+        f"    - search_far for specific FAR/DFARS clause lookups.\n"
+        f"    - knowledge_search → knowledge_fetch for KB documents.\n"
+        f"    - load_skill(name) to read a workflow and follow it yourself.\n"
+        f"  DEEP (specialist): Delegate to specialist subagents only for complex analysis,\n"
+        f"    multi-factor evaluation, or expert reasoning — not simple factual lookups.\n"
+        f"  ALWAYS prefer FAST tools first. Only delegate to a specialist when FAST tools don't suffice.\n\n"
         f"IMPORTANT: Use the available tool functions to delegate to specialists. "
         f"Include relevant context in the query you pass to each specialist. "
         f"Do not try to answer specialized questions yourself -- delegate to the expert."
@@ -1171,8 +1448,9 @@ async def sdk_query_streaming(
     {"type": "text", "data": "..."} chunks as they arrive from Bedrock
     ConverseStream, plus a final {"type": "complete", ...} event.
 
-    Runs the synchronous Strands Agent in a background thread and bridges
-    to async via a queue.
+    Uses Agent.stream_async() which handles the sync→async bridge
+    internally. Factory tools push results via an asyncio.Queue that
+    is drained between stream events.
     """
     fast_path = await _maybe_fast_path_document_generation(
         prompt=prompt,
@@ -1211,18 +1489,24 @@ async def sdk_query_streaming(
         except Exception as exc:
             logger.warning("workspace_store.get_or_create_default failed: %s", exc)
 
+    # --- stream_async() approach: SDK handles sync→async bridge ---
+    # result_queue is still used by factory tools to push tool_result events.
+    # These are drained between stream events in the main async for loop.
+
+    result_queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+
     skill_tools = build_skill_tools(
         tier=tier,
         skill_names=skill_names,
         tenant_id=tenant_id,
         user_id=user_id,
         workspace_id=resolved_workspace_id,
+        result_queue=result_queue,
+        loop=loop,
     )
 
     # Build service tools (S3, DynamoDB, create_document, search_far, etc.)
-    # Pass an async result queue so create_document can emit tool_result chunks.
-    result_queue: asyncio.Queue = asyncio.Queue()
-    loop = asyncio.get_running_loop()
     service_tools = _build_service_tools(
         tenant_id=tenant_id,
         user_id=user_id,
@@ -1241,100 +1525,108 @@ async def sdk_query_streaming(
     )
 
     strands_history = _to_strands_messages(messages) if messages else None
-    chunk_queue: queue.Queue = queue.Queue()
-
-    handler = QueueCallbackHandler(chunk_queue)
 
     supervisor = Agent(
         model=_model,
         system_prompt=system_prompt,
         tools=skill_tools + service_tools,
-        callback_handler=handler,
+        callback_handler=None,  # stream_async yields events directly
         messages=strands_history,
     )
 
-    # Run synchronous Strands agent in a background thread
-    result_holder: list = []
-    error_holder: list = []
-
-    def _run_agent():
-        try:
-            result = supervisor(prompt)
-            result_holder.append(result)
-        except Exception as exc:
-            error_holder.append(exc)
-        finally:
-            chunk_queue.put(_SENTINEL)
-
-    thread = threading.Thread(target=_run_agent, daemon=True)
-    thread.start()
-
-    # Yield chunks as they arrive from the callback handler
+    # Yield chunks via stream_async — SDK bridges sync→async internally
     full_text_parts: list[str] = []
     tools_called: list[str] = []
+    _current_tool_id: str | None = None
+    error_holder: list[Exception] = []
+    agent_result = None
 
     def _drain_tool_results() -> list[dict]:
+        """Drain tool results that were pushed by factory tools via result_queue."""
         drained: list[dict] = []
         while True:
             try:
                 item = result_queue.get_nowait()
                 name = item.get("name")
-                if name:
-                    tools_called.append(name)
+                if not name:
+                    continue
+                tools_called.append(name)
                 drained.append(item)
             except asyncio.QueueEmpty:
                 break
         return drained
 
-    while True:
-        for tool_result_chunk in _drain_tool_results():
-            yield tool_result_chunk
+    try:
+        async for event in supervisor.stream_async(prompt):
+            # Drain tool results that may have been pushed by factory tools
+            for tool_result_chunk in _drain_tool_results():
+                yield tool_result_chunk
 
-        try:
-            # Poll queue with short timeout to stay async-friendly
-            chunk = await asyncio.to_thread(chunk_queue.get, timeout=0.1)
-        except Exception:
-            # queue.Empty on timeout — check if thread is still alive
-            if not thread.is_alive():
-                break
-            continue
+            # --- Text streaming ---
+            data = event.get("data")
+            if data and isinstance(data, str):
+                full_text_parts.append(data)
+                yield {"type": "text", "data": data}
+                continue
 
-        if chunk is _SENTINEL:
-            break
+            # --- Tool use start (ToolUseStreamEvent) ---
+            current_tool = event.get("current_tool_use")
+            if current_tool and isinstance(current_tool, dict):
+                tool_id = current_tool.get("toolUseId", "")
+                if tool_id and tool_id != _current_tool_id:
+                    _current_tool_id = tool_id
+                    tool_name = current_tool.get("name", "")
+                    tools_called.append(tool_name)
+                    yield {
+                        "type": "tool_use",
+                        "name": tool_name,
+                        "input": current_tool.get("input", ""),
+                        "tool_use_id": tool_id,
+                    }
+                continue
 
-        if chunk.get("type") == "text":
-            full_text_parts.append(chunk["data"])
-            yield chunk
-        elif chunk.get("type") == "tool_use":
-            tools_called.append(chunk.get("name", ""))
-            yield chunk
+            # --- Bedrock contentBlockStart fallback ---
+            tool_use = event.get("event", {})
+            if isinstance(tool_use, dict):
+                tool_use = tool_use.get("contentBlockStart", {}).get("start", {}).get("toolUse")
+                if tool_use:
+                    tool_id = tool_use.get("toolUseId", "")
+                    if tool_id != _current_tool_id:
+                        _current_tool_id = tool_id
+                        tool_name = tool_use.get("name", "")
+                        tools_called.append(tool_name)
+                        yield {
+                            "type": "tool_use",
+                            "name": tool_name,
+                            "tool_use_id": tool_id,
+                        }
+                    continue
 
-        for tool_result_chunk in _drain_tool_results():
-            yield tool_result_chunk
+            # --- Agent result (final event) ---
+            if "result" in event and hasattr(event.get("result"), "metrics"):
+                agent_result = event["result"]
 
-    # Wait for thread to finish
-    thread.join(timeout=5)
+    except Exception as exc:
+        error_holder.append(exc)
+        logger.error("stream_async error: %s", exc)
+
+    # Final drain of any remaining tool results
     for tool_result_chunk in _drain_tool_results():
         yield tool_result_chunk
 
     # Extract usage from result
     usage = {}
-    if result_holder:
-        result = result_holder[0]
+    if agent_result is not None:
         if not full_text_parts:
-            # Some Strands responses may not emit token deltas through callback_handler.
-            # Fall back to the final rendered result text so streaming clients still
-            # receive assistant content before COMPLETE.
             try:
-                final_text = str(result)
+                final_text = str(agent_result)
                 if final_text:
                     full_text_parts.append(final_text)
-                    # Yield as text event so SSE consumers receive it before COMPLETE
                     yield {"type": "text", "data": final_text}
             except Exception:
                 pass
         try:
-            metrics = getattr(result, "metrics", None)
+            metrics = getattr(agent_result, "metrics", None)
             if metrics:
                 acc = getattr(metrics, "accumulated_usage", None)
                 if acc and isinstance(acc, dict):
