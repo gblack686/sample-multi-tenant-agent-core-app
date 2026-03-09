@@ -7,6 +7,7 @@ import os
 import json
 import time
 import logging
+import re
 import uuid
 from datetime import datetime
 from typing import Any, List
@@ -176,6 +177,154 @@ def _extract_user_id(session_id: str | None = None) -> str:
     if session_id.startswith("ws-"):
         return session_id
     return "demo-user"
+
+
+def _extract_leaf_session_id(session_id: str | None = None) -> str | None:
+    """Extract raw session id from composite format {tenant}#{tier}#{user}#{session}."""
+    if not session_id:
+        return None
+    if "#" in session_id:
+        parts = session_id.split("#", 3)
+        if len(parts) >= 4 and parts[3]:
+            return parts[3]
+        return None
+    return session_id
+
+
+def _normalize_context_text(text: str) -> str:
+    """Prefer the explicit user request section from wrapped prompts."""
+    cleaned = (text or "").strip()
+    if not cleaned:
+        return ""
+
+    marker = "[USER REQUEST]"
+    if marker in cleaned:
+        tail = cleaned.split(marker, 1)[1].strip()
+        if "Instruction:" in tail:
+            tail = tail.split("Instruction:", 1)[0].strip()
+        if tail:
+            cleaned = tail
+    return cleaned
+
+
+def _load_recent_user_context(session_id: str | None = None) -> list[str]:
+    """Load recent user messages for contextualizing document generation."""
+    leaf_session_id = _extract_leaf_session_id(session_id)
+    if not leaf_session_id:
+        return []
+
+    tenant_id = _extract_tenant_id(session_id)
+    user_id = _extract_user_id(session_id)
+
+    try:
+        from .session_store import get_messages
+
+        messages = get_messages(leaf_session_id, tenant_id, user_id, limit=30)
+        user_texts: list[str] = []
+        for msg in messages:
+            if msg.get("role") != "user":
+                continue
+
+            content = msg.get("content", "")
+            if isinstance(content, str):
+                normalized = _normalize_context_text(content)
+                if normalized:
+                    user_texts.append(normalized)
+                continue
+
+            if isinstance(content, list):
+                text_parts: list[str] = []
+                for block in content:
+                    if isinstance(block, dict):
+                        block_text = block.get("text")
+                        if isinstance(block_text, str) and block_text.strip():
+                            text_parts.append(block_text.strip())
+                if text_parts:
+                    normalized = _normalize_context_text("\n".join(text_parts))
+                    if normalized:
+                        user_texts.append(normalized)
+
+        return user_texts[-8:]
+    except Exception as exc:
+        logger.debug("Could not load session context for create_document: %s", exc)
+        return []
+
+
+def _extract_first_money_value(text: str) -> str | None:
+    """Extract a likely budget/estimate token from free text."""
+    if not text:
+        return None
+
+    m = re.search(r"\$[0-9][0-9,]*(?:\.[0-9]+)?", text)
+    if m:
+        return m.group(0)
+
+    m = re.search(r"\b[0-9][0-9,]*(?:\.[0-9]+)?\s*(?:million|billion|k|m)\b", text, flags=re.IGNORECASE)
+    if m:
+        return m.group(0)
+
+    return None
+
+
+def _extract_period(text: str) -> str | None:
+    """Extract a likely period-of-performance phrase from free text."""
+    if not text:
+        return None
+
+    m = re.search(r"\b\d+\s*(?:month|months|year|years)\b(?:[^.,;\n]{0,40})", text, flags=re.IGNORECASE)
+    if m:
+        return m.group(0).strip()
+    return None
+
+
+def _augment_document_data_from_context(
+    doc_type: str,
+    title: str,
+    data: dict | None,
+    session_id: str | None,
+) -> dict:
+    """Fill missing create_document fields from recent user conversation context."""
+    merged = dict(data or {})
+
+    # If caller already passed meaningful inputs, preserve them and only fill gaps.
+    context_messages = _load_recent_user_context(session_id)
+    if not context_messages:
+        return merged
+
+    last_user_text = context_messages[-1]
+    context_blob = " ".join(context_messages[-4:])
+
+    # Prefer explicit recent user request; keep bounded.
+    requirement = (last_user_text or context_blob).strip()
+    if requirement:
+        requirement = requirement[:500]
+
+    money = _extract_first_money_value(context_blob)
+    period = _extract_period(context_blob)
+
+    # Common keys used across multiple document generators/templates.
+    if requirement:
+        merged.setdefault("description", requirement)
+        merged.setdefault("requirement", requirement)
+        merged.setdefault("objective", requirement)
+    if money:
+        merged.setdefault("estimated_cost", money)
+        merged.setdefault("estimated_value", money)
+        merged.setdefault("budget", money)
+        merged.setdefault("total_estimate", money)
+    if period:
+        merged.setdefault("period_of_performance", period)
+        merged.setdefault("timeline", period)
+
+    # Minimal doc-type hints for better first-pass drafts.
+    if doc_type == "igce":
+        merged.setdefault("item_name", title or "Primary acquisition item")
+    if doc_type == "market_research":
+        merged.setdefault("requirement_summary", requirement or title)
+    if doc_type == "sow":
+        merged.setdefault("scope", requirement or title)
+
+    return merged
 
 
 def _get_user_prefix(session_id: str | None = None) -> str:
@@ -1094,6 +1243,10 @@ def _exec_create_document(params: dict, tenant_id: str, session_id: str = None) 
     package_id = params.get("package_id")
     output_format = params.get("output_format", "docx")  # docx, xlsx, or md
     timestamp = time.strftime("%Y%m%d_%H%M%S")
+
+    # Enrich missing/partial document fields from recent session context so
+    # first-pass drafts are less generic when tools are invoked with sparse params.
+    data = _augment_document_data_from_context(doc_type, title, data, session_id)
 
     # Validate doc_type
     valid_doc_types = {
