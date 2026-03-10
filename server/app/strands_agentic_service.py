@@ -214,6 +214,33 @@ def _fast_path_title(prompt: str, doc_type: str) -> str:
     return _DOC_TYPE_LABELS.get(doc_type, doc_type.replace("_", " ").title())
 
 
+# -- Trivial greeting fast-path (no LLM call needed) --------------------
+
+_TRIVIAL_RE = re.compile(
+    r"^(?:h(?:i|ello|ey|owdy)|yo|sup|good\s*(?:morning|afternoon|evening)"
+    r"|thanks?(?:\s*you)?|ok(?:ay)?|sure|bye|goodbye|see\s*ya"
+    r"|how\s*are\s*you|what'?s?\s*up|hey\s*there)[\s!?.]*$",
+    re.IGNORECASE,
+)
+
+_GREETING_RESPONSES = [
+    "Hey! What are you working on today?",
+    "Hi there! What can I help you with?",
+    "Hey! Got an acquisition question or need to start something?",
+]
+
+
+def _fast_trivial_response(prompt: str) -> dict | None:
+    """Return a canned response for trivial greetings, skipping the LLM entirely."""
+    if not _TRIVIAL_RE.match(prompt.strip()):
+        return None
+    import random
+    return {
+        "text": random.choice(_GREETING_RESPONSES),
+        "usage": {"fast_path": True, "trivial": True},
+    }
+
+
 def _build_scoped_session_id(
     tenant_id: str,
     user_id: str,
@@ -584,6 +611,82 @@ EAGLE_TOOLS = [
             "required": ["action"],
         },
     },
+    {
+        "name": "update_state",
+        "description": (
+            "Push a structured state update to the frontend UI via SSE. "
+            "Used to send real-time checklist progress, phase changes, "
+            "document-ready notifications, and compliance alerts."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "state_type": {
+                    "type": "string",
+                    "enum": ["checklist_update", "phase_change", "document_ready", "compliance_alert"],
+                    "description": "Type of state update to push to the frontend",
+                },
+                "package_id": {
+                    "type": "string",
+                    "description": "Acquisition package ID — checklist is auto-fetched from DB",
+                },
+                "phase": {
+                    "type": "string",
+                    "description": "New phase name (for phase_change)",
+                },
+                "previous": {
+                    "type": "string",
+                    "description": "Previous phase name (for phase_change)",
+                },
+                "doc_type": {
+                    "type": "string",
+                    "description": "Document type (for document_ready)",
+                },
+                "version": {
+                    "type": "integer",
+                    "description": "Document version (for document_ready)",
+                },
+                "document_id": {
+                    "type": "string",
+                    "description": "Document ID (for document_ready)",
+                },
+                "severity": {
+                    "type": "string",
+                    "enum": ["info", "warning", "critical"],
+                    "description": "Alert severity (for compliance_alert)",
+                },
+                "items": {
+                    "type": "array",
+                    "description": "Compliance finding items (for compliance_alert)",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string"},
+                            "note": {"type": "string"},
+                        },
+                    },
+                },
+            },
+            "required": ["state_type"],
+        },
+    },
+    {
+        "name": "get_package_checklist",
+        "description": (
+            "Fetch the current acquisition package checklist. Returns required, "
+            "completed, and missing documents for the given package."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "package_id": {
+                    "type": "string",
+                    "description": "The acquisition package ID to fetch checklist for",
+                },
+            },
+            "required": ["package_id"],
+        },
+    },
 ]
 
 # Max prompt size per subagent to avoid context overflow
@@ -900,6 +1003,119 @@ def _make_load_data_tool(
     return load_data_tool
 
 
+# -- State Push @tools (update_state + get_package_checklist) ----------
+# These enable real-time frontend UI updates via SSE METADATA events.
+
+def _make_update_state_tool(
+    tenant_id: str,
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+):
+    """Create a tool that pushes structured state to the frontend via SSE METADATA events.
+
+    State types:
+      - checklist_update: package checklist progress (required/completed/missing)
+      - phase_change: acquisition workflow phase transition
+      - document_ready: notification that a document was created/updated
+      - compliance_alert: compliance findings that need attention
+    """
+
+    @tool(name="update_state")
+    def update_state_tool(params: str) -> str:
+        """Push a structured state update to the frontend UI. The frontend renders this immediately as a live checklist, progress bar, or alert.
+
+        Args:
+            params: JSON string with keys: state_type (required: checklist_update|phase_change|document_ready|compliance_alert), package_id (optional), and state-type-specific fields. For checklist_update: reads current package state from DB automatically — just pass package_id. For phase_change: pass phase, previous. For document_ready: pass doc_type, version, document_id. For compliance_alert: pass severity (info|warning|critical), items (array of {name, note}).
+        """
+        parsed = json.loads(params) if isinstance(params, str) else params
+        state_type = parsed.get("state_type", "")
+
+        if not state_type:
+            return json.dumps({"error": "state_type is required"})
+
+        payload: dict = {"state_type": state_type}
+
+        if state_type == "checklist_update":
+            # Auto-fetch current checklist from DynamoDB
+            pkg_id = parsed.get("package_id", "")
+            if pkg_id:
+                from .package_store import get_package_checklist
+                checklist = get_package_checklist(tenant_id, pkg_id)
+                payload["package_id"] = pkg_id
+                payload["checklist"] = checklist
+                total = len(checklist.get("required", []))
+                done = len(checklist.get("completed", []))
+                payload["progress_pct"] = round((done / total * 100) if total > 0 else 0)
+            else:
+                payload["checklist"] = parsed.get("checklist", {})
+                payload["progress_pct"] = parsed.get("progress_pct", 0)
+
+        elif state_type == "phase_change":
+            payload["phase"] = parsed.get("phase", "")
+            payload["previous"] = parsed.get("previous", "")
+            # Also fetch checklist if package_id is available
+            pkg_id = parsed.get("package_id", "")
+            if pkg_id:
+                from .package_store import get_package_checklist
+                payload["package_id"] = pkg_id
+                payload["checklist"] = get_package_checklist(tenant_id, pkg_id)
+
+        elif state_type == "document_ready":
+            payload["doc_type"] = parsed.get("doc_type", "")
+            payload["version"] = parsed.get("version", 1)
+            payload["document_id"] = parsed.get("document_id", "")
+            # Auto-refresh checklist
+            pkg_id = parsed.get("package_id", "")
+            if pkg_id:
+                from .package_store import get_package_checklist
+                payload["package_id"] = pkg_id
+                payload["checklist"] = get_package_checklist(tenant_id, pkg_id)
+
+        elif state_type == "compliance_alert":
+            payload["severity"] = parsed.get("severity", "info")
+            payload["items"] = parsed.get("items", [])
+
+        else:
+            return json.dumps({"error": f"Unknown state_type: {state_type}"})
+
+        # Push to frontend via SSE METADATA event
+        if result_queue and loop:
+            loop.call_soon_threadsafe(
+                result_queue.put_nowait,
+                {"type": "metadata", "content": payload},
+            )
+
+        return json.dumps({"ok": True, "state_type": state_type, "pushed": True})
+
+    return update_state_tool
+
+
+def _make_get_checklist_tool(
+    tenant_id: str,
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+):
+    @tool(name="get_package_checklist")
+    def get_checklist_tool(params: str) -> str:
+        """Fetch the current acquisition package checklist showing required, completed, and missing documents. Returns {required, completed, missing, complete} for the given package_id.
+
+        Args:
+            params: JSON string with key: package_id (required)
+        """
+        parsed = json.loads(params) if isinstance(params, str) else params
+        pkg_id = parsed.get("package_id", "")
+        if not pkg_id:
+            return json.dumps({"error": "package_id is required"})
+
+        from .package_store import get_package_checklist
+        checklist = get_package_checklist(tenant_id, pkg_id)
+        out = json.dumps(checklist, default=str)
+        _emit_tool_result("get_package_checklist", out, result_queue, loop)
+        return out
+
+    return get_checklist_tool
+
+
 # -- Compliance Matrix @tool (available to all agents) ----------------
 
 def _make_compliance_matrix_tool(
@@ -992,6 +1208,36 @@ def _make_service_tool(
                     result_queue.put_nowait,
                     {"type": "tool_result", "name": tool_name, "result": emit_result},
                 )
+
+                # Auto-push document_ready + checklist_update metadata for create_document in package mode
+                if (
+                    tool_name == "create_document"
+                    and isinstance(result, dict)
+                    and not result.get("error")
+                    and result.get("package_id")
+                ):
+                    pkg_id = result["package_id"]
+                    doc_ready_payload = {
+                        "state_type": "document_ready",
+                        "package_id": pkg_id,
+                        "doc_type": result.get("doc_type", parsed.get("doc_type", "")),
+                        "version": result.get("version", 1),
+                        "document_id": result.get("document_id", ""),
+                    }
+                    # Also fetch updated checklist
+                    try:
+                        from .package_store import get_package_checklist
+                        checklist = get_package_checklist(tenant_id, pkg_id)
+                        doc_ready_payload["checklist"] = checklist
+                        total = len(checklist.get("required", []))
+                        done = len(checklist.get("completed", []))
+                        doc_ready_payload["progress_pct"] = round((done / total * 100) if total > 0 else 0)
+                    except Exception:
+                        pass
+                    loop.call_soon_threadsafe(
+                        result_queue.put_nowait,
+                        {"type": "metadata", "content": doc_ready_payload},
+                    )
 
             return json.dumps(result, indent=2, default=str)
         except Exception as exc:
@@ -1089,6 +1335,9 @@ def _build_service_tools(
     tools.append(_make_list_skills_tool(result_queue, loop))
     tools.append(_make_load_skill_tool(result_queue, loop))
     tools.append(_make_load_data_tool(result_queue, loop))
+    # State push tools — enable real-time frontend UI updates via SSE METADATA
+    tools.append(_make_update_state_tool(tenant_id, result_queue, loop))
+    tools.append(_make_get_checklist_tool(tenant_id, result_queue, loop))
     return tools
 
 
@@ -1228,7 +1477,16 @@ def build_supervisor_prompt(
         "Document Output Rules:\n"
         "1) If the user asks to generate/draft/create a document, you MUST call create_document.\n"
         "2) Do not paste full document bodies in chat unless the user explicitly asks for inline text.\n"
-        "3) After create_document, respond briefly and direct the user to open/edit the document card.\n\n"
+        "3) After create_document, respond briefly and direct the user to open/edit the document card.\n"
+        "4) After create_document succeeds, call update_state with state_type='document_ready'.\n\n"
+        "State Push Rules (update_state tool):\n"
+        "The frontend has a live checklist panel. Call update_state after state-changing actions:\n"
+        "  - After create_document → update_state(state_type='document_ready', package_id, doc_type, version, document_id)\n"
+        "  - After query_compliance_matrix reveals requirements → update_state(state_type='checklist_update', package_id)\n"
+        "  - On phase transitions → update_state(state_type='phase_change', package_id, phase, previous)\n"
+        "  - On compliance findings → update_state(state_type='compliance_alert', severity, items)\n"
+        "  Just pass package_id for checklist_update — the tool auto-fetches current state from DB.\n"
+        "  Call get_package_checklist before generating docs to see what's done and what's missing.\n\n"
         f"FAST vs DEEP routing:\n"
         f"  FAST (seconds):\n"
         f"    - load_data('matrix', 'thresholds') for threshold lookups.\n"
@@ -1299,6 +1557,13 @@ async def sdk_query(
     Yields:
         AssistantMessage and ResultMessage adapter objects
     """
+    # Trivial greeting fast-path — no LLM call needed
+    trivial = _fast_trivial_response(prompt)
+    if trivial is not None:
+        yield AssistantMessage(content=[TextBlock(text=trivial["text"])])
+        yield ResultMessage(result=trivial["text"], usage=trivial["usage"])
+        return
+
     fast_path = await _maybe_fast_path_document_generation(
         prompt=prompt,
         tenant_id=tenant_id,
@@ -1452,6 +1717,13 @@ async def sdk_query_streaming(
     internally. Factory tools push results via an asyncio.Queue that
     is drained between stream events.
     """
+    # Trivial greeting fast-path — no LLM call needed
+    trivial = _fast_trivial_response(prompt)
+    if trivial is not None:
+        yield {"type": "text", "data": trivial["text"]}
+        yield {"type": "complete", "text": trivial["text"], "tools_called": [], "usage": trivial["usage"]}
+        return
+
     fast_path = await _maybe_fast_path_document_generation(
         prompt=prompt,
         tenant_id=tenant_id,
