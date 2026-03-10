@@ -233,6 +233,126 @@ e2e WORKFLOW="full":
         ;;
     esac
 
+# Run all test suites and generate a markdown report matrix in test-reports/
+# Usage: just test-report           (all suites)
+#        just test-report --no-e2e  (skip Playwright — no running stack needed)
+test-report *ARGS:
+    #!/usr/bin/env bash
+    set -uo pipefail
+    SKIP_E2E=false
+    for arg in {{ARGS}}; do
+        [[ "$arg" == "--no-e2e" ]] && SKIP_E2E=true
+    done
+    TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+    REPORT="test-reports/${TIMESTAMP}-test-report.md"
+    mkdir -p test-reports
+
+    echo "# EAGLE Test Report — ${TIMESTAMP}" > "$REPORT"
+    echo "" >> "$REPORT"
+    echo "| Suite | Passed | Failed | Errors | Skipped | Status |" >> "$REPORT"
+    echo "|-------|--------|--------|--------|---------|--------|" >> "$REPORT"
+
+    TOTAL_PASS=0; TOTAL_FAIL=0; TOTAL_ERR=0; TOTAL_SKIP=0
+
+    # ── L1a: Ruff ──
+    echo "Running ruff..."
+    RUFF_OUT=$(cd server && python3 -m ruff check app/ 2>&1)
+    RUFF_RC=$?
+    RUFF_ERRORS=$(echo "$RUFF_OUT" | grep -c "Found [0-9]" || true)
+    RUFF_COUNT=$(echo "$RUFF_OUT" | grep -oP 'Found \K[0-9]+' || echo "0")
+    if [ "$RUFF_RC" -eq 0 ]; then
+        echo "| Ruff (Python lint) | - | 0 | 0 | - | PASS |" >> "$REPORT"
+    else
+        echo "| Ruff (Python lint) | - | ${RUFF_COUNT} | 0 | - | FAIL |" >> "$REPORT"
+    fi
+
+    # ── L1b: TypeScript ──
+    echo "Running tsc..."
+    TSC_OUT=$(cd client && npx tsc --noEmit 2>&1)
+    TSC_RC=$?
+    TSC_ERRORS=$(echo "$TSC_OUT" | grep -c "error TS" || true)
+    if [ "$TSC_RC" -eq 0 ]; then
+        echo "| TypeScript (tsc) | - | 0 | 0 | - | PASS |" >> "$REPORT"
+    else
+        echo "| TypeScript (tsc) | - | ${TSC_ERRORS} | 0 | - | FAIL |" >> "$REPORT"
+    fi
+
+    export AWS_PROFILE="${AWS_PROFILE:-eagle}"
+
+    # ── L2: Pytest ──
+    echo "Running pytest..."
+    PYTEST_OUT=$(cd server && python3 -m pytest tests/ --ignore=tests/test_strands_eval.py -v --tb=no -q 2>&1)
+    PYTEST_RC=$?
+    # Parse "X passed, Y failed, Z errors, W skipped" from last line
+    PYTEST_SUMMARY=$(echo "$PYTEST_OUT" | grep -E "[0-9]+ (passed|failed|error)" | tail -1)
+    PY_PASS=$(echo "$PYTEST_SUMMARY" | grep -oP '[0-9]+(?= passed)' || echo "0")
+    PY_FAIL=$(echo "$PYTEST_SUMMARY" | grep -oP '[0-9]+(?= failed)' || echo "0")
+    PY_ERR=$(echo "$PYTEST_SUMMARY" | grep -oP '[0-9]+(?= error)' || echo "0")
+    PY_SKIP=$(echo "$PYTEST_SUMMARY" | grep -oP '[0-9]+(?= skipped)' || echo "0")
+    PY_STATUS="PASS"; [ "$PY_FAIL" -gt 0 ] || [ "$PY_ERR" -gt 0 ] && PY_STATUS="FAIL"
+    echo "| Pytest (unit) | ${PY_PASS} | ${PY_FAIL} | ${PY_ERR} | ${PY_SKIP} | ${PY_STATUS} |" >> "$REPORT"
+    TOTAL_PASS=$((TOTAL_PASS + PY_PASS))
+    TOTAL_FAIL=$((TOTAL_FAIL + PY_FAIL))
+    TOTAL_ERR=$((TOTAL_ERR + PY_ERR))
+    TOTAL_SKIP=$((TOTAL_SKIP + PY_SKIP))
+
+    # ── L3: Playwright (optional) ──
+    if [ "$SKIP_E2E" = false ]; then
+        echo "Running Playwright..."
+        PW_OUT=$(cd client && BASE_URL=http://localhost:3000 npx playwright test --reporter=list 2>&1)
+        PW_RC=$?
+        PW_PASS=$(echo "$PW_OUT" | grep -oP '[0-9]+(?= passed)' || echo "0")
+        PW_FAIL=$(echo "$PW_OUT" | grep -oP '[0-9]+(?= failed)' || echo "0")
+        PW_SKIP=$(echo "$PW_OUT" | grep -oP '[0-9]+(?= skipped)' || echo "0")
+        PW_STATUS="PASS"; [ "$PW_FAIL" -gt 0 ] && PW_STATUS="FAIL"
+        echo "| Playwright (E2E) | ${PW_PASS} | ${PW_FAIL} | 0 | ${PW_SKIP} | ${PW_STATUS} |" >> "$REPORT"
+        TOTAL_PASS=$((TOTAL_PASS + PW_PASS))
+        TOTAL_FAIL=$((TOTAL_FAIL + PW_FAIL))
+        TOTAL_SKIP=$((TOTAL_SKIP + PW_SKIP))
+    else
+        echo "| Playwright (E2E) | - | - | - | - | SKIPPED |" >> "$REPORT"
+    fi
+
+    # ── L4: CDK synth ──
+    echo "Running CDK synth..."
+    CDK_OUT=$(cd infrastructure/cdk-eagle && npx cdk synth --quiet 2>&1)
+    CDK_RC=$?
+    if [ "$CDK_RC" -eq 0 ]; then
+        echo "| CDK synth | - | 0 | 0 | - | PASS |" >> "$REPORT"
+    else
+        echo "| CDK synth | - | 1 | 0 | - | FAIL |" >> "$REPORT"
+    fi
+
+    # ── Totals ──
+    echo "" >> "$REPORT"
+    echo "**Totals:** ${TOTAL_PASS} passed, ${TOTAL_FAIL} failed, ${TOTAL_ERR} errors, ${TOTAL_SKIP} skipped" >> "$REPORT"
+    echo "" >> "$REPORT"
+
+    # ── Failure details ──
+    if [ "$PY_FAIL" -gt 0 ] || [ "$PY_ERR" -gt 0 ]; then
+        echo "## Failed Tests (Pytest)" >> "$REPORT"
+        echo '```' >> "$REPORT"
+        echo "$PYTEST_OUT" | grep -E "^(FAILED|ERROR) " >> "$REPORT"
+        echo '```' >> "$REPORT"
+        echo "" >> "$REPORT"
+    fi
+
+    if [ "$RUFF_RC" -ne 0 ]; then
+        echo "## Ruff Lint Errors" >> "$REPORT"
+        echo '```' >> "$REPORT"
+        echo "$RUFF_OUT" | tail -5 >> "$REPORT"
+        echo '```' >> "$REPORT"
+        echo "" >> "$REPORT"
+    fi
+
+    echo "---" >> "$REPORT"
+    echo "*Generated: $(date -Iseconds) on branch $(git branch --show-current)*" >> "$REPORT"
+
+    echo ""
+    echo "=== Report saved: $REPORT ==="
+    echo ""
+    cat "$REPORT"
+
 # ── Eval Suite ──────────────────────────────────────────────
 
 # Run full eval suite (28 tests) with haiku and publish results
