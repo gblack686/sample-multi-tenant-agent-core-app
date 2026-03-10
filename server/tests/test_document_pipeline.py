@@ -229,6 +229,42 @@ class TestCreateDocumentTool:
             key,
         ), f"S3 key doesn't match expected pattern: {key}"
 
+    def test_sow_edit_request_clears_scope_section(self, mock_s3_client):
+        """Explicit clear request should patch SOW section content in-place."""
+        existing = (
+            "# Statement of Work\n\n"
+            "## 1. BACKGROUND AND PURPOSE\n\n"
+            "Background text.\n\n"
+            "## 2. SCOPE\n\n"
+            "Scope details that should be removed.\n\n"
+            "## 3. PERIOD OF PERFORMANCE\n\n"
+            "12 months from date of award\n"
+        )
+
+        with patch.dict(os.environ, ENV_PATCH, clear=False):
+            with patch("app.agentic_service._get_s3", return_value=mock_s3_client):
+                from app.agentic_service import _exec_create_document
+                result = _exec_create_document(
+                    {
+                        "doc_type": "sow",
+                        "title": "Editable SOW",
+                        "data": {
+                            "current_content": existing,
+                            "edit_request": "change the scope. leave it blank",
+                        },
+                    },
+                    tenant_id="test-tenant",
+                    session_id="ses-006",
+                )
+
+        assert result["document_type"] == "sow"
+        assert result["source"] == "inline_edit_clear_sections"
+        assert re.search(r"## 2\. SCOPE\s+\[To be completed\]", result["content"])
+        assert re.search(
+            r"## 3\. PERIOD OF PERFORMANCE\s+12 months from date of award",
+            result["content"],
+        )
+
 
 # ══════════════════════════════════════════════════════════════════════
 # T2 — execute_tool dispatch

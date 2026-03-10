@@ -84,9 +84,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   const includeContent = request.nextUrl.searchParams.get('content') !== 'false';
 
   const authHeader = request.headers.get('authorization');
-  if (!authHeader && !DEV_MODE) {
-    return NextResponse.json({ error: 'Missing Authorization header' }, { status: 401 });
-  }
 
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',

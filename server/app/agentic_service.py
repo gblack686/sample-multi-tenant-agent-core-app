@@ -406,6 +406,106 @@ def _looks_like_unfilled_template_preview(doc_type: str, preview: str) -> bool:
     return False
 
 
+_SOW_SECTION_HINTS: dict[str, str] = {
+    "1": "background and purpose",
+    "2": "scope",
+    "3": "period of performance",
+    "4": "applicable documents and standards",
+    "5": "tasks and requirements",
+    "6": "deliverables",
+    "7": "government-furnished property",
+    "8": "quality assurance surveillance plan",
+    "9": "place of performance",
+    "10": "security requirements",
+}
+
+
+def _extract_sow_clear_targets(edit_request: str) -> list[str]:
+    """Return SOW section heading hints that the request asks to clear."""
+    req = (edit_request or "").strip().lower()
+    if not req:
+        return []
+
+    # Guardrail: only auto-clear when user explicitly asks to clear/blank.
+    clear_intent = (
+        "clear" in req
+        or "blank" in req
+        or "to be completed" in req
+        or "remove" in req
+    )
+    if not clear_intent:
+        return []
+
+    targets: list[str] = []
+
+    for section_num in re.findall(r"\bsection\s*(\d{1,2})\b", req):
+        hint = _SOW_SECTION_HINTS.get(section_num)
+        if hint and hint not in targets:
+            targets.append(hint)
+
+    heading_aliases = (
+        "background and purpose",
+        "scope",
+        "period of performance",
+        "applicable documents and standards",
+        "tasks and requirements",
+        "deliverables",
+        "government-furnished property",
+        "quality assurance surveillance plan",
+        "place of performance",
+        "security requirements",
+    )
+    for alias in heading_aliases:
+        if alias in req and alias not in targets:
+            targets.append(alias)
+
+    # "leave it blank" after "scope" is common shorthand.
+    if "scope" in req and "scope" not in targets:
+        targets.append("scope")
+
+    return targets
+
+
+def _apply_sow_clear_edits(current_content: str, edit_request: str) -> str | None:
+    """Apply explicit SOW section clear requests against existing markdown."""
+    if not isinstance(current_content, str) or not current_content.strip():
+        return None
+
+    targets = _extract_sow_clear_targets(edit_request)
+    if not targets:
+        return None
+
+    heading_matches = list(re.finditer(r"(?m)^##\s+(.+?)\s*$", current_content))
+    if not heading_matches:
+        return None
+
+    rebuilt: list[str] = []
+    cursor = 0
+    changed = False
+
+    for idx, heading_match in enumerate(heading_matches):
+        heading_end = heading_match.end()
+        next_start = heading_matches[idx + 1].start() if idx + 1 < len(heading_matches) else len(current_content)
+
+        heading_text = heading_match.group(1).strip().lower()
+        body_text = current_content[heading_end:next_start]
+
+        rebuilt.append(current_content[cursor:heading_end])
+
+        if any(target in heading_text for target in targets):
+            replacement = "\n\n[To be completed]\n\n"
+            if body_text.strip() != "[To be completed]":
+                changed = True
+            rebuilt.append(replacement)
+        else:
+            rebuilt.append(body_text)
+
+        cursor = next_start
+
+    updated = "".join(rebuilt)
+    return updated if changed else None
+
+
 def _get_user_prefix(session_id: str | None = None) -> str:
     """Get the S3 prefix for the current user: eagle/{tenant}/{user}/"""
     tenant_id = _extract_tenant_id(session_id)
@@ -1353,6 +1453,16 @@ def _exec_create_document(params: dict, tenant_id: str, session_id: str = None) 
     # first-pass drafts are less generic when tools are invoked with sparse params.
     data = _augment_document_data_from_context(doc_type, title, data, session_id)
 
+    # Document-viewer edit flow: when current content + explicit clear request is
+    # present, patch the existing markdown directly instead of regenerating a
+    # fresh template that can ignore section-level edit intent.
+    inline_edited_content: str | None = None
+    if doc_type == "sow":
+        current_content = data.get("current_content")
+        edit_request = str(data.get("edit_request", "") or "")
+        if isinstance(current_content, str) and edit_request:
+            inline_edited_content = _apply_sow_clear_edits(current_content, edit_request)
+
     # Validate doc_type
     valid_doc_types = {
         "sow", "igce", "market_research", "justification", "acquisition_plan",
@@ -1379,53 +1489,60 @@ def _exec_create_document(params: dict, tenant_id: str, session_id: str = None) 
     # Get user_id for S3 path
     user_id = _extract_user_id(session_id)
 
-    # Try template-based generation first
-    try:
-        service = TemplateService(tenant_id, user_id, markdown_generators)
-        result = service.generate_document(doc_type, title, data, output_format)
+    if inline_edited_content is not None:
+        content = inline_edited_content
+        file_type = "md"
+        source = "inline_edit_clear_sections"
+        template_path = None
+        result = None
+    else:
+        # Try template-based generation first
+        try:
+            service = TemplateService(tenant_id, user_id, markdown_generators)
+            result = service.generate_document(doc_type, title, data, output_format)
 
-        if not result.success:
-            # Template service failed, use direct markdown fallback
+            if not result.success:
+                # Template service failed, use direct markdown fallback
+                generator = markdown_generators.get(doc_type)
+                if generator:
+                    content = generator(title, data)
+                    file_type = "md"
+                    source = "markdown_fallback"
+                    template_path = None
+                else:
+                    return {"error": f"No generator available for {doc_type}: {result.error}"}
+            else:
+                content = result.preview  # For response display
+                file_type = result.file_type
+                source = result.source
+                template_path = result.template_path
+
+                # Some official templates are boilerplate-only and may not expose
+                # machine-replaceable placeholders. If the extracted preview is still
+                # generic, return markdown generator content for the editable response
+                # while still saving the populated binary artifact to S3.
+                if _looks_like_unfilled_template_preview(doc_type, content):
+                    generator = markdown_generators.get(doc_type)
+                    if generator:
+                        content = generator(title, data)
+                        source = f"{source}+markdown_context_response"
+                        logger.warning(
+                            "Template preview looked unfilled for doc_type=%s; using markdown generator for response content",
+                            doc_type,
+                        )
+
+        except ImportError as e:
+            # python-docx or openpyxl not available, use markdown
+            logger.warning("Template libraries unavailable: %s, using markdown fallback", e)
             generator = markdown_generators.get(doc_type)
             if generator:
                 content = generator(title, data)
                 file_type = "md"
                 source = "markdown_fallback"
                 template_path = None
+                result = None
             else:
-                return {"error": f"No generator available for {doc_type}: {result.error}"}
-        else:
-            content = result.preview  # For response display
-            file_type = result.file_type
-            source = result.source
-            template_path = result.template_path
-
-            # Some official templates are boilerplate-only and may not expose
-            # machine-replaceable placeholders. If the extracted preview is still
-            # generic, return markdown generator content for the editable response
-            # while still saving the populated binary artifact to S3.
-            if _looks_like_unfilled_template_preview(doc_type, content):
-                generator = markdown_generators.get(doc_type)
-                if generator:
-                    content = generator(title, data)
-                    source = f"{source}+markdown_context_response"
-                    logger.warning(
-                        "Template preview looked unfilled for doc_type=%s; using markdown generator for response content",
-                        doc_type,
-                    )
-
-    except ImportError as e:
-        # python-docx or openpyxl not available, use markdown
-        logger.warning("Template libraries unavailable: %s, using markdown fallback", e)
-        generator = markdown_generators.get(doc_type)
-        if generator:
-            content = generator(title, data)
-            file_type = "md"
-            source = "markdown_fallback"
-            template_path = None
-            result = None
-        else:
-            return {"error": f"No generator available for {doc_type}"}
+                return {"error": f"No generator available for {doc_type}"}
 
     # Determine file extension and content to save
     ext = file_type if file_type in ("docx", "xlsx") else "md"
@@ -1536,6 +1653,15 @@ def _generate_sow(title: str, data: dict) -> str:
         "Training and Knowledge Transfer",
         "Ongoing Support and Maintenance",
     ])
+    scope_override = str(data.get("scope", "") or "").strip()
+    if scope_override:
+        scope_text = scope_override
+    else:
+        scope_text = (
+            "The contractor shall provide all personnel, equipment, supplies, facilities,\n"
+            "transportation, tools, materials, supervision, and other items and non-personal\n"
+            f"services necessary to {desc}, as defined in this SOW."
+        )
 
     deliverables_text = "\n".join(f"   {i+1}. {d}" for i, d in enumerate(deliverables))
     tasks_text = "\n".join(f"   5.{i+1} Task {i+1}: {t}" for i, t in enumerate(tasks))
@@ -1556,9 +1682,7 @@ and performance requirements for this acquisition.
 
 ## 2. SCOPE
 
-The contractor shall provide all personnel, equipment, supplies, facilities,
-transportation, tools, materials, supervision, and other items and non-personal
-services necessary to {desc}, as defined in this SOW.
+{scope_text}
 
 ## 3. PERIOD OF PERFORMANCE
 

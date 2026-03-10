@@ -52,6 +52,7 @@ const TEMPLATE_PREFIXES = Object.keys(TEMPLATE_MAP).sort((a, b) => b.length - a.
 const DOC_TYPE_LABELS = DOCUMENT_TYPE_LABELS as Record<string, string>;
 const MAX_DOC_CONTEXT_CHARS = 2000;
 const MAX_SESSION_CONTEXT_CHARS = 1500;
+const EDIT_INTENT_RE = /\b(edit|update|revise|modify|change|clear|fill|rewrite|amend|replace|adjust|section)\b/i;
 
 function truncateWithEllipsis(text: string, maxChars: number): string {
     if (text.length <= maxChars) return text;
@@ -430,9 +431,14 @@ ${docSnippet}`;
 
     const buildDocumentAssistantPrompt = useCallback((userRequest: string): string => {
         const sanitizedDoc = sanitizeContextText(documentContent || '');
-        const docExcerpt = sanitizedDoc.length > MAX_DOC_CONTEXT_CHARS
-            ? `${sanitizedDoc.slice(0, 1000)}\n...\n${sanitizedDoc.slice(-1000)}`
-            : sanitizedDoc;
+        // For edit operations, include full document content so backend edits
+        // apply to the complete document, not a head/tail excerpt.
+        const includeFullDocument = EDIT_INTENT_RE.test(userRequest);
+        const docExcerpt = includeFullDocument
+            ? sanitizedDoc
+            : (sanitizedDoc.length > MAX_DOC_CONTEXT_CHARS
+                ? `${sanitizedDoc.slice(0, 1000)}\n...\n${sanitizedDoc.slice(-1000)}`
+                : sanitizedDoc);
 
         const sessionData = sessionId ? loadSession(sessionId) : null;
         const sessionMessages = (sessionData?.messages || [])
@@ -447,7 +453,9 @@ ${docSnippet}`;
             ? extractBackgroundFromMessages(sessionMessages)
             : '';
 
-        const boundedDoc = truncateWithEllipsis(docExcerpt, MAX_DOC_CONTEXT_CHARS);
+        const boundedDoc = includeFullDocument
+            ? docExcerpt
+            : truncateWithEllipsis(docExcerpt, MAX_DOC_CONTEXT_CHARS);
         const boundedSession = truncateWithEllipsis(background, MAX_SESSION_CONTEXT_CHARS);
 
         return [
