@@ -2182,8 +2182,25 @@ async def sdk_query_streaming(
                         "cycle_count": getattr(metrics, "cycle_count", 0),
                         "tools_called": len(tools_called),
                     }
-                if hasattr(metrics, "tool_metrics"):
+                # Always inject cycle_count if available
+                if "cycle_count" not in usage:
+                    usage["cycle_count"] = getattr(metrics, "cycle_count", 0)
+                # Extract per-tool metrics for token breakdown
+                if hasattr(metrics, "tool_metrics") and metrics.tool_metrics:
                     tools_called = list(metrics.tool_metrics.keys())
+                    try:
+                        tm = {}
+                        for tname, tdata in metrics.tool_metrics.items():
+                            if hasattr(tdata, "__dict__"):
+                                tm[tname] = {k: v for k, v in tdata.__dict__.items()
+                                              if not k.startswith("_")}
+                            elif isinstance(tdata, dict):
+                                tm[tname] = tdata
+                            else:
+                                tm[tname] = str(tdata)
+                        usage["tool_metrics"] = tm
+                    except Exception:
+                        pass
         except Exception:
             pass
 

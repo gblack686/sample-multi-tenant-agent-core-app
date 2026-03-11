@@ -1112,6 +1112,12 @@ def _exec_search_far(params: dict, tenant_id: str) -> dict:
         "clauses": results[:15],
         "source": "FAR/DFARS/HHSAR reference database (eagle-plugin/data/far-database.json)",
         "note": "Reference data — always verify against current FAR/DFARS at acquisition.gov",
+        "reasoning": {
+            "action": "regulatory_lookup",
+            "basis": f"FAR search for '{query}'",
+            "determination": f"Found {len(results)} relevant sections",
+            "confidence": "high",
+        },
     }
 
 
@@ -1651,6 +1657,16 @@ def _exec_create_document(params: dict, tenant_id: str, session_id: str = None) 
         else content
     )
 
+    # Append AI reasoning appendix to document content if available
+    try:
+        from app.reasoning_store import ReasoningLog as _RLog
+        _rlog = _RLog.load(session_id or "", tenant_id, user_id)
+        if _rlog and _rlog.entries and isinstance(content_to_store, str):
+            content_to_store += _rlog.to_appendix_markdown()
+            content += _rlog.to_appendix_markdown()
+    except Exception:
+        pass  # Non-fatal — document still generated without appendix
+
     # Package mode: route through canonical package document service.
     if package_id:
         from app.document_service import create_package_document_version
@@ -1687,6 +1703,12 @@ def _exec_create_document(params: dict, tenant_id: str, session_id: str = None) 
             "word_count": len(content.split()),
             "generated_at": datetime.utcnow().isoformat(),
             "note": "This is a draft document. Review and customize before official use.",
+            "reasoning": {
+                "action": "document_generation",
+                "basis": f"Generated {doc_type} based on intake context",
+                "determination": f"{doc_type} created (package mode)",
+                "confidence": "high",
+            },
         }
         if template_path:
             response["template_path"] = template_path
@@ -1729,6 +1751,12 @@ def _exec_create_document(params: dict, tenant_id: str, session_id: str = None) 
         "word_count": len(content.split()),
         "generated_at": datetime.utcnow().isoformat(),
         "note": "This is a draft document. Review and customize before official use.",
+        "reasoning": {
+            "action": "document_generation",
+            "basis": f"Generated {doc_type} based on intake context",
+            "determination": f"{doc_type} created",
+            "confidence": "high",
+        },
     }
 
     if template_path:
@@ -2831,7 +2859,19 @@ def _exec_query_compliance_matrix(params: dict, tenant_id: str) -> dict:
     raw = params.get("params", params)
     if isinstance(raw, str):
         raw = json.loads(raw)
-    return execute_operation(raw)
+    result = execute_operation(raw)
+    # Attach reasoning for downstream capture
+    if isinstance(result, dict) and "error" not in result:
+        method = result.get("method", result.get("acquisition_method", ""))
+        ctype = result.get("contract_type", "")
+        result["reasoning"] = {
+            "action": "compliance_determination",
+            "basis": f"{method} acquisition" + (f" via {ctype}" if ctype else ""),
+            "determination": f"{method} via {ctype}" if ctype else str(method),
+            "documents_required": result.get("documents_required", []),
+            "confidence": "high",
+        }
+    return result
 
 
 # ── Admin CRUD Tool Handlers ─────────────────────────────────────────

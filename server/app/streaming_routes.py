@@ -31,7 +31,8 @@ from .telemetry.log_context import set_log_context
 from .telemetry.cloudwatch_emitter import (
     emit_trace_started,
     emit_trace_completed,
-    emit_tool_completed,
+    emit_tool_started,
+    emit_tool_result,
     emit_telemetry_event,
 )
 from .reasoning_store import ReasoningLog
@@ -69,10 +70,11 @@ async def stream_generator(
 
     # --- Telemetry + Reasoning init ---
     _trace_start = _time.time()
+    _tool_start_times: dict[str, float] = {}  # tool_name → start timestamp
     reasoning_log = ReasoningLog(session_id or "", tenant_id, user_id)
     try:
         await asyncio.to_thread(
-            emit_trace_started, tenant_id, user_id, session_id or "", message[:200]
+            emit_trace_started, tenant_id, user_id, session_id or "", message[:1000]
         )
     except Exception:
         logger.debug("trace.started emission failed (non-fatal)")
@@ -154,13 +156,22 @@ async def stream_generator(
                         tool_input = json.loads(tool_input)
                     except (json.JSONDecodeError, ValueError):
                         tool_input = {"raw": tool_input} if tool_input else {}
+                tu_name = chunk.get("name", "")
+                tu_id = chunk.get("tool_use_id", "")
+                _tool_start_times[tu_name] = _time.time()
                 await writer.write_tool_use(
-                    sse_queue,
-                    chunk.get("name", ""),
-                    tool_input,
-                    tool_use_id=chunk.get("tool_use_id", ""),
+                    sse_queue, tu_name, tool_input, tool_use_id=tu_id,
                 )
                 yield await sse_queue.get()
+
+                # CloudWatch: emit tool.started with input params
+                try:
+                    await asyncio.to_thread(
+                        emit_tool_started, tenant_id, user_id, session_id or "",
+                        tu_name, tool_input, tu_id,
+                    )
+                except Exception:
+                    pass
 
             elif chunk_type == "metadata":
                 await writer.write_metadata(sse_queue, chunk.get("content", {}))
@@ -182,10 +193,20 @@ async def stream_generator(
                 await writer.write_tool_result(sse_queue, tr_name, result_data)
                 yield await sse_queue.get()
 
-                # CloudWatch: emit tool.completed
+                # CloudWatch: emit tool.result with full details
                 try:
+                    _tool_dur = int((_time.time() - _tool_start_times.pop(tr_name, _time.time())) * 1000)
+                    _result_preview = ""
+                    _has_reasoning = False
+                    if isinstance(result_data, dict):
+                        _has_reasoning = "reasoning" in result_data
+                        _result_preview = json.dumps(result_data, default=str)[:2000]
+                    elif isinstance(result_data, str):
+                        _result_preview = result_data[:2000]
                     await asyncio.to_thread(
-                        emit_tool_completed, tenant_id, user_id, session_id or "", tr_name
+                        emit_tool_result, tenant_id, user_id, session_id or "",
+                        tr_name, _result_preview, _tool_dur,
+                        0, 0, _has_reasoning, True,
                     )
                 except Exception:
                     pass
@@ -233,9 +254,10 @@ async def stream_generator(
                     except Exception:
                         logger.warning("Failed to persist assistant message for session=%s user=%s", session_id, user_id)
 
-                # CloudWatch: emit trace.completed
+                # CloudWatch: emit trace.completed with full details
                 try:
                     _elapsed = int((_time.time() - _trace_start) * 1000)
+                    _usage = chunk.get("usage", {})
                     await asyncio.to_thread(
                         emit_trace_completed,
                         {
@@ -244,9 +266,12 @@ async def stream_generator(
                             "session_id": session_id or "",
                             "trace_id": f"t-{int(_trace_start * 1000)}",
                             "duration_ms": _elapsed,
-                            "total_input_tokens": chunk.get("usage", {}).get("inputTokens", 0),
-                            "total_output_tokens": chunk.get("usage", {}).get("outputTokens", 0),
+                            "total_input_tokens": _usage.get("inputTokens", 0),
+                            "total_output_tokens": _usage.get("outputTokens", 0),
                             "tools_called": chunk.get("tools_called", []),
+                            "response_preview": "".join(full_response_parts)[:1000],
+                            "cycle_count": _usage.get("cycle_count", 0),
+                            "tool_metrics": _usage.get("tool_metrics", {}),
                         },
                     )
                 except Exception:

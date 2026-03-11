@@ -144,6 +144,64 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# ── API Request Telemetry Middleware ─────────────────────────────────
+# Emits api.request events to CloudWatch scoped to the authenticated user.
+# Skips health checks and static assets to keep logs focused on user activity.
+_SKIP_PATHS = {"/api/health", "/favicon.ico", "/_next", "/api/logs"}
+
+@app.middleware("http")
+async def api_request_telemetry(request: Request, call_next):
+    path = request.url.path
+    # Skip non-user paths
+    if any(path.startswith(p) for p in _SKIP_PATHS):
+        return await call_next(request)
+
+    start = time.time()
+    response = await call_next(request)
+    duration_ms = int((time.time() - start) * 1000)
+
+    # Extract user context from Authorization header (same as endpoints do)
+    try:
+        auth_header = request.headers.get("authorization")
+        user, _ = extract_user_context(auth_header)
+        user_id = user.user_id
+        tenant_id = user.tenant_id
+    except Exception:
+        user_id = "anonymous"
+        tenant_id = "unknown"
+
+    # Extract session_id from query params or X-Session-Id header
+    # (avoid reading POST body — it can only be consumed once)
+    session_id = (
+        request.query_params.get("session_id", "")
+        or request.headers.get("x-session-id", "")
+    )
+
+    # Emit to CloudWatch (fire-and-forget, non-blocking)
+    try:
+        from .telemetry.cloudwatch_emitter import emit_telemetry_event
+        import asyncio as _aio
+        _aio.get_event_loop().run_in_executor(
+            None,
+            emit_telemetry_event,
+            "api.request",
+            tenant_id,
+            {
+                "method": request.method,
+                "path": path,
+                "status_code": response.status_code,
+                "duration_ms": duration_ms,
+                "query_params": dict(request.query_params) if request.query_params else {},
+            },
+            session_id or None,
+            user_id,
+        )
+    except Exception:
+        pass
+
+    return response
+
+
 # ── Feature Flags ────────────────────────────────────────────────────
 USE_PERSISTENT_SESSIONS = os.getenv("USE_PERSISTENT_SESSIONS", "true").lower() == "true"
 REQUIRE_AUTH = os.getenv("REQUIRE_AUTH", "false").lower() == "true"
@@ -1167,7 +1225,7 @@ async def api_submit_feedback(
 
     cloudwatch_logs = _fetch_cloudwatch_logs_for_session(session_id)
 
-    feedback_store.write_feedback(
+    item = feedback_store.write_feedback(
         tenant_id=user.tenant_id,
         user_id=user.user_id,
         tier=user.tier,
@@ -1178,7 +1236,27 @@ async def api_submit_feedback(
         page=page,
         last_message_id=last_message_id,
     )
-    return {"status": "ok", "message": "Feedback recorded. Thank you!"}
+
+    # CloudWatch: emit feedback.submitted (fire-and-forget)
+    try:
+        from .telemetry.cloudwatch_emitter import emit_feedback_submitted
+        emit_feedback_submitted(
+            tenant_id=user.tenant_id,
+            user_id=user.user_id,
+            session_id=session_id or "",
+            feedback_type=item.get("feedback_type", "general"),
+            feedback_id=item.get("feedback_id", ""),
+        )
+    except Exception:
+        logger.debug("feedback.submitted emission failed (non-fatal)")
+
+    return {
+        "status": "ok",
+        "message": "Feedback recorded. Thank you!",
+        "feedback_id": item.get("feedback_id"),
+        "feedback_type": item.get("feedback_type"),
+        "created_at": item.get("created_at"),
+    }
 
 
 # ── Telemetry endpoint ───────────────────────────────────────────────

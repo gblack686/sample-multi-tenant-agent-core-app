@@ -38,11 +38,22 @@ export interface UseAgentStreamOptions {
   onError?: (error: string) => void;
   onDocumentGenerated?: (doc: DocumentInfo) => void;
   /**
+   * Called for every metadata event (state push from update_state tool).
+   * Receives structured payloads: checklist_update, phase_change,
+   * document_ready, compliance_alert.
+   */
+  onMetadata?: (metadata: Record<string, unknown>) => void;
+  /**
    * Called for every tool_use event.
    * Fired first with result=undefined (tool is starting), then again once
    * a client-side tool finishes (result is populated).
    */
   onToolUse?: (event: ToolUseEvent) => void;
+  /**
+   * Called for every bedrock_trace event.
+   * Receives the raw Bedrock trace payload (ConverseStream chunk keys).
+   */
+  onBedrockTrace?: (trace: Record<string, unknown>) => void;
   getToken?: () => Promise<string>;
   /** Active session ID — forwarded to client tools for localStorage namespacing. */
   sessionId?: string;
@@ -196,6 +207,7 @@ function detectDocumentTypesFromText(text: string): DocumentInfo[] {
  * - Detecting create_document tool results and emitting DocumentInfo
  * - JWT authentication via getToken callback
  * - Collecting all events for audit logging
+ * - Raw Bedrock trace events via onBedrockTrace callback
  */
 export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStreamReturn {
   const [isStreaming, setIsStreaming] = useState(false);
@@ -252,6 +264,11 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
         if (token) {
           headers['Authorization'] = `Bearer ${token}`;
         }
+      }
+
+      // Pass session ID as header for middleware telemetry (body can only be read once)
+      if (finalSessionId) {
+        headers['X-Session-Id'] = finalSessionId;
       }
 
       const response = await fetch(API_URL, {
@@ -394,6 +411,27 @@ export function useAgentStream(options: UseAgentStreamOptions = {}): UseAgentStr
             result,
           });
         }
+      }
+
+      // Handle metadata events — state push from update_state tool
+      if (event.type === 'metadata' && event.metadata) {
+        options.onMetadata?.(event.metadata as Record<string, unknown>);
+      }
+
+      // Handle bedrock_trace events — raw Bedrock ConverseStream chunk
+      if (event.type === 'bedrock_trace') {
+        options.onBedrockTrace?.(event.metadata || {});
+      }
+
+      // Handle reasoning events — AI decision rationale from tool results
+      if (event.type === 'reasoning') {
+        const reasoningLog: AuditLogEntry = {
+          ...event,
+          id: `reasoning-${eventCountRef.current++}`,
+          type: 'reasoning',
+          content: event.reasoning || event.content || '',
+        };
+        setLogs(prev => [...prev, reasoningLog]);
       }
 
       // Handle tool_result events — accumulate for merge at onComplete

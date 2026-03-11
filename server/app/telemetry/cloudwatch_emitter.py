@@ -17,6 +17,10 @@ logger = logging.getLogger("eagle.telemetry.cloudwatch")
 LOG_GROUP = os.getenv("EAGLE_TELEMETRY_LOG_GROUP", "/eagle/app")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 
+# Max size for preview fields (prompt, response, tool input/output)
+_PREVIEW_LIMIT = 1000
+_TOOL_IO_LIMIT = 2000
+
 _logs_client = None
 
 
@@ -41,6 +45,21 @@ def _ensure_log_group_and_stream(client, stream_name: str):
             raise
 
 
+def _truncate(value, limit: int = _PREVIEW_LIMIT) -> str:
+    """Safely truncate a value to string within limit."""
+    s = str(value) if value else ""
+    return s[:limit]
+
+
+def _safe_json_preview(obj, limit: int = _TOOL_IO_LIMIT) -> str:
+    """JSON-serialize an object, truncate to limit."""
+    try:
+        s = json.dumps(obj, default=str)
+    except (TypeError, ValueError):
+        s = str(obj)
+    return s[:limit]
+
+
 def emit_telemetry_event(
     event_type: str,
     tenant_id: str,
@@ -53,10 +72,13 @@ def emit_telemetry_event(
     Event types:
         - trace.started
         - trace.completed
-        - tool.completed
+        - tool.started
+        - tool.result
+        - tool.completed  (legacy — kept for backwards compat)
         - agent.delegated
         - agent.completed
         - error.occurred
+        - feedback.submitted
     """
     event = {
         "event_type": event_type,
@@ -87,8 +109,24 @@ def emit_telemetry_event(
         logger.warning("CW telemetry FAILED [%s]: %s", event_type, e)
 
 
+def emit_trace_started(
+    tenant_id: str,
+    user_id: str,
+    session_id: str,
+    prompt_preview: str = "",
+):
+    """Emit trace.started when a chat request begins."""
+    emit_telemetry_event(
+        event_type="trace.started",
+        tenant_id=tenant_id,
+        user_id=user_id,
+        session_id=session_id,
+        data={"prompt_preview": _truncate(prompt_preview, _PREVIEW_LIMIT)},
+    )
+
+
 def emit_trace_completed(summary: dict):
-    """Convenience: emit a trace.completed event from a TraceCollector summary."""
+    """Emit trace.completed with full turn summary including per-tool metrics."""
     emit_telemetry_event(
         event_type="trace.completed",
         tenant_id=summary.get("tenant_id", "default"),
@@ -102,23 +140,65 @@ def emit_trace_completed(summary: dict):
             "total_cost_usd": summary.get("total_cost_usd"),
             "tools_called": summary.get("tools_called", []),
             "agents_delegated": summary.get("agents_delegated", []),
+            "response_preview": _truncate(
+                summary.get("response_preview", ""), _PREVIEW_LIMIT
+            ),
+            "cycle_count": summary.get("cycle_count", 0),
+            "stop_reason": summary.get("stop_reason", ""),
+            "tool_metrics": summary.get("tool_metrics", {}),
         },
     )
 
 
-def emit_trace_started(
+def emit_tool_started(
     tenant_id: str,
     user_id: str,
     session_id: str,
-    prompt_preview: str = "",
+    tool_name: str,
+    tool_input: dict | str | None = None,
+    tool_use_id: str = "",
 ):
-    """Emit trace.started when a chat request begins."""
+    """Emit tool.started when a tool call begins (before execution)."""
     emit_telemetry_event(
-        event_type="trace.started",
+        event_type="tool.started",
         tenant_id=tenant_id,
         user_id=user_id,
         session_id=session_id,
-        data={"prompt_preview": prompt_preview[:200]},
+        data={
+            "tool_name": tool_name,
+            "tool_use_id": tool_use_id,
+            "tool_input": _safe_json_preview(tool_input, _TOOL_IO_LIMIT),
+        },
+    )
+
+
+def emit_tool_result(
+    tenant_id: str,
+    user_id: str,
+    session_id: str,
+    tool_name: str,
+    result_preview: str = "",
+    duration_ms: int = 0,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    has_reasoning: bool = False,
+    success: bool = True,
+):
+    """Emit tool.result when a tool call completes with full details."""
+    emit_telemetry_event(
+        event_type="tool.result",
+        tenant_id=tenant_id,
+        user_id=user_id,
+        session_id=session_id,
+        data={
+            "tool_name": tool_name,
+            "result_preview": _truncate(result_preview, _TOOL_IO_LIMIT),
+            "duration_ms": duration_ms,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "has_reasoning": has_reasoning,
+            "success": success,
+        },
     )
 
 
@@ -130,7 +210,7 @@ def emit_tool_completed(
     duration_ms: int = 0,
     success: bool = True,
 ):
-    """Emit tool.completed after a tool call finishes."""
+    """Emit tool.completed after a tool call finishes (legacy compat)."""
     emit_telemetry_event(
         event_type="tool.completed",
         tenant_id=tenant_id,
