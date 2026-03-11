@@ -119,25 +119,67 @@ dev-smoke: dev-up smoke
 # One-command local smoke with visible browser window
 dev-smoke-ui: dev-up smoke-ui
 
-# Start backend + frontend locally (no docker) — kills stale processes first
+# Kill processes on a given port (cross-platform: macOS/Linux + Windows/MINGW)
+[private]
+kill-port PORT:
+    #!/usr/bin/env bash
+    if [[ "$OSTYPE" == msys* ]] || [[ "$OSTYPE" == mingw* ]] || [[ "$OSTYPE" == cygwin* ]]; then
+        # Windows (Git Bash / MINGW) — netstat -ano + taskkill / PowerShell fallback
+        for pid in $(netstat -ano 2>/dev/null | grep ":{{PORT}} " | grep LISTENING | awk '{print $5}' | sort -u | grep -v '^0$'); do
+            echo "Killing PID $pid on port {{PORT}}"
+            taskkill //F //PID "$pid" 2>/dev/null \
+                || powershell -Command "Stop-Process -Id $pid -Force -ErrorAction SilentlyContinue" 2>/dev/null \
+                || echo "  WARNING: could not kill PID $pid"
+        done
+    else
+        # macOS / Linux — lsof + kill
+        pids=$(lsof -ti :{{PORT}} 2>/dev/null || true)
+        for pid in $pids; do
+            echo "Killing PID $pid on port {{PORT}}"
+            kill -9 "$pid" 2>/dev/null || echo "  WARNING: could not kill PID $pid"
+        done
+    fi
+
+# Kill zombie processes on dev ports (8000, 3000)
+kill:
+    just kill-port 8000
+    just kill-port 3000
+    @echo "Dev ports cleared."
+
+# Verify AWS SSO session, auto-login if expired
+[private]
+ensure-sso PROFILE="eagle":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if AWS_PROFILE="{{PROFILE}}" aws sts get-caller-identity &>/dev/null; then
+        echo "✓ AWS SSO active ({{PROFILE}})"
+    else
+        echo "⚠ AWS SSO expired — logging in..."
+        AWS_PROFILE="{{PROFILE}}" aws sso login --profile "{{PROFILE}}"
+        if ! AWS_PROFILE="{{PROFILE}}" aws sts get-caller-identity &>/dev/null; then
+            echo "ERROR: SSO login failed. AWS services will not work."
+            exit 1
+        fi
+        echo "✓ AWS SSO active ({{PROFILE}})"
+    fi
+
+# Start backend + frontend locally (no docker) — kills zombies, checks SSO
 dev-local:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "=== Clearing ports 8000 + 3000 ==="
-    for port in 8000 3000 3001; do
-        for pid in $(netstat -ano 2>/dev/null | grep ":${port} " | grep LISTENING | awk '{print $5}' | sort -u); do
-            taskkill /F /T /PID "$pid" 2>/dev/null || true
-        done
-    done
-    # Kill any lingering node processes holding .next/trace
-    taskkill /F /IM node.exe 2>/dev/null || true
-    sleep 3
+    echo "=== Clearing ports ==="
+    just kill-port 8000
+    just kill-port 3000
+    just kill-port 3001
+    sleep 2
+    echo "=== Checking AWS SSO ==="
+    just ensure-sso
     # Clear Next.js cache to purge stale env vars
     rm -rf client/.next 2>/dev/null || true
     unset FASTAPI_URL
     export FASTAPI_URL=http://127.0.0.1:8000
     echo "=== Starting backend (port 8000) ==="
-    cd server && python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload &
+    cd server && python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app &
     BACKEND_PID=$!
     sleep 5
     echo "=== Starting frontend (port 3000) ==="
@@ -147,28 +189,23 @@ dev-local:
     echo "Backend PID: $BACKEND_PID (http://localhost:8000)"
     echo "Frontend PID: $FRONTEND_PID (http://localhost:3000)"
     echo "Press Ctrl+C to stop both."
-    trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null" EXIT
+    trap "just kill-port 8000; just kill-port 3000" EXIT
     wait
 
-# Start FastAPI backend only (local) — kills stale processes on port 8000 first
+# Start FastAPI backend only (local) — kills zombies, checks SSO
 dev-backend:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "Clearing port 8000..."
-    for pid in $(netstat -ano 2>/dev/null | grep ':8000 ' | grep LISTENING | awk '{print $5}' | sort -u); do
-        taskkill /F /T /PID "$pid" 2>/dev/null || true
-    done
+    just kill-port 8000
     sleep 1
-    cd server && python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload
+    just ensure-sso
+    cd server && python3 -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload --reload-dir app
 
-# Start Next.js frontend only (local) — kills stale processes on port 3000 first
+# Start Next.js frontend only (local) — kills zombies on port 3000
 dev-frontend:
     #!/usr/bin/env bash
     set -euo pipefail
-    echo "Clearing port 3000..."
-    for pid in $(netstat -ano 2>/dev/null | grep ':3000 ' | grep LISTENING | awk '{print $5}' | sort -u); do
-        taskkill /F /T /PID "$pid" 2>/dev/null || true
-    done
+    just kill-port 3000
     sleep 1
     unset FASTAPI_URL
     cd client && npm run dev
