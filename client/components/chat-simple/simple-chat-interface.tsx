@@ -15,7 +15,8 @@ import { SlashCommand } from '@/lib/slash-commands';
 import { ChatMessage, DocumentInfo } from '@/types/chat';
 import { saveGeneratedDocument } from '@/lib/document-store';
 import { ClientToolResult } from '@/lib/client-tools';
-import { ToolStatus } from './tool-use-display';
+import { ToolStatus, extractKnowledgeSources } from './tool-use-display';
+import type { KnowledgeSource } from './tool-use-display';
 import ActivityPanel from './activity-panel';
 import IntakeFormCard from './intake-form-card';
 import { ChecklistPanel } from './checklist-panel';
@@ -197,6 +198,8 @@ export default function SimpleChatInterface() {
     const [isPanelOpen, setIsPanelOpen] = useState(true);
     /** Raw Bedrock ConverseStream trace events. */
     const [bedrockTraces, setBedrockTraces] = useState<Record<string, unknown>[]>([]);
+    /** Knowledge sources referenced across all turns. */
+    const [knowledgeSources, setKnowledgeSources] = useState<import('./tool-use-display').KnowledgeSource[]>([]);
 
     // Agent stream
     const { sendQuery, isStreaming, error, logs, clearLogs, addUserInputLog } = useAgentStream({
@@ -302,6 +305,23 @@ export default function SimpleChatInterface() {
                     }
                     return next;
                 });
+
+                // Extract knowledge sources from tool results for the Sources tab
+                if (toolResults) {
+                    const newSources: KnowledgeSource[] = [];
+                    for (const tr of toolResults) {
+                        const srcs = extractKnowledgeSources(tr.toolName, tr.result);
+                        newSources.push(...srcs);
+                    }
+                    if (newSources.length > 0) {
+                        setKnowledgeSources((prev) => {
+                            // Deduplicate by document_id
+                            const existing = new Set(prev.map(s => s.document_id));
+                            const unique = newSources.filter(s => s.document_id && !existing.has(s.document_id));
+                            return unique.length > 0 ? [...prev, ...unique] : prev;
+                        });
+                    }
+                }
 
                 // AI title generation — fire-and-forget on first assistant response
                 const sid = currentSessionId;
@@ -624,6 +644,7 @@ export default function SimpleChatInterface() {
                 isOpen={isPanelOpen}
                 onToggle={() => setIsPanelOpen(v => !v)}
                 bedrockTraces={bedrockTraces}
+                knowledgeSources={knowledgeSources}
             />
         </div>
     );

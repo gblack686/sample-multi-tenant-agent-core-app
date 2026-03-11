@@ -1,13 +1,14 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { FileText, Bell, Terminal, Cpu, Cloud, PanelRightClose, PanelRightOpen, ChevronDown, ChevronRight } from 'lucide-react';
+import { FileText, Bell, Terminal, Cpu, Cloud, PanelRightClose, PanelRightOpen, ChevronDown, ChevronRight, BookOpen } from 'lucide-react';
 import { AuditLogEntry } from '@/types/stream';
 import { DocumentInfo } from '@/types/chat';
 import { useNotifications, type AppNotification } from '@/contexts/notification-context';
 import AgentLogs from './agent-logs';
 import BedrockLogs from './bedrock-logs';
 import CloudWatchLogs from './cloudwatch-logs';
+import type { KnowledgeSource } from './tool-use-display';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -23,9 +24,11 @@ interface ActivityPanelProps {
   onToggle: () => void;
   /** Raw Bedrock trace payloads collected via onBedrockTrace. */
   bedrockTraces?: Record<string, unknown>[];
+  /** Knowledge sources from knowledge_search/fetch/search_far results. */
+  knowledgeSources?: KnowledgeSource[];
 }
 
-type TabId = 'documents' | 'notifications' | 'logs' | 'bedrock' | 'cloudwatch';
+type TabId = 'documents' | 'notifications' | 'logs' | 'bedrock' | 'cloudwatch' | 'sources';
 
 interface TabDef {
   id: TabId;
@@ -35,6 +38,7 @@ interface TabDef {
 
 const TABS: TabDef[] = [
   { id: 'documents',     label: 'Documents',     icon: FileText },
+  { id: 'sources',       label: 'Sources',       icon: BookOpen },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'logs',          label: 'Agent Logs',    icon: Terminal },
   { id: 'bedrock',       label: 'Bedrock',       icon: Cpu },
@@ -277,6 +281,164 @@ function NotificationsTab({ documents, appNotifications }: {
 }
 
 // ---------------------------------------------------------------------------
+// Sources Tab
+// ---------------------------------------------------------------------------
+
+const SOURCE_TOOL_LABELS: Record<string, { icon: string; label: string }> = {
+  knowledge_search: { icon: '🔎', label: 'KB Search' },
+  knowledge_fetch:  { icon: '📖', label: 'KB Read' },
+  search_far:       { icon: '📜', label: 'FAR Search' },
+};
+
+const AUTHORITY_COLORS: Record<string, string> = {
+  mandatory: 'bg-red-100 text-red-700',
+  regulatory: 'bg-orange-100 text-orange-700',
+  policy: 'bg-blue-100 text-blue-700',
+  guidance: 'bg-green-100 text-green-700',
+  reference: 'bg-gray-100 text-gray-600',
+  template: 'bg-violet-100 text-violet-700',
+};
+
+function SourcesTab({ sources }: { sources: KnowledgeSource[] }) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  if (sources.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center h-48 text-center px-4">
+        <div className="w-10 h-10 rounded-full bg-gray-100 flex items-center justify-center mb-3">
+          <BookOpen className="w-5 h-5 text-gray-400" />
+        </div>
+        <p className="text-sm text-gray-500">No knowledge sources yet.</p>
+        <p className="text-xs text-gray-400 mt-1">
+          Documents referenced by the agent will appear here.
+        </p>
+      </div>
+    );
+  }
+
+  // Group by source_tool
+  const byTool = new Map<string, KnowledgeSource[]>();
+  for (const src of sources) {
+    const arr = byTool.get(src.source_tool) ?? [];
+    arr.push(src);
+    byTool.set(src.source_tool, arr);
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Summary */}
+      <div className="flex items-center gap-3 text-[10px] text-gray-500">
+        <span>{sources.length} source{sources.length !== 1 ? 's' : ''}</span>
+        {byTool.has('knowledge_search') && (
+          <span>{byTool.get('knowledge_search')!.length} searched</span>
+        )}
+        {byTool.has('knowledge_fetch') && (
+          <span>{byTool.get('knowledge_fetch')!.length} read</span>
+        )}
+        {byTool.has('search_far') && (
+          <span>{byTool.get('search_far')!.length} FAR sections</span>
+        )}
+      </div>
+
+      {/* Source cards */}
+      <div className="space-y-1.5">
+        {sources.map((src) => {
+          const toolMeta = SOURCE_TOOL_LABELS[src.source_tool] || { icon: '📄', label: src.source_tool };
+          const isExpanded = expandedId === src.document_id;
+
+          return (
+            <div
+              key={src.document_id || src.title}
+              className="rounded-lg border border-gray-200 bg-white hover:shadow-sm transition"
+            >
+              <button
+                type="button"
+                className="w-full text-left px-3 py-2.5"
+                onClick={() => setExpandedId(isExpanded ? null : src.document_id)}
+              >
+                <div className="flex items-start gap-2">
+                  <span className="text-sm shrink-0 mt-0.5">{toolMeta.icon}</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-medium text-[#003366] truncate">{src.title}</p>
+                    {src.summary && (
+                      <p className="text-[10px] text-gray-500 mt-0.5 line-clamp-2">{src.summary}</p>
+                    )}
+                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                      <span className="text-[8px] text-gray-400 bg-gray-50 px-1 rounded uppercase font-bold">
+                        {toolMeta.label}
+                      </span>
+                      {src.authority_level && (
+                        <span className={`px-1 py-0.5 rounded text-[8px] font-bold uppercase ${
+                          AUTHORITY_COLORS[src.authority_level] ?? AUTHORITY_COLORS.reference
+                        }`}>
+                          {src.authority_level}
+                        </span>
+                      )}
+                      {src.document_type && src.document_type !== 'far_regulation' && (
+                        <span className="text-[9px] text-gray-400 font-mono">{src.document_type}</span>
+                      )}
+                      {src.confidence_score ? (
+                        <span className={`text-[9px] font-mono ${
+                          src.confidence_score >= 0.8 ? 'text-green-600' :
+                          src.confidence_score >= 0.5 ? 'text-amber-600' : 'text-gray-400'
+                        }`}>
+                          {(src.confidence_score * 100).toFixed(0)}%
+                        </span>
+                      ) : null}
+                      {src.primary_agent && (
+                        <span className="text-[9px] text-violet-500">agent: {src.primary_agent}</span>
+                      )}
+                      {src.content_length ? (
+                        <span className="text-[9px] text-gray-400">
+                          {src.content_length.toLocaleString()} chars
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                  {src.s3_key && (
+                    <span
+                      className="text-[9px] text-blue-500 hover:text-blue-700 shrink-0 mt-1"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        window.open(`/documents/${encodeURIComponent(src.s3_key!)}`, '_blank');
+                      }}
+                    >
+                      View →
+                    </span>
+                  )}
+                </div>
+              </button>
+
+              {/* Expanded content preview */}
+              {isExpanded && (
+                <div className="border-t border-gray-200 px-3 py-2 bg-gray-50/50">
+                  {src.content ? (
+                    <pre className="text-[10px] font-mono text-gray-700 whitespace-pre-wrap break-all max-h-48 overflow-y-auto">
+                      {src.content.slice(0, 2000)}
+                      {src.content.length > 2000 ? '\n\n... [truncated]' : ''}
+                    </pre>
+                  ) : src.keywords && src.keywords.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {src.keywords.map((kw, i) => (
+                        <span key={i} className="text-[9px] text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
+                          {kw}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-[10px] text-gray-400 italic">No preview available</p>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main Panel
 // ---------------------------------------------------------------------------
 
@@ -289,6 +451,7 @@ export default function ActivityPanel({
   isOpen,
   onToggle,
   bedrockTraces = [],
+  knowledgeSources = [],
 }: ActivityPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('logs');
   const { notifications: appNotifications } = useNotifications();
@@ -323,6 +486,7 @@ export default function ActivityPanel({
             tab.id === 'bedrock'   && bedrockCount > 0      ? bedrockCount :
             tab.id === 'documents' && docCount > 0          ? docCount :
             tab.id === 'notifications' && notifCount > 0    ? notifCount :
+            tab.id === 'sources'   && knowledgeSources.length > 0 ? knowledgeSources.length :
             0;
 
           return (
@@ -379,6 +543,7 @@ export default function ActivityPanel({
         {activeTab === 'logs'          && <AgentLogs logs={logs} />}
         {activeTab === 'bedrock'       && <BedrockLogs bedrockTraces={bedrockTraces} logs={logs} />}
         {activeTab === 'cloudwatch'    && <CloudWatchLogs sessionId={sessionId} />}
+        {activeTab === 'sources'       && <SourcesTab sources={knowledgeSources} />}
       </div>
     </div>
   );
