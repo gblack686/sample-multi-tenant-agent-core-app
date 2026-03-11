@@ -27,8 +27,11 @@ import logging
 import os
 import re
 import sys
+import time
 from dataclasses import dataclass, field
 from typing import Any, AsyncGenerator
+
+import boto3
 
 from botocore.config import Config
 from strands import Agent, tool
@@ -486,7 +489,7 @@ async def _ensure_create_document_for_direct_request(
     invoking create_document, which breaks document-card/editing UX.
     """
     should_generate, doc_type = _is_document_generation_request(prompt)
-    if not should_generate or not doc_type or "create_document" in tools_called:
+    if not should_generate or not doc_type or "create_document" in tools_called or "generate_document" in tools_called:
         return None
 
     from .agentic_service import _exec_create_document
@@ -723,12 +726,41 @@ EAGLE_TOOLS = [
     KNOWLEDGE_SEARCH_TOOL,
     KNOWLEDGE_FETCH_TOOL,
     {
+        "name": "generate_document",
+        "description": (
+            "Generate a complete acquisition document using AI-driven content. "
+            "Pass only the document type — conversation context and templates are "
+            "loaded automatically. The AI writes full prose using NCI templates as "
+            "guidelines. Produces SOW, IGCE, Market Research, J&A, Acquisition Plan, "
+            "Evaluation Criteria, Security Checklist, Section 508, COR Certification, "
+            "or Contract Type Justification. Includes omission tracking and decision rationale."
+        ),
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "doc_type": {
+                    "type": "string",
+                    "enum": [
+                        "sow", "igce", "market_research", "justification",
+                        "acquisition_plan", "eval_criteria", "security_checklist",
+                        "section_508", "cor_certification",
+                        "contract_type_justification"
+                    ],
+                    "description": "Type of acquisition document to generate",
+                },
+                "special_instructions": {
+                    "type": "string",
+                    "description": "Optional user-specific guidance (e.g. 'emphasize security', 'use FFP contract type')",
+                },
+            },
+            "required": ["doc_type"],
+        },
+    },
+    {
         "name": "create_document",
         "description": (
-            "Generate acquisition documents including SOW, IGCE, Market Research, "
-            "J&A, Acquisition Plan, Evaluation Criteria, Security Checklist, "
-            "Section 508 Statement, COR Certification, and Contract Type "
-            "Justification. Documents are saved to S3."
+            "Legacy document generator — use generate_document instead for AI-driven content. "
+            "Kept for backward compatibility. Pass doc_type, title, and optional data fields."
         ),
         "input_schema": {
             "type": "object",
@@ -1535,6 +1567,127 @@ _SERVICE_TOOL_DEFS = {
 }
 
 
+def _make_generate_document_tool(
+    tenant_id: str,
+    user_id: str,
+    session_id: str | None,
+    package_context: Any = None,
+    result_queue: asyncio.Queue | None = None,
+    loop: asyncio.AbstractEventLoop | None = None,
+):
+    """Factory: create the generate_document @tool that uses document_agent."""
+
+    scoped_session_id = session_id
+    if not scoped_session_id or "#" not in (scoped_session_id or ""):
+        scoped_session_id = f"{tenant_id}#advanced#{user_id}#{session_id or ''}"
+
+    @tool(name="generate_document")
+    def generate_document_tool(doc_type: str, special_instructions: str = "") -> str:
+        """Generate a complete acquisition document using AI-driven content."""
+        from app.document_agent import generate_document as _gen
+        from app.document_service import create_package_document_version
+
+        result = _gen(
+            doc_type=doc_type,
+            session_id=scoped_session_id,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            special_instructions=special_instructions,
+        )
+
+        if not result.success:
+            return json.dumps({"error": result.error})
+
+        response: dict = {
+            "doc_type": result.doc_type,
+            "title": result.title,
+            "content": result.content,
+            "word_count": result.word_count,
+            "missing_required": result.missing_required,
+            "omission_count": len(result.omissions),
+            "justification_count": len(result.justifications),
+            "source": "document_agent",
+        }
+
+        # Save via canonical document service in package mode
+        pkg_id = (
+            getattr(package_context, "package_id", None)
+            if package_context and getattr(package_context, "is_package_mode", False)
+            else None
+        )
+
+        if pkg_id:
+            try:
+                canonical = create_package_document_version(
+                    tenant_id=tenant_id,
+                    package_id=pkg_id,
+                    doc_type=doc_type,
+                    content=result.content,
+                    title=result.title,
+                    file_type="md",
+                    created_by_user_id=user_id,
+                    session_id=scoped_session_id,
+                    change_source="agent_tool",
+                )
+                if canonical.success:
+                    response["mode"] = "package"
+                    response["package_id"] = pkg_id
+                    response["document_id"] = canonical.document_id
+                    response["version"] = canonical.version
+                    response["status"] = canonical.status or "draft"
+                    response["s3_key"] = canonical.s3_key
+                else:
+                    response["save_error"] = canonical.error
+            except Exception as exc:
+                logger.warning("Package save failed for generate_document: %s", exc)
+                response["save_error"] = str(exc)
+        else:
+            # Non-package mode: save to user-scoped S3 path
+            try:
+                bucket = os.getenv("S3_BUCKET", "eagle-documents-695681773636-dev")
+                timestamp = time.strftime("%Y%m%d_%H%M%S")
+                s3_key = f"eagle/{tenant_id}/{user_id}/documents/{doc_type}_{timestamp}.md"
+                s3 = boto3.client("s3")
+                s3.put_object(
+                    Bucket=bucket,
+                    Key=s3_key,
+                    Body=result.content.encode("utf-8"),
+                )
+                response["s3_key"] = s3_key
+                response["s3_location"] = f"s3://{bucket}/{s3_key}"
+            except Exception as exc:
+                logger.warning("S3 save failed for generate_document: %s", exc)
+                response["save_error"] = str(exc)
+
+        # Emit SSE events for frontend
+        if result_queue and loop:
+            loop.call_soon_threadsafe(
+                result_queue.put_nowait,
+                {"type": "tool_result", "name": "generate_document", "result": response},
+            )
+            # Emit document_ready metadata
+            if pkg_id and response.get("version"):
+                loop.call_soon_threadsafe(
+                    result_queue.put_nowait,
+                    {
+                        "type": "metadata",
+                        "data": {
+                            "type": "document_ready",
+                            "package_id": pkg_id,
+                            "doc_type": doc_type,
+                            "version": response.get("version"),
+                            "title": result.title,
+                            "word_count": result.word_count,
+                            "source": "document_agent",
+                        },
+                    },
+                )
+
+        return json.dumps(response)
+
+    return generate_document_tool
+
+
 def _build_service_tools(
     tenant_id: str,
     user_id: str,
@@ -1560,6 +1713,15 @@ def _build_service_tools(
                 loop=loop,
             )
         )
+    # AI-driven document generation (Agent-as-Tool)
+    tools.append(
+        _make_generate_document_tool(
+            tenant_id, user_id, session_id,
+            package_context=package_context,
+            result_queue=result_queue,
+            loop=loop,
+        )
+    )
     # Add compliance matrix and progressive disclosure tools.
     # These use factory functions that close over result_queue/loop for observability.
     tools.append(_make_compliance_matrix_tool(result_queue, loop))

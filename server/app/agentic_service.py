@@ -1765,6 +1765,15 @@ def _exec_create_document(params: dict, tenant_id: str, session_id: str = None) 
     return response
 
 
+# ---------------------------------------------------------------------------
+# DEPRECATED: Legacy f-string document generators.
+# These are replaced by document_agent.generate_document() which uses
+# LLM-driven content with templates as guidelines.
+# Kept for backward compatibility with create_document tool and fast-path.
+# Will be removed once generate_document is fully validated.
+# ---------------------------------------------------------------------------
+
+
 def _generate_sow(title: str, data: dict) -> str:
     desc = data.get("description", "the required supplies/services")
     pop = data.get("period_of_performance", "12 months from date of award")
