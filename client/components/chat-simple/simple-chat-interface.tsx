@@ -38,6 +38,25 @@ export interface TrackedToolCall {
 /** Tool calls keyed by the parent message ID they belong to. */
 export type ToolCallsByMessageId = Record<string, TrackedToolCall[]>;
 
+function documentIdentity(doc: DocumentInfo): string {
+    if (doc.s3_key) return `s3:${doc.s3_key}`;
+    if (doc.document_id) return `id:${doc.document_id}`;
+    const generatedAt = doc.generated_at ?? '';
+    return `fallback:${doc.document_type}:${doc.title}:${generatedAt}`;
+}
+
+function dedupeDocuments(docs: DocumentInfo[]): DocumentInfo[] {
+    const seen = new Set<string>();
+    const unique: DocumentInfo[] = [];
+    for (const doc of docs) {
+        const key = documentIdentity(doc);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(doc);
+    }
+    return unique;
+}
+
 export default function SimpleChatInterface() {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     // In-flight streaming message kept separate — avoids React batching/duplicate-key issues.
@@ -267,6 +286,23 @@ export default function SimpleChatInterface() {
                     return next;
                 });
 
+                // Migrate any document cards attached to the temporary stream id
+                // onto the committed assistant message id.
+                setDocuments((prev) => {
+                    const streamDocs = prev[streamId] ?? [];
+                    const committedDocs = prev[completedMsg.id] ?? [];
+                    if (streamDocs.length === 0 && committedDocs.length === 0) {
+                        return prev;
+                    }
+
+                    const merged = dedupeDocuments([...committedDocs, ...streamDocs]);
+                    const next = { ...prev, [completedMsg.id]: merged };
+                    if (streamId !== completedMsg.id) {
+                        delete next[streamId];
+                    }
+                    return next;
+                });
+
                 // AI title generation — fire-and-forget on first assistant response
                 const sid = currentSessionId;
                 const userMsg = firstUserMsgRef.current;
@@ -303,15 +339,12 @@ export default function SimpleChatInterface() {
             // before the first text chunk sets lastAssistantIdRef.
             const attachTo = lastAssistantIdRef.current ?? streamingMsgIdRef.current;
             setDocuments((prev) => {
-                const existing = prev[attachTo] || [];
-                // Dedup: skip if a doc with the same s3_key or document_id already exists
-                const isDuplicate = existing.some(
-                    (d) =>
-                        (doc.s3_key && d.s3_key === doc.s3_key) ||
-                        (doc.document_id && d.document_id === doc.document_id),
-                );
-                if (isDuplicate) return prev;
-                return { ...prev, [attachTo]: [...existing, doc] };
+                const existing = prev[attachTo] ?? [];
+                const merged = dedupeDocuments([...existing, doc]);
+                return {
+                    ...prev,
+                    [attachTo]: merged,
+                };
             });
 
             // Persist to localStorage for Packages & Documents pages
