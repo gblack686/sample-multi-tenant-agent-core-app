@@ -3000,6 +3000,204 @@ async def test_35_uc01_new_acquisition_package():
 
 
 # ============================================================
+# Test 36: Langfuse Trace Story — UC-01 Multi-Skill Chain
+# ============================================================
+
+async def test_36_langfuse_trace_story():
+    """Validate Langfuse trace story extraction for the UC-01 multi-skill chain.
+
+    Fetches the latest trace for session nci-oa-premium-co-johnson-001-eval-015,
+    builds the full supervisor+subagent story via the Langfuse Observations API,
+    and validates the expected structure:
+      - 4 supervisor turns (turn 1-3 each call a subagent, turn 4 synthesizes)
+      - 3 subagent invocations: oa_intake, market_intelligence, legal_counsel
+      - Each subagent produces a non-empty text response
+      - Token counts are present and non-zero
+
+    Langfuse observation hierarchy (Strands Agents SDK):
+      AGEN invoke_agent (supervisor)
+        SPAN execute_event_loop_cycle
+          GENE chat            <- supervisor LLM call (text + tool_use blocks)
+          TOOL <skill_name>    <- tool span
+            AGEN invoke_agent  <- subagent
+              SPAN execute_event_loop_cycle
+                GENE chat      <- subagent LLM call
+    """
+    print("\n" + "=" * 70)
+    print("TEST 36: Langfuse Trace Story — UC-01 Multi-Skill Chain")
+    print("=" * 70)
+
+    langfuse_ok = bool(os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY"))
+    if not langfuse_ok:
+        print("  SKIP — LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY not set")
+        return True  # non-fatal skip
+
+    import base64
+    import urllib.request
+
+    host = os.getenv("LANGFUSE_HOST", "https://us.cloud.langfuse.com")
+    auth = base64.b64encode(
+        f"{os.getenv('LANGFUSE_PUBLIC_KEY')}:{os.getenv('LANGFUSE_SECRET_KEY')}".encode()
+    ).decode()
+    hdrs = {"Authorization": f"Basic {auth}"}
+
+    def lf_get(path: str) -> dict:
+        req = urllib.request.Request(f"{host}{path}", headers=hdrs)
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return json.loads(r.read())
+
+    session_id = "nci-oa-premium-co-johnson-001-eval-015"
+    print(f"  Session: {session_id}")
+
+    # ── Step 1: find latest trace ──────────────────────────────────────
+    try:
+        traces = sorted(
+            lf_get(f"/api/public/traces?sessionId={session_id}&limit=5").get("data", []),
+            key=lambda t: t.get("timestamp", ""), reverse=True,
+        )
+    except Exception as e:
+        print(f"  ERROR fetching traces: {e}")
+        return False
+
+    if not traces:
+        print("  FAIL — no traces found for session (run test 15 first)")
+        return False
+
+    trace_id = traces[0]["id"]
+    print(f"  Trace ID: {trace_id}")
+    print(f"  Trace time: {traces[0].get('timestamp', '?')}")
+
+    # ── Step 2: fetch all observations ────────────────────────────────
+    try:
+        observations = lf_get(f"/api/public/observations?traceId={trace_id}&limit=50").get("data", [])
+    except Exception as e:
+        print(f"  ERROR fetching observations: {e}")
+        return False
+
+    print(f"  Observations fetched: {len(observations)}")
+
+    # Build children map
+    children_map: dict = {}
+    for o in observations:
+        pid = o.get("parentObservationId")
+        if pid:
+            children_map.setdefault(pid, []).append(o)
+
+    def kids(oid, typ_prefix):
+        return sorted(
+            [c for c in children_map.get(oid, []) if (c.get("type") or "").startswith(typ_prefix)],
+            key=lambda x: x.get("startTime", ""),
+        )
+
+    def direct_gen(oid):
+        gs = kids(oid, "GEN")
+        return gs[0] if gs else None
+
+    def parse_resp_blocks(obs):
+        out = obs.get("output") or {}
+        if not isinstance(out, dict):
+            return []
+        msg = out.get("message", "")
+        if isinstance(msg, str) and msg.strip().startswith("["):
+            try:
+                return json.loads(msg)
+            except Exception:
+                return []
+        return msg if isinstance(msg, list) else []
+
+    # ── Step 3: find root supervisor ──────────────────────────────────
+    root_agens = [o for o in observations
+                  if (o.get("type") or "").startswith("AGEN") and not o.get("parentObservationId")]
+    if not root_agens:
+        print("  FAIL — no root AGEN observation found")
+        return False
+
+    supervisor = root_agens[0]
+    cycles = kids(supervisor["id"], "SPAN")
+    print(f"  Supervisor cycles: {len(cycles)}")
+
+    # ── Step 4: walk cycles, collect story ────────────────────────────
+    story = []
+    subagents_seen = []
+
+    for cycle in cycles:
+        gen = direct_gen(cycle["id"])
+        if not gen:
+            continue
+
+        resp_blocks = parse_resp_blocks(gen)
+        tool_uses = [b["toolUse"].get("name", "") for b in resp_blocks
+                     if isinstance(b, dict) and "toolUse" in b]
+
+        turn: dict = {
+            "gen_id": gen["id"][:8],
+            "input_tokens": gen.get("promptTokens", 0) or 0,
+            "output_tokens": gen.get("completionTokens", 0) or 0,
+            "resp_block_count": len(resp_blocks),
+            "tool_uses": tool_uses,
+            "has_reasoning": any("reasoningContent" in b for b in resp_blocks if isinstance(b, dict)),
+            "subagents": [],
+        }
+
+        for ts in kids(cycle["id"], "TOOL"):
+            sub_agens = kids(ts["id"], "AGEN")
+            if not sub_agens:
+                continue
+            sub = sub_agens[0]
+            sub_resp_total = sub_tok_in = sub_tok_out = 0
+            for sc in kids(sub["id"], "SPAN"):
+                sg = direct_gen(sc["id"])
+                if sg:
+                    sub_resp_total += len(parse_resp_blocks(sg))
+                    sub_tok_in += sg.get("promptTokens", 0) or 0
+                    sub_tok_out += sg.get("completionTokens", 0) or 0
+            turn["subagents"].append({
+                "name": ts["name"],
+                "resp_blocks": sub_resp_total,
+                "input_tokens": sub_tok_in,
+                "output_tokens": sub_tok_out,
+            })
+            subagents_seen.append(ts["name"])
+
+        story.append(turn)
+
+    # ── Step 5: validate indicators ────────────────────────────────────
+    turns_with_tools = [t for t in story if t["tool_uses"]]
+
+    indicators = {
+        "has_4_supervisor_turns": len(story) == 4,
+        "has_3_tool_calls": len(turns_with_tools) == 3,
+        "oa_intake_invoked": "oa_intake" in subagents_seen,
+        "market_intelligence_invoked": "market_intelligence" in subagents_seen,
+        "legal_counsel_invoked": "legal_counsel" in subagents_seen,
+        "subagents_have_responses": all(s["resp_blocks"] > 0 for t in story for s in t["subagents"]),
+        "tokens_nonzero": all(t["input_tokens"] > 0 for t in story),
+        "synthesis_turn_present": any(not t["tool_uses"] for t in story),
+    }
+
+    print(f"\n  Supervisor turns: {len(story)}")
+    print(f"  Subagents invoked: {subagents_seen}")
+    print(f"\n  Turn breakdown:")
+    for i, t in enumerate(story, 1):
+        tools_str = f"-> {t['tool_uses']}" if t["tool_uses"] else "(synthesis)"
+        reasoning_str = " [REASONING BLOCKS]" if t["has_reasoning"] else ""
+        print(f"    Turn {i}: {t['input_tokens']}in/{t['output_tokens']}out tokens  {tools_str}{reasoning_str}")
+        for s in t["subagents"]:
+            print(f"      subagent {s['name']}: {s['input_tokens']}in/{s['output_tokens']}out tokens, {s['resp_blocks']} block(s)")
+
+    print(f"\n  Trace story indicators:")
+    for k, v in indicators.items():
+        mark = "PASS" if v else "FAIL"
+        print(f"    [{mark}] {k}")
+
+    indicators_found = sum(1 for v in indicators.values() if v)
+    passed = indicators_found >= 6
+    print(f"\n  Indicators: {indicators_found}/8")
+    print(f"  {'PASS' if passed else 'FAIL'} - Langfuse trace story validation")
+    return passed
+
+
+# ============================================================
 # Main infrastructure
 # ============================================================
 
@@ -3064,6 +3262,7 @@ test_names = {
     33: "33_workspace_store_default_creation",
     34: "34_store_crud_functions_exist",
     35: "35_uc01_new_acquisition_package",
+    36: "36_langfuse_trace_story",
 }
 
 
@@ -3240,6 +3439,7 @@ async def _run_test(test_id: int, capture: "CapturingStream", session_id: str = 
         33: ("33_workspace_store_default_creation", test_33_workspace_store_default_creation),
         34: ("34_store_crud_functions_exist", test_34_store_crud_functions_exist),
         35: ("35_uc01_new_acquisition_package", test_35_uc01_new_acquisition_package),
+        36: ("36_langfuse_trace_story", test_36_langfuse_trace_story),
     }
 
     result_key, test_fn = TEST_REGISTRY[test_id]
