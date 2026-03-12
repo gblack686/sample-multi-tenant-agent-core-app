@@ -235,3 +235,26 @@ def emit_feedback_submitted(
         session_id=session_id,
         data={"feedback_type": feedback_type, "feedback_id": feedback_id},
     )
+
+
+def emit_agent_state_flush(
+    tenant_id: str,
+    session_id: str,
+    user_id: str,
+    state: dict,
+) -> None:
+    """Emit a structured agent.state_flush event after every supervisor turn.
+
+    Queryable via CloudWatch Insights:
+      fields @timestamp, data.phase, data.docs_completed, data.docs_required
+      | filter event_type = "agent.state_flush"
+      | stats count() by data.phase
+    """
+    from app.eagle_state import to_cw_payload
+    emit_telemetry_event(
+        event_type="agent.state_flush",
+        tenant_id=tenant_id,
+        session_id=session_id,
+        user_id=user_id,
+        data=to_cw_payload(state),
+    )

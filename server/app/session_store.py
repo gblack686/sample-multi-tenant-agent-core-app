@@ -415,6 +415,63 @@ def get_messages(
         return []
 
 
+# ── Agent State (STATE# records) ─────────────────────────────────────
+
+def load_agent_state(
+    session_id: str,
+    tenant_id: str = "default",
+    user_id: str = "anonymous",
+) -> Optional[Dict]:
+    """Load the latest persisted agent state for a session.
+
+    Returns the state dict if found, None if no state has been saved yet.
+    PK: SESSION#{tenant_id}#{user_id}
+    SK: STATE#{session_id}
+    """
+    try:
+        table = _get_table()
+        response = table.get_item(
+            Key={
+                "PK": f"SESSION#{tenant_id}#{user_id}",
+                "SK": f"STATE#{session_id}",
+            }
+        )
+        item = response.get("Item")
+        if not item:
+            return None
+        content = item.get("content", "{}")
+        return json.loads(content) if isinstance(content, str) else content
+    except Exception as exc:
+        logger.warning("Failed to load agent state for %s: %s", session_id, exc)
+        return None
+
+
+def save_agent_state(
+    session_id: str,
+    state: dict,
+    tenant_id: str = "default",
+    user_id: str = "anonymous",
+) -> None:
+    """Persist agent state for a session (upsert).
+
+    Uses a single STATE# item per session — overwritten on every turn.
+    """
+    try:
+        now = datetime.utcnow().isoformat()
+        ttl = int(time.time()) + SESSION_TTL_DAYS * 86400
+        table = _get_table()
+        table.put_item(Item={
+            "PK": f"SESSION#{tenant_id}#{user_id}",
+            "SK": f"STATE#{session_id}",
+            "session_id": session_id,
+            "content": json.dumps(state, default=str),
+            "updated_at": now,
+            "ttl": ttl,
+        })
+    except Exception as exc:
+        logger.warning("Failed to save agent state for %s: %s", session_id, exc)
+
+
 def get_messages_for_anthropic(
     session_id: str,
     tenant_id: str = "default",

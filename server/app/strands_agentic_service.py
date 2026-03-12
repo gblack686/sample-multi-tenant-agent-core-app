@@ -35,6 +35,8 @@ import boto3
 
 from botocore.config import Config
 from strands import Agent, tool
+from strands.hooks import HookProvider
+from strands.hooks.events import AfterInvocationEvent
 from strands.models import BedrockModel
 
 # Add server/ to path for eagle_skill_constants
@@ -43,10 +45,79 @@ if _server_dir not in sys.path:
     sys.path.insert(0, _server_dir)
 
 from eagle_skill_constants import AGENTS, SKILLS, PLUGIN_CONTENTS
+from .eagle_state import normalize, apply_event, to_trace_attrs, stamp
 from .tools.knowledge_tools import KNOWLEDGE_FETCH_TOOL, KNOWLEDGE_SEARCH_TOOL
 from .tools.contract_matrix import query_contract_matrix
 
 logger = logging.getLogger("eagle.strands_agent")
+
+
+# -- EagleSSEHookProvider --------------------------------------------
+# Registers AfterInvocationEvent to flush agent state to DynamoDB
+# after every supervisor turn.
+
+class EagleSSEHookProvider(HookProvider):
+    """Hook provider that flushes agent state to DynamoDB after each turn.
+
+    Accepts tenant_id/user_id/session_id so state is persisted under the
+    correct DynamoDB PK/SK. Parameters default so existing call sites that
+    don't pass them still work (state flush is simply skipped).
+    """
+
+    def __init__(
+        self,
+        tenant_id: str = "default",
+        user_id: str = "anonymous",
+        session_id: str | None = None,
+    ):
+        self.tenant_id = tenant_id
+        self.user_id = user_id
+        self.session_id = session_id
+
+    def register_hooks(self, registry) -> None:
+        registry.add_callback(AfterInvocationEvent, self._on_after_invocation)
+
+    def _on_after_invocation(self, event: AfterInvocationEvent) -> None:
+        """Flush agent state to DynamoDB and CloudWatch after every supervisor turn."""
+        if not self.session_id:
+            return
+        try:
+            # event.agent.state is the live dict on the Agent instance
+            raw_state = getattr(getattr(event, "agent", None), "state", None)
+            if not raw_state or not isinstance(raw_state, dict):
+                return
+
+            state = normalize(raw_state)
+            state["turn_count"] = state.get("turn_count", 0) + 1
+            state = stamp(state)
+
+            from .session_store import save_agent_state
+            save_agent_state(
+                session_id=self.session_id,
+                state=state,
+                tenant_id=self.tenant_id,
+                user_id=self.user_id,
+            )
+            logger.debug(
+                "eagle.state_flushed session=%s phase=%s docs=%d/%d turn=%d",
+                self.session_id,
+                state.get("phase"),
+                len(state.get("completed_documents", [])),
+                len(state.get("required_documents", [])),
+                state.get("turn_count"),
+            )
+            try:
+                from .telemetry.cloudwatch_emitter import emit_agent_state_flush
+                emit_agent_state_flush(
+                    tenant_id=self.tenant_id,
+                    session_id=self.session_id,
+                    user_id=self.user_id,
+                    state=state,
+                )
+            except Exception as cw_exc:
+                logger.debug("CloudWatch state flush failed (non-fatal): %s", cw_exc)
+        except Exception as exc:
+            logger.warning("State flush failed (non-fatal): %s", exc)
 
 
 # -- Adapter Messages ------------------------------------------------
@@ -1334,7 +1405,8 @@ def _make_update_state_tool(
     result_queue: asyncio.Queue | None = None,
     loop: asyncio.AbstractEventLoop | None = None,
 ):
-    """Create a tool that pushes structured state to the frontend via SSE METADATA events.
+    """Create a tool that pushes structured state to the frontend via SSE METADATA events
+    and writes the updated state back into the supervisor's agent_state.
 
     State types:
       - checklist_update: package checklist progress (required/completed/missing)
@@ -1342,9 +1414,10 @@ def _make_update_state_tool(
       - document_ready: notification that a document was created/updated
       - compliance_alert: compliance findings that need attention
     """
+    from strands import ToolContext
 
     @tool(name="update_state")
-    def update_state_tool(params: str) -> str:
+    def update_state_tool(params: str, tool_context: ToolContext | None = None) -> str:
         """Push a structured state update to the frontend UI. The frontend renders this immediately as a live checklist, progress bar, or alert.
 
         Args:
@@ -1400,6 +1473,19 @@ def _make_update_state_tool(
 
         else:
             return json.dumps({"error": f"Unknown state_type: {state_type}"})
+
+        # Apply the state change into the supervisor's live agent_state so it
+        # survives the turn and is visible to AfterInvocationEvent.
+        try:
+            if tool_context is not None:
+                agent = getattr(tool_context, "agent", None)
+                if agent is not None:
+                    current_state = getattr(agent, "state", None)
+                    if isinstance(current_state, dict):
+                        new_state = apply_event(current_state, state_type, parsed)
+                        current_state.update(new_state)
+        except Exception as _state_exc:
+            logger.debug("update_state: agent_state merge failed (non-fatal): %s", _state_exc)
 
         # Push to frontend via SSE METADATA event
         if result_queue and loop:
@@ -2154,17 +2240,47 @@ async def sdk_query(
     # Convert conversation history to Strands format (excludes current prompt)
     strands_history = _to_strands_messages(messages) if messages else None
 
+    # Load persisted agent state and normalize (fills any missing keys from defaults)
+    _leaf_session = session_id.split("#")[-1] if session_id and "#" in session_id else session_id
+    try:
+        from .session_store import load_agent_state
+        _loaded_state = normalize(
+            load_agent_state(_leaf_session, tenant_id, user_id) if _leaf_session else None
+        )
+    except Exception as _e:
+        logger.warning("load_agent_state failed (non-fatal): %s", _e)
+        _loaded_state = normalize(None)
+    _loaded_state["session_id"] = _leaf_session
+
     supervisor = Agent(
         model=_model,
         system_prompt=system_prompt,
         tools=skill_tools + service_tools,
         callback_handler=None,
         messages=strands_history,
+        state=_loaded_state,
+        trace_attributes=to_trace_attrs(
+            _loaded_state,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            tier=tier,
+            session_id=session_id or "",
+        ),
     )
 
     # Synchronous call -- Strands handles the agentic loop internally
     result = supervisor(prompt)
     result_text = str(result)
+
+    # Flush final state to DynamoDB (non-streaming path; streaming path uses hook)
+    try:
+        from .session_store import save_agent_state
+        final_state = stamp(getattr(result, "state", None) or _loaded_state)
+        final_state["turn_count"] = final_state.get("turn_count", 0) + 1
+        if _leaf_session:
+            save_agent_state(_leaf_session, final_state, tenant_id, user_id)
+    except Exception as _e:
+        logger.warning("State flush (sdk_query) failed (non-fatal): %s", _e)
 
     # Extract tool names called during execution from metrics.tool_metrics
     tools_called = []
@@ -2256,15 +2372,29 @@ async def sdk_query_streaming(
     # Trivial greeting fast-path — no LLM call needed
     trivial = _fast_trivial_response(prompt)
     if trivial is not None:
+        _fp_state = normalize(None)
         yield {"type": "text", "data": trivial["text"]}
-        yield {"type": "complete", "text": trivial["text"], "tools_called": [], "usage": trivial["usage"]}
+        yield {
+            "type": "complete",
+            "text": trivial["text"],
+            "tools_called": [],
+            "usage": trivial["usage"],
+            "agent_state": _fp_state,
+        }
         return
 
     # Intake form fast-path — canned ack, no LLM call
     intake = _fast_intake_form_response(prompt)
     if intake is not None:
+        _fp_state = normalize(None)
         yield {"type": "text", "data": intake["text"]}
-        yield {"type": "complete", "text": intake["text"], "tools_called": [], "usage": intake["usage"]}
+        yield {
+            "type": "complete",
+            "text": intake["text"],
+            "tools_called": [],
+            "usage": intake["usage"],
+            "agent_state": _fp_state,
+        }
         return
 
     fast_path = await _maybe_fast_path_document_generation(
@@ -2286,11 +2416,21 @@ async def sdk_query_streaming(
             "Open the document card to review or edit it."
         )
         yield {"type": "text", "data": text}
+        # Load state for fast-path doc (before the session-scoped load below)
+        _fp_leaf = session_id.split("#")[-1] if session_id and "#" in session_id else session_id
+        try:
+            from .session_store import load_agent_state
+            _fp_state = normalize(
+                load_agent_state(_fp_leaf, tenant_id, user_id) if _fp_leaf else None
+            )
+        except Exception:
+            _fp_state = normalize(None)
         yield {
             "type": "complete",
             "text": text,
             "tools_called": ["create_document"],
             "usage": {"tools_called": 1, "tools": ["create_document"], "fast_path": True},
+            "agent_state": _fp_state,
         }
         return
 
@@ -2342,12 +2482,39 @@ async def sdk_query_streaming(
 
     strands_history = _to_strands_messages(messages) if messages else None
 
+    # Load persisted agent state and normalize (fills any missing keys from defaults)
+    _leaf_session = session_id.split("#")[-1] if session_id and "#" in session_id else session_id
+    try:
+        from .session_store import load_agent_state
+        _loaded_state = normalize(
+            load_agent_state(_leaf_session, tenant_id, user_id) if _leaf_session else None
+        )
+    except Exception as _e:
+        logger.warning("load_agent_state (streaming) failed (non-fatal): %s", _e)
+        _loaded_state = normalize(None)
+    _loaded_state["session_id"] = _leaf_session
+
+    sse_hook = EagleSSEHookProvider(
+        tenant_id=tenant_id,
+        user_id=user_id,
+        session_id=_leaf_session,
+    )
+
     supervisor = Agent(
         model=_model,
         system_prompt=system_prompt,
         tools=skill_tools + service_tools,
         callback_handler=None,  # stream_async yields events directly
         messages=strands_history,
+        hooks=[sse_hook],
+        state=_loaded_state,
+        trace_attributes=to_trace_attrs(
+            _loaded_state,
+            tenant_id=tenant_id,
+            user_id=user_id,
+            tier=tier,
+            session_id=session_id or "",
+        ),
     )
 
     # Yield chunks via stream_async — SDK bridges sync→async internally
@@ -2523,6 +2690,11 @@ async def sdk_query_streaming(
             "text": final_text,
             "tools_called": tools_called,
             "usage": usage,
+            "agent_state": (
+                agent_result.state
+                if agent_result is not None and hasattr(agent_result, "state") and isinstance(getattr(agent_result, "state", None), dict)
+                else _loaded_state
+            ),
         }
 
 
