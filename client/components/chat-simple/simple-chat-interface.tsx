@@ -6,16 +6,21 @@ import SimpleWelcome from './simple-welcome';
 import SimpleQuickActions from './simple-quick-actions';
 import SlashCommandPicker from '@/components/chat/slash-command-picker';
 import CommandPalette from './command-palette';
-import { useAgentStream, ToolUseEvent } from '@/hooks/use-agent-stream';
+import { useAgentStream, ToolUseEvent, ServerToolResult } from '@/hooks/use-agent-stream';
 import { useSlashCommands } from '@/hooks/use-slash-commands';
 import { useSession } from '@/contexts/session-context';
 import { useAuth } from '@/contexts/auth-context';
+import { useFeedback } from '@/contexts/feedback-context';
 import { SlashCommand } from '@/lib/slash-commands';
 import { ChatMessage, DocumentInfo } from '@/types/chat';
 import { saveGeneratedDocument } from '@/lib/document-store';
 import { ClientToolResult } from '@/lib/client-tools';
-import { ToolStatus } from './tool-use-display';
+import { ToolStatus, extractKnowledgeSources } from './tool-use-display';
+import type { KnowledgeSource } from './tool-use-display';
 import ActivityPanel from './activity-panel';
+import IntakeFormCard from './intake-form-card';
+import { ChecklistPanel } from './checklist-panel';
+import { usePackageState } from '@/hooks/use-package-state';
 
 // -----------------------------------------------------------------------
 // Types for per-message tool call tracking
@@ -34,6 +39,25 @@ export interface TrackedToolCall {
 /** Tool calls keyed by the parent message ID they belong to. */
 export type ToolCallsByMessageId = Record<string, TrackedToolCall[]>;
 
+function documentIdentity(doc: DocumentInfo): string {
+    if (doc.s3_key) return `s3:${doc.s3_key}`;
+    if (doc.document_id) return `id:${doc.document_id}`;
+    const generatedAt = doc.generated_at ?? '';
+    return `fallback:${doc.document_type}:${doc.title}:${generatedAt}`;
+}
+
+function dedupeDocuments(docs: DocumentInfo[]): DocumentInfo[] {
+    const seen = new Set<string>();
+    const unique: DocumentInfo[] = [];
+    for (const doc of docs) {
+        const key = documentIdentity(doc);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        unique.push(doc);
+    }
+    return unique;
+}
+
 export default function SimpleChatInterface() {
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     // In-flight streaming message kept separate — avoids React batching/duplicate-key issues.
@@ -51,6 +75,8 @@ export default function SimpleChatInterface() {
 
     const { currentSessionId, saveSession, loadSession, writeMessageOptimistic, renameSession } = useSession();
     const { getToken } = useAuth();
+    const { setSnapshot } = useFeedback();
+    const { state: packageState, handleMetadata } = usePackageState();
 
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const lastAssistantIdRef = useRef<string | null>(null);
@@ -60,6 +86,9 @@ export default function SimpleChatInterface() {
     const firstUserMsgRef = useRef<string | null>(null);
     /** Ctrl+K command palette state. */
     const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
+    /** Intake form card state. */
+    const [showIntakeForm, setShowIntakeForm] = useState(false);
+    const [intakeFormSubmitted, setIntakeFormSubmitted] = useState(false);
 
     // Global Ctrl+K keyboard shortcut
     useEffect(() => {
@@ -106,6 +135,19 @@ export default function SimpleChatInterface() {
         const timeoutId = setTimeout(saveSessionDebounced, 500);
         return () => clearTimeout(timeoutId);
     }, [saveSessionDebounced]);
+
+    // Keep feedback context in sync so the modal can include conversation state
+    useEffect(() => {
+        setSnapshot({
+            messages: messages.map((m) => ({
+                role: m.role,
+                content: m.content,
+                id: m.id,
+                timestamp: m.timestamp,
+            })),
+            lastMessageId: lastAssistantIdRef.current,
+        });
+    }, [messages, setSnapshot]);
 
     // Slash command handling
     const handleCommandSelect = (command: SlashCommand) => {
@@ -154,6 +196,10 @@ export default function SimpleChatInterface() {
 
     /** Right panel state. */
     const [isPanelOpen, setIsPanelOpen] = useState(true);
+    /** Raw Bedrock ConverseStream trace events. */
+    const [bedrockTraces, setBedrockTraces] = useState<Record<string, unknown>[]>([]);
+    /** Knowledge sources referenced across all turns. */
+    const [knowledgeSources, setKnowledgeSources] = useState<import('./tool-use-display').KnowledgeSource[]>([]);
 
     // Agent stream
     const { sendQuery, isStreaming, error, logs, clearLogs, addUserInputLog } = useAgentStream({
@@ -175,29 +221,107 @@ export default function SimpleChatInterface() {
             setStreamingMsg(newMessage);
         },
 
-        onComplete: () => {
+        onComplete: (toolResults?: ServerToolResult[]) => {
             const completedMsg = streamingMsgRef.current;
             if (completedMsg) {
                 lastAssistantIdRef.current = completedMsg.id;
                 setMessages((prev) => [...prev, completedMsg]);
 
-                // Migrate tool calls from the streaming ID to the committed message ID,
-                // and mark any server-side tools still "pending" as "done" (subagent
-                // delegations don't emit a result event — the text just streams in).
+                // Migrate documents from the streaming ID to the committed message ID
+                // (tool_result may arrive before the first text chunk, keying docs
+                // to streamingMsgIdRef instead of the hook's message ID).
                 const streamId = streamingMsgIdRef.current;
+                if (streamId !== completedMsg.id) {
+                    setDocuments((prev) => {
+                        const orphaned = prev[streamId];
+                        if (!orphaned || orphaned.length === 0) return prev;
+                        const existing = prev[completedMsg.id] || [];
+                        // Merge, deduplicating by s3_key / document_id
+                        const merged = [...existing];
+                        for (const doc of orphaned) {
+                            const isDup = merged.some(
+                                (d) =>
+                                    (doc.s3_key && d.s3_key === doc.s3_key) ||
+                                    (doc.document_id && d.document_id === doc.document_id),
+                            );
+                            if (!isDup) merged.push(doc);
+                        }
+                        const next = { ...prev, [completedMsg.id]: merged };
+                        delete next[streamId];
+                        return next;
+                    });
+                }
+
+                // Migrate tool calls from the streaming ID to the committed message ID,
+                // mark pending tools as "done", and merge any server-side tool results.
                 setToolCallsByMsg((prev) => {
                     const calls = prev[streamId] ?? prev[completedMsg.id] ?? [];
                     if (calls.length === 0) return prev;
-                    const finalized = calls.map((tc) =>
-                        !tc.isClientSide && (tc.status === 'pending' || tc.status === 'running')
-                            ? { ...tc, status: 'done' as const }
-                            : tc
-                    );
+
+                    // Build a lookup: toolName → result (FIFO — first result matches first call)
+                    const resultsByName = new Map<string, ServerToolResult[]>();
+                    if (toolResults) {
+                        for (const tr of toolResults) {
+                            const arr = resultsByName.get(tr.toolName) ?? [];
+                            arr.push(tr);
+                            resultsByName.set(tr.toolName, arr);
+                        }
+                    }
+
+                    const finalized = calls.map((tc) => {
+                        if (tc.isClientSide) return tc;
+                        // Try to match a server-side result by name
+                        const pending = resultsByName.get(tc.toolName);
+                        const matched = pending?.shift();
+                        if (matched) {
+                            return { ...tc, status: 'done' as const, result: matched.result as ClientToolResult };
+                        }
+                        // No result — just mark done
+                        if (tc.status === 'pending' || tc.status === 'running') {
+                            return { ...tc, status: 'done' as const };
+                        }
+                        return tc;
+                    });
+
                     const next = { ...prev };
                     delete next[streamId];
                     next[completedMsg.id] = finalized;
                     return next;
                 });
+
+                // Migrate any document cards attached to the temporary stream id
+                // onto the committed assistant message id.
+                setDocuments((prev) => {
+                    const streamDocs = prev[streamId] ?? [];
+                    const committedDocs = prev[completedMsg.id] ?? [];
+                    if (streamDocs.length === 0 && committedDocs.length === 0) {
+                        return prev;
+                    }
+
+                    const merged = dedupeDocuments([...committedDocs, ...streamDocs]);
+                    const next = { ...prev, [completedMsg.id]: merged };
+                    if (streamId !== completedMsg.id) {
+                        delete next[streamId];
+                    }
+                    return next;
+                });
+
+                // Extract knowledge sources from tool results for the Sources tab
+                if (toolResults) {
+                    const newSources: KnowledgeSource[] = [];
+                    for (const tr of toolResults) {
+                        const srcs = extractKnowledgeSources(tr.toolName, tr.result);
+                        newSources.push(...srcs);
+                    }
+                    if (newSources.length > 0) {
+                        setKnowledgeSources((prev) => {
+                            // Deduplicate by document_id
+                            const existing = new Set(prev.map(s => s.document_id));
+                            const unique = newSources.filter(s => s.document_id && !existing.has(s.document_id));
+                            return unique.length > 0 ? [...prev, ...unique] : prev;
+                        });
+                    }
+                }
 
                 // AI title generation — fire-and-forget on first assistant response
                 const sid = currentSessionId;
@@ -231,14 +355,17 @@ export default function SimpleChatInterface() {
         },
 
         onDocumentGenerated: (doc) => {
-            // Attach document to latest assistant message
-            const attachTo = lastAssistantIdRef.current;
-            if (attachTo) {
-                setDocuments((prev) => ({
+            // Attach to the active streaming message when tool_result arrives
+            // before the first text chunk sets lastAssistantIdRef.
+            const attachTo = lastAssistantIdRef.current ?? streamingMsgIdRef.current;
+            setDocuments((prev) => {
+                const existing = prev[attachTo] ?? [];
+                const merged = dedupeDocuments([...existing, doc]);
+                return {
                     ...prev,
-                    [attachTo]: [...(prev[attachTo] || []), doc],
-                }));
-            }
+                    [attachTo]: merged,
+                };
+            });
 
             // Persist to localStorage for Packages & Documents pages
             if (currentSessionId) {
@@ -248,6 +375,12 @@ export default function SimpleChatInterface() {
                 saveGeneratedDocument(doc, currentSessionId, title);
             }
         },
+
+        onBedrockTrace: (trace) => {
+            setBedrockTraces((prev) => [...prev, trace]);
+        },
+
+        onMetadata: handleMetadata,
 
         onToolUse: (toolEvent: ToolUseEvent) => {
             // Associate tool calls with the current streaming message ID.
@@ -263,7 +396,8 @@ export default function SimpleChatInterface() {
                     result: undefined,
                 });
             } else {
-                // Client-side tool finished — update with result.
+                // Client-side tool finished — update by exact toolUseId.
+                // Server-side results are merged in onComplete via toolResults.
                 const status: ToolStatus = toolEvent.result.success ? 'done' : 'error';
                 upsertToolCall(parentId, toolEvent.toolUseId, {
                     status,
@@ -345,12 +479,39 @@ export default function SimpleChatInterface() {
         const query = input;
         setInput('');
 
-        await sendQuery(query, currentSessionId);
+        await sendQuery(query, currentSessionId, packageState.packageId ?? undefined);
     };
 
     const insertText = (text: string) => {
         setInput(text);
         textareaRef.current?.focus();
+    };
+
+    const handleIntakeFormSubmit = async (payload: Record<string, unknown>) => {
+        setIntakeFormSubmitted(true);
+        const jsonStr = JSON.stringify(payload);
+        const userMessage: ChatMessage = {
+            id: Date.now().toString(),
+            role: 'user',
+            content: jsonStr,
+            timestamp: new Date(),
+        };
+        if (messages.length === 0) {
+            firstUserMsgRef.current = 'Intake form submission';
+        }
+        streamingMsgIdRef.current = `stream-${Date.now()}`;
+        setMessages((prev) => [...prev, userMessage]);
+        addUserInputLog('Intake form submitted');
+        writeMessageOptimistic(currentSessionId, userMessage);
+        await sendQuery(jsonStr, currentSessionId, packageState.packageId ?? undefined);
+    };
+
+    const handleQuickAction = (text: string) => {
+        if (text === '__INTAKE_FORM__') {
+            setShowIntakeForm(true);
+            return;
+        }
+        insertText(text);
     };
 
     const displayMessages = streamingMsg ? [...messages, streamingMsg] : messages;
@@ -373,16 +534,24 @@ export default function SimpleChatInterface() {
                 />
 
                 {/* Main content area */}
-                {!hasMessages && !isLoadingSession ? (
+                {!hasMessages && !isLoadingSession && !showIntakeForm ? (
                     <SimpleWelcome onAction={insertText} />
                 ) : (
-                    <SimpleMessageList
-                        messages={displayMessages}
-                        isTyping={isStreaming}
-                        documents={documents}
-                        sessionId={currentSessionId}
-                        toolCallsByMsg={toolCallsByMsg}
-                    />
+                    <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
+                        <SimpleMessageList
+                            messages={displayMessages}
+                            isTyping={isStreaming}
+                            documents={documents}
+                            sessionId={currentSessionId}
+                            toolCallsByMsg={toolCallsByMsg}
+                        />
+                        {showIntakeForm && (
+                            <IntakeFormCard
+                                onSubmit={handleIntakeFormSubmit}
+                                disabled={intakeFormSubmitted}
+                            />
+                        )}
+                    </div>
                 )}
 
                 {/* Input footer */}
@@ -410,7 +579,7 @@ export default function SimpleChatInterface() {
                         )}
 
                         {/* Quick action pills — above the input */}
-                        <SimpleQuickActions onAction={insertText} />
+                        <SimpleQuickActions onAction={handleQuickAction} />
 
                         <div className="relative flex items-end gap-3">
                             {/* Slash command picker */}
@@ -460,14 +629,22 @@ export default function SimpleChatInterface() {
                 </footer>
             </div>
 
+            {/* Middle-right: checklist panel (only when package context is active) */}
+            {packageState.packageId && (
+                <ChecklistPanel state={packageState} />
+            )}
+
             {/* Right: activity panel */}
             <ActivityPanel
                 logs={logs}
-                clearLogs={clearLogs}
+                clearLogs={() => { clearLogs(); setBedrockTraces([]); }}
                 documents={documents}
+                sessionId={currentSessionId ?? ''}
                 isStreaming={isStreaming}
                 isOpen={isPanelOpen}
                 onToggle={() => setIsPanelOpen(v => !v)}
+                bedrockTraces={bedrockTraces}
+                knowledgeSources={knowledgeSources}
             />
         </div>
     );
