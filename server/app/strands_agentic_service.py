@@ -79,10 +79,33 @@ class EagleSSEHookProvider(HookProvider):
         registry.add_callback(AfterInvocationEvent, self._on_after_invocation)
 
     def _on_before_tool_call(self, event: BeforeToolCallEvent) -> None:
-        """Validate create_document/generate_document calls against contract matrix."""
+        """Emit tool.started telemetry and validate doc generation calls."""
         try:
             tool_use = getattr(event, "tool_use", None) or {}
             tool_name = tool_use.get("name", "") if isinstance(tool_use, dict) else getattr(tool_use, "name", "")
+            tool_use_id = tool_use.get("toolUseId", "") if isinstance(tool_use, dict) else getattr(tool_use, "toolUseId", "")
+            raw_input = tool_use.get("input", {}) if isinstance(tool_use, dict) else getattr(tool_use, "input", {})
+
+            # Emit tool.started to CloudWatch for every tool call.
+            # This makes all tool invocations — including update_state —
+            # visible in CloudWatch Insights with their full input params.
+            # When extended thinking is enabled, the preceding assistant
+            # message (which contains reasoning blocks) is already captured
+            # in the Langfuse OTEL span for the supervisor trace.
+            try:
+                from .telemetry.cloudwatch_emitter import emit_tool_started
+                emit_tool_started(
+                    tenant_id=self.tenant_id,
+                    user_id=self.user_id,
+                    session_id=self.session_id or "",
+                    tool_name=tool_name,
+                    tool_input=raw_input,
+                    tool_use_id=tool_use_id,
+                )
+            except Exception:
+                pass
+
+            # Doc gating only applies to create_document / generate_document
             if tool_name not in ("create_document", "generate_document"):
                 return
 
@@ -312,11 +335,28 @@ _bedrock_client_config = Config(
     tcp_keepalive=True,
 )
 
-_model = BedrockModel(
+# -- Extended Thinking ----------------------------------------------------
+# Set EAGLE_EXTENDED_THINKING=1 to enable Claude's extended thinking mode.
+# Bedrock surfaces reasoning blocks in the response; Strands passes them
+# through conversation history so they appear in Langfuse OTEL spans.
+# budget_tokens controls how much reasoning the model can produce (default 8k).
+# temperature MUST be 1 when thinking is enabled (Bedrock requirement).
+_EXTENDED_THINKING = os.getenv("EAGLE_EXTENDED_THINKING", "0").lower() in ("1", "true", "yes")
+_THINKING_BUDGET = int(os.getenv("EAGLE_THINKING_BUDGET_TOKENS", "8000"))
+
+_model_kwargs: dict = dict(
     model_id=MODEL,
     region_name=os.getenv("AWS_REGION", "us-east-1"),
     boto_client_config=_bedrock_client_config,
 )
+if _EXTENDED_THINKING:
+    _model_kwargs["additional_request_fields"] = {
+        "thinking": {"type": "enabled", "budget_tokens": _THINKING_BUDGET}
+    }
+    _model_kwargs["temperature"] = 1.0  # Required by Bedrock when thinking is enabled
+    logger.info("EAGLE extended thinking ENABLED (budget=%d tokens)", _THINKING_BUDGET)
+
+_model = BedrockModel(**_model_kwargs)
 
 # Tier-gated tool access (preserved from sdk_agentic_service.py)
 # Note: Strands subagents don't use CLI tools like Read/Glob/Grep.
