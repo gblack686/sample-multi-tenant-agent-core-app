@@ -237,6 +237,30 @@ def emit_feedback_submitted(
     )
 
 
+def emit_document_validation(
+    tenant_id: str,
+    session_id: str,
+    user_id: str,
+    doc_type: str,
+    action: str,
+    reason: str,
+) -> None:
+    """Emit agent.document_validation event for CloudWatch Insights.
+
+    Query:
+        fields @timestamp, data.doc_type, data.action, data.reason
+        | filter event_type = "agent.document_validation"
+        | stats count() by data.action
+    """
+    emit_telemetry_event(
+        event_type="agent.document_validation",
+        tenant_id=tenant_id,
+        session_id=session_id,
+        user_id=user_id,
+        data={"doc_type": doc_type, "action": action, "reason": _truncate(reason, _PREVIEW_LIMIT)},
+    )
+
+
 def emit_agent_state_flush(
     tenant_id: str,
     session_id: str,

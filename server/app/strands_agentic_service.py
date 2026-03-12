@@ -36,7 +36,7 @@ import boto3
 from botocore.config import Config
 from strands import Agent, tool
 from strands.hooks import HookProvider
-from strands.hooks.events import AfterInvocationEvent
+from strands.hooks.events import AfterInvocationEvent, BeforeToolCallEvent
 from strands.models import BedrockModel
 
 # Add server/ to path for eagle_skill_constants
@@ -75,7 +75,124 @@ class EagleSSEHookProvider(HookProvider):
         self.session_id = session_id
 
     def register_hooks(self, registry) -> None:
+        registry.add_callback(BeforeToolCallEvent, self._on_before_tool_call)
         registry.add_callback(AfterInvocationEvent, self._on_after_invocation)
+
+    def _on_before_tool_call(self, event: BeforeToolCallEvent) -> None:
+        """Validate create_document/generate_document calls against contract matrix."""
+        try:
+            tool_use = getattr(event, "tool_use", None) or {}
+            tool_name = tool_use.get("name", "") if isinstance(tool_use, dict) else getattr(tool_use, "name", "")
+            if tool_name not in ("create_document", "generate_document"):
+                return
+
+            # Extract doc_type from tool params
+            raw_input = tool_use.get("input", {}) if isinstance(tool_use, dict) else getattr(tool_use, "input", {})
+            if isinstance(raw_input, str):
+                try:
+                    raw_input = json.loads(raw_input)
+                except (json.JSONDecodeError, TypeError):
+                    return
+            doc_type = raw_input.get("doc_type", "") if isinstance(raw_input, dict) else ""
+            if not doc_type:
+                return
+
+            # Get agent state — requires package context to validate
+            agent_state = getattr(getattr(event, "agent", None), "state", None)
+            if not agent_state or not isinstance(agent_state, dict):
+                return
+
+            package_id = agent_state.get("package_id")
+            if not package_id:
+                return  # Not in package mode — skip validation
+
+            # Load package for acquisition details
+            try:
+                from .stores.package_store import get_package
+                pkg = get_package(self.tenant_id, package_id)
+                if not pkg:
+                    return
+            except Exception:
+                return  # Package load failed — fail open
+
+            # Map package acquisition_pathway to contract matrix method
+            pathway = pkg.get("acquisition_pathway", "simplified")
+            _PATHWAY_TO_METHOD = {
+                "micro_purchase": "micro",
+                "simplified": "sap",
+                "full_competition": "negotiated",
+                "sole_source": "sole",
+            }
+            method = _PATHWAY_TO_METHOD.get(pathway, "sap")
+
+            try:
+                value = int(float(str(pkg.get("estimated_value", 0))))
+            except (ValueError, TypeError):
+                value = 0
+
+            from .hooks.document_gate import validate_document_request
+            result = validate_document_request(
+                doc_type=doc_type,
+                acquisition_method=method,
+                contract_type=pkg.get("contract_type", "ffp"),
+                dollar_value=value,
+                is_it=bool(pkg.get("is_it", False)),
+                is_services=bool(pkg.get("is_services", True)),
+                is_small_business=bool(pkg.get("is_small_business", False)),
+            )
+
+            if result.action == "block":
+                required_list = ", ".join(result.required_docs) if result.required_docs else "none"
+                event.cancel_tool = (
+                    f"BLOCKED: {result.reason}\n"
+                    f"FAR Reference: {result.far_citation}\n"
+                    f"Required documents for this acquisition: {required_list}"
+                )
+                try:
+                    new_state = apply_event(agent_state, "compliance_alert", {
+                        "severity": "critical",
+                        "items": [{"name": f"Blocked: {doc_type}", "note": result.reason}],
+                    })
+                    agent_state.update(new_state)
+                except Exception:
+                    pass
+                try:
+                    from .telemetry.cloudwatch_emitter import emit_document_validation
+                    emit_document_validation(
+                        tenant_id=self.tenant_id,
+                        session_id=self.session_id or "",
+                        user_id=self.user_id,
+                        doc_type=doc_type,
+                        action="block",
+                        reason=result.reason,
+                    )
+                except Exception:
+                    pass
+
+            elif result.action == "warn":
+                try:
+                    new_state = apply_event(agent_state, "compliance_alert", {
+                        "severity": "warning",
+                        "items": [{"name": f"Optional: {doc_type}", "note": result.reason}],
+                    })
+                    agent_state.update(new_state)
+                except Exception:
+                    pass
+                try:
+                    from .telemetry.cloudwatch_emitter import emit_document_validation
+                    emit_document_validation(
+                        tenant_id=self.tenant_id,
+                        session_id=self.session_id or "",
+                        user_id=self.user_id,
+                        doc_type=doc_type,
+                        action="warn",
+                        reason=result.reason,
+                    )
+                except Exception:
+                    pass
+
+        except Exception as exc:
+            logger.debug("_on_before_tool_call: non-fatal error: %s", exc)
 
     def _on_after_invocation(self, event: AfterInvocationEvent) -> None:
         """Flush agent state to DynamoDB and CloudWatch after every supervisor turn."""

@@ -32,6 +32,7 @@ _DEFAULTS: dict = {
     "completed_documents": [],     # subset of required that are done
     "document_versions": {},       # {doc_type: {document_id, version, s3_key}}
     "compliance_alerts": [],       # [{severity, items: [{name, note}]}]
+    "validation_results": [],      # [{doc_type, action, reason, far_citation}]
     "turn_count": 0,
     "last_updated": None,          # ISO-8601
     "session_id": None,
@@ -96,6 +97,14 @@ def apply_event(state: dict, state_type: str, params: dict) -> dict:
             "items": params.get("items", []),
         }]
 
+    elif state_type == "document_validation":
+        s["validation_results"] = s.get("validation_results", []) + [{
+            "doc_type": params.get("doc_type"),
+            "action": params.get("action"),
+            "reason": params.get("reason"),
+            "far_citation": params.get("far_citation", ""),
+        }]
+
     else:
         logger.warning("eagle_state.apply_event: unknown state_type=%r", state_type)
 
@@ -145,6 +154,10 @@ def to_cw_payload(state: dict) -> dict:
         "docs_completed": len(s["completed_documents"]),
         "completed_documents": s["completed_documents"],
         "compliance_alert_count": len(s["compliance_alerts"]),
+        "validation_count": len(s.get("validation_results", [])),
+        "blocked_count": sum(
+            1 for r in s.get("validation_results", []) if r.get("action") == "block"
+        ),
         "turn_count": s["turn_count"],
     }
 
