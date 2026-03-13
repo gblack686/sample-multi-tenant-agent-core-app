@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChatMessage, DocumentInfo } from '@/types/chat';
 import DocumentCard from './document-card';
-import ToolUseDisplay from './tool-use-display';
+import ToolUseDisplay, { extractKnowledgeSources, KnowledgeSource } from './tool-use-display';
 import CodeSandboxRenderer from './code-sandbox-renderer';
 import { ToolCallsByMessageId, TrackedToolCall } from './simple-chat-interface';
 import { CodeResult } from '@/lib/client-tools';
@@ -125,6 +125,72 @@ function CodeOutput({ tc }: { tc: TrackedToolCall }) {
     );
 }
 
+/** Source authority → chip color */
+const AUTHORITY_CHIP: Record<string, string> = {
+    mandatory:   'bg-red-50 text-red-700 border-red-200',
+    regulatory:  'bg-orange-50 text-orange-700 border-orange-200',
+    policy:      'bg-blue-50 text-blue-700 border-blue-200',
+    guidance:    'bg-green-50 text-green-700 border-green-200',
+    template:    'bg-violet-50 text-violet-700 border-violet-200',
+    reference:   'bg-gray-50 text-gray-600 border-gray-200',
+    far_regulation: 'bg-amber-50 text-amber-700 border-amber-200',
+};
+
+function SourceChips({ toolCalls }: { toolCalls: TrackedToolCall[] }) {
+    // Collect all unique knowledge sources from the message's tool calls
+    const sources = useMemo<KnowledgeSource[]>(() => {
+        const seen = new Set<string>();
+        const result: KnowledgeSource[] = [];
+        for (const tc of toolCalls) {
+            if (tc.status !== 'done') continue;
+            if (!['knowledge_search', 'knowledge_fetch', 'search_far'].includes(tc.toolName)) continue;
+            for (const src of extractKnowledgeSources(tc.toolName, tc.result ?? null)) {
+                const key = src.document_id || src.title;
+                if (!seen.has(key)) {
+                    seen.add(key);
+                    result.push(src);
+                }
+            }
+        }
+        return result;
+    }, [toolCalls]);
+
+    if (sources.length === 0) return null;
+
+    return (
+        <div className="flex items-center gap-1 flex-wrap mt-1.5">
+            <span className="text-[9px] text-gray-400 font-medium uppercase tracking-wider shrink-0">Sources</span>
+            {sources.map((src, i) => {
+                const authority = src.source_tool === 'search_far' ? 'far_regulation' : (src.authority_level ?? 'reference');
+                const chipClass = AUTHORITY_CHIP[authority] ?? AUTHORITY_CHIP.reference;
+                const title = src.title.length > 28 ? src.title.slice(0, 27) + '…' : src.title;
+                const handleClick = () => {
+                    if (src.s3_key) {
+                        window.open(`/documents/${encodeURIComponent(src.s3_key)}`, '_blank');
+                    }
+                };
+                return (
+                    <button
+                        key={src.document_id || i}
+                        type="button"
+                        title={src.title + (src.summary ? '\n' + src.summary.slice(0, 120) : '')}
+                        onClick={src.s3_key ? handleClick : undefined}
+                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-[9px] font-medium transition
+                                    ${chipClass}
+                                    ${src.s3_key ? 'cursor-pointer hover:opacity-80' : 'cursor-default'}`}
+                    >
+                        <span>{src.source_tool === 'knowledge_fetch' ? '📖' : src.source_tool === 'search_far' ? '📜' : '📄'}</span>
+                        {title}
+                        {src.confidence_score ? (
+                            <span className="opacity-60">{(src.confidence_score * 100).toFixed(0)}%</span>
+                        ) : null}
+                    </button>
+                );
+            })}
+        </div>
+    );
+}
+
 export default function SimpleMessageList({
     messages,
     isTyping,
@@ -227,6 +293,11 @@ export default function SimpleMessageList({
                                 >
                                     {copiedId === message.id ? '✓ Copied' : '⎘ Copy'}
                                 </button>
+                            )}
+
+                            {/* Inline source chips — KB documents & FAR sections cited */}
+                            {!isStreamingThis && toolCalls.length > 0 && (
+                                <SourceChips toolCalls={toolCalls} />
                             )}
 
                             {/* Document cards attached to this message —

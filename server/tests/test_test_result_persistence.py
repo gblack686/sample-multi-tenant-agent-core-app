@@ -41,13 +41,13 @@ class TestDecimalSafe:
     """Verify _decimal_safe converts floats for DynamoDB."""
 
     def test_converts_float_to_decimal(self):
-        from app.test_result_store import _decimal_safe
+        from app.stores.test_result_store import _decimal_safe
         result = _decimal_safe(3.14)
         assert isinstance(result, Decimal)
         assert result == Decimal("3.14")
 
     def test_handles_nested_dict(self):
-        from app.test_result_store import _decimal_safe
+        from app.stores.test_result_store import _decimal_safe
         result = _decimal_safe({"a": 1.5, "b": {"c": 2.5}})
         assert isinstance(result["a"], Decimal)
         assert isinstance(result["b"]["c"], Decimal)
@@ -55,12 +55,12 @@ class TestDecimalSafe:
         assert result["b"]["c"] == Decimal("2.5")
 
     def test_handles_list(self):
-        from app.test_result_store import _decimal_safe
+        from app.stores.test_result_store import _decimal_safe
         result = _decimal_safe([1.1, 2.2, 3.3])
         assert all(isinstance(v, Decimal) for v in result)
 
     def test_passthrough_non_float(self):
-        from app.test_result_store import _decimal_safe
+        from app.stores.test_result_store import _decimal_safe
         assert _decimal_safe(42) == 42
         assert _decimal_safe("hello") == "hello"
         assert _decimal_safe(None) is None
@@ -75,10 +75,10 @@ class TestSaveTestRun:
     """Verify save_test_run writes correct PK/SK and handles errors."""
 
     def test_writes_correct_pk_sk(self):
-        from app.test_result_store import save_test_run
+        from app.stores.test_result_store import save_test_run
 
         mock_table = mock.MagicMock()
-        with mock.patch("app.test_result_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.test_result_store._get_table", return_value=mock_table):
             result = save_test_run(MOCK_RUN_ID, MOCK_SUMMARY)
 
         assert result is True
@@ -94,11 +94,11 @@ class TestSaveTestRun:
         assert "ttl" in item
 
     def test_returns_false_on_ddb_error(self):
-        from app.test_result_store import save_test_run
+        from app.stores.test_result_store import save_test_run
 
         mock_table = mock.MagicMock()
         mock_table.put_item.side_effect = Exception("DDB down")
-        with mock.patch("app.test_result_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.test_result_store._get_table", return_value=mock_table):
             result = save_test_run(MOCK_RUN_ID, MOCK_SUMMARY)
 
         assert result is False
@@ -112,7 +112,7 @@ class TestSaveTestResult:
     """Verify save_test_result writes correct PK/SK and truncates errors."""
 
     def test_writes_correct_pk_sk(self):
-        from app.test_result_store import save_test_result
+        from app.stores.test_result_store import save_test_result
 
         mock_table = mock.MagicMock()
         result_data = {
@@ -122,7 +122,7 @@ class TestSaveTestResult:
             "duration_s": 0.5,
             "error": "",
         }
-        with mock.patch("app.test_result_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.test_result_store._get_table", return_value=mock_table):
             ok = save_test_result(MOCK_RUN_ID, "tests/test_foo.py::test_bar", result_data)
 
         assert ok is True
@@ -133,7 +133,7 @@ class TestSaveTestResult:
         assert isinstance(item["duration_s"], Decimal)
 
     def test_truncates_long_errors(self):
-        from app.test_result_store import save_test_result
+        from app.stores.test_result_store import save_test_result
 
         mock_table = mock.MagicMock()
         long_error = "x" * 5000
@@ -144,7 +144,7 @@ class TestSaveTestResult:
             "duration_s": 1.0,
             "error": long_error,
         }
-        with mock.patch("app.test_result_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.test_result_store._get_table", return_value=mock_table):
             save_test_result(MOCK_RUN_ID, "tests/test_foo.py::test_fail", result_data)
 
         item = mock_table.put_item.call_args[1]["Item"]
@@ -152,11 +152,11 @@ class TestSaveTestResult:
         assert item["error"].endswith("... [truncated]")
 
     def test_returns_false_on_error(self):
-        from app.test_result_store import save_test_result
+        from app.stores.test_result_store import save_test_result
 
         mock_table = mock.MagicMock()
         mock_table.put_item.side_effect = Exception("boom")
-        with mock.patch("app.test_result_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.test_result_store._get_table", return_value=mock_table):
             ok = save_test_result(MOCK_RUN_ID, "nodeid", {"status": "passed"})
         assert ok is False
 
@@ -169,7 +169,7 @@ class TestListTestRuns:
     """Verify list_test_runs queries and formats results."""
 
     def test_returns_formatted_runs(self):
-        from app.test_result_store import list_test_runs
+        from app.stores.test_result_store import list_test_runs
 
         mock_table = mock.MagicMock()
         mock_table.query.return_value = {
@@ -189,7 +189,7 @@ class TestListTestRuns:
                 },
             ]
         }
-        with mock.patch("app.test_result_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.test_result_store._get_table", return_value=mock_table):
             runs = list_test_runs(limit=5)
 
         assert len(runs) == 1
@@ -207,11 +207,11 @@ class TestListTestRuns:
         assert call_kwargs["Limit"] == 5
 
     def test_returns_empty_on_error(self):
-        from app.test_result_store import list_test_runs
+        from app.stores.test_result_store import list_test_runs
 
         mock_table = mock.MagicMock()
         mock_table.query.side_effect = Exception("timeout")
-        with mock.patch("app.test_result_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.test_result_store._get_table", return_value=mock_table):
             runs = list_test_runs()
 
         assert runs == []
@@ -225,7 +225,7 @@ class TestGetRunResults:
     """Verify get_test_run_results queries and sorts."""
 
     def test_returns_sorted_results(self):
-        from app.test_result_store import get_test_run_results
+        from app.stores.test_result_store import get_test_run_results
 
         mock_table = mock.MagicMock()
         mock_table.query.return_value = {
@@ -236,7 +236,7 @@ class TestGetRunResults:
                  "test_name": "test_1", "status": "failed", "duration_s": Decimal("1.5"), "error": "AssertionError"},
             ]
         }
-        with mock.patch("app.test_result_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.test_result_store._get_table", return_value=mock_table):
             results = get_test_run_results(MOCK_RUN_ID)
 
         assert len(results) == 2
@@ -246,11 +246,11 @@ class TestGetRunResults:
         assert isinstance(results[0]["duration_s"], float)
 
     def test_returns_empty_on_error(self):
-        from app.test_result_store import get_test_run_results
+        from app.stores.test_result_store import get_test_run_results
 
         mock_table = mock.MagicMock()
         mock_table.query.side_effect = Exception("DDB unreachable")
-        with mock.patch("app.test_result_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.test_result_store._get_table", return_value=mock_table):
             results = get_test_run_results(MOCK_RUN_ID)
 
         assert results == []
@@ -267,7 +267,7 @@ class TestApiEndpoints:
         from fastapi.testclient import TestClient
         from app.main import app
 
-        with mock.patch("app.test_result_store.list_test_runs", return_value=[
+        with mock.patch("app.stores.test_result_store.list_test_runs", return_value=[
             {"run_id": MOCK_RUN_ID, "timestamp": "2026-03-04T04:00:00Z",
              "total": 10, "passed": 9, "failed": 1, "skipped": 0, "errors": 0,
              "duration_s": 12.5, "pass_rate": 90.0, "model": "test", "trigger": "pytest"},
@@ -286,7 +286,7 @@ class TestApiEndpoints:
         from fastapi.testclient import TestClient
         from app.main import app
 
-        with mock.patch("app.test_result_store.get_test_run_results", return_value=[
+        with mock.patch("app.stores.test_result_store.get_test_run_results", return_value=[
             {"nodeid": "test_a.py::test_1", "test_file": "test_a.py",
              "test_name": "test_1", "status": "passed", "duration_s": 0.5, "error": ""},
         ]):

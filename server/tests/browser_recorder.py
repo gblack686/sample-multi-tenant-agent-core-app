@@ -109,8 +109,8 @@ TEST_NAMES: dict[int, str] = {
 
 # Max wait for agent response (seconds) — some UCs produce long responses
 RESPONSE_TIMEOUT: dict[int, int] = {
-    9: 60, 15: 120, 21: 60, 22: 60, 23: 60,
-    24: 90, 25: 90, 26: 120, 27: 120,
+    9: 90, 15: 300, 21: 90, 22: 90, 23: 90,
+    24: 120, 25: 120, 26: 180, 27: 180,
 }
 
 
@@ -249,7 +249,7 @@ class BrowserRecorder:
         prompt = TEST_PROMPTS[test_id]
         test_name = TEST_NAMES.get(test_id, f"test_{test_id}")
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-        test_video_dir = os.path.join(self.video_dir, f"{test_name}_{timestamp}")
+        test_video_dir = os.path.join(self.video_dir, f"{timestamp}_{test_name}")
         os.makedirs(test_video_dir, exist_ok=True)
 
         context = await self._browser.new_context(

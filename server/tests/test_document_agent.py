@@ -516,7 +516,7 @@ class TestReasoningStoreExtensions:
     """Verify new section and justification entry types."""
 
     def test_add_section_entry(self):
-        from app.reasoning_store import ReasoningLog
+        from app.stores.reasoning_store import ReasoningLog
         log = ReasoningLog("sess-1", "tenant", "user")
         log.add_section(
             section_name="Security Requirements",
@@ -529,7 +529,7 @@ class TestReasoningStoreExtensions:
         assert log.section_entries[0].status == "omitted"
 
     def test_add_justification_entry(self):
-        from app.reasoning_store import ReasoningLog
+        from app.stores.reasoning_store import ReasoningLog
         log = ReasoningLog("sess-1", "tenant", "user")
         log.add_justification(
             decision="Contract Type: FFP",
@@ -542,7 +542,7 @@ class TestReasoningStoreExtensions:
         assert log.justification_entries[0].far_basis == "FAR 16.202"
 
     def test_omissions_appendix_format(self):
-        from app.reasoning_store import ReasoningLog
+        from app.stores.reasoning_store import ReasoningLog
         log = ReasoningLog("sess-1", "tenant", "user")
         log.add_section("GFP", "partial", "Only AWS", "Full list")
         log.add_section("Travel", "omitted", "Not discussed", "Travel reqs")
@@ -553,7 +553,7 @@ class TestReasoningStoreExtensions:
         assert "| GFP | Partial | Only AWS | Full list |" in md
 
     def test_justification_appendix_format(self):
-        from app.reasoning_store import ReasoningLog
+        from app.stores.reasoning_store import ReasoningLog
         log = ReasoningLog("sess-1", "tenant", "user")
         log.add_justification("Set-Aside: Small Business", "Rule of Two satisfied", "FAR 19.502-2(b)")
         md = log.to_justification_appendix()
@@ -562,13 +562,13 @@ class TestReasoningStoreExtensions:
         assert "FAR 19.502-2(b)" in md
 
     def test_empty_appendices_return_empty(self):
-        from app.reasoning_store import ReasoningLog
+        from app.stores.reasoning_store import ReasoningLog
         log = ReasoningLog("sess-1", "tenant", "user")
         assert log.to_omissions_appendix() == ""
         assert log.to_justification_appendix() == ""
 
     def test_legacy_appendix_still_works(self):
-        from app.reasoning_store import ReasoningLog
+        from app.stores.reasoning_store import ReasoningLog
         log = ReasoningLog("sess-1", "tenant", "user")
         log.add("tool_call", "create_document", "Generating SOW", "SOW created", confidence="high")
         md = log.to_appendix_markdown()
@@ -576,7 +576,7 @@ class TestReasoningStoreExtensions:
         assert "create_document" in md
 
     def test_full_json_serialization(self):
-        from app.reasoning_store import ReasoningLog
+        from app.stores.reasoning_store import ReasoningLog
         log = ReasoningLog("sess-1", "tenant", "user")
         log.add("tool_call", "search_far", "Checking FAR", "Found clause")
         log.add_section("Security", "partial", "Limited info", "FISMA level")
@@ -588,14 +588,14 @@ class TestReasoningStoreExtensions:
 
     def test_save_includes_all_entry_types(self):
         """Verify save() serializes section and justification entries."""
-        from app.reasoning_store import ReasoningLog
+        from app.stores.reasoning_store import ReasoningLog
         log = ReasoningLog("sess-1", "tenant", "user")
         log.add("tool_call", "test", "test", "test")
         log.add_section("GFP", "omitted", "Not discussed", "")
         log.add_justification("FFP", "Clear scope", "FAR 16.202")
 
         mock_table = MagicMock()
-        with patch("app.reasoning_store._get_table", return_value=mock_table):
+        with patch("app.stores.reasoning_store._get_table", return_value=mock_table):
             log.save()
 
         mock_table.put_item.assert_called_once()

@@ -20,12 +20,12 @@ from typing import Optional, Tuple
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from .document_store import (
+from .stores.document_store import (
     get_document_history,
     get_document,
     finalize_document as store_finalize_document,
 )
-from .package_store import get_package, update_package
+from .stores.package_store import get_package, update_package
 
 logger = logging.getLogger("eagle.document_service")
 

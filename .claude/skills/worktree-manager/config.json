@@ -1,0 +1,15 @@
+{
+  "terminal": "mintty",
+  "shell": "bash",
+  "claudeCommand": "claude",
+  "portPool": {
+    "start": 8100,
+    "end": 8199
+  },
+  "portsPerWorktree": 2,
+  "worktreeBase": "~/tmp/worktrees",
+  "registryPath": "~/.claude/worktree-registry.json",
+  "defaultCopyDirs": [".env.example", ".env"],
+  "healthCheckTimeout": 30,
+  "healthCheckRetries": 6
+}

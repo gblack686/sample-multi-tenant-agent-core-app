@@ -156,7 +156,7 @@ PUBLIC_INTEREST_PROMPT = SKILL_CONSTANTS.get("public-interest", "")
 # ── Seed DynamoDB from bundled plugin files if not already seeded ────
 # Wrapped in try/except so local dev without DynamoDB continues to work.
 try:
-    from app.plugin_store import ensure_plugin_seeded
+    from app.stores.plugin_store import ensure_plugin_seeded
     ensure_plugin_seeded()
 except Exception:
     pass  # DynamoDB unavailable — bundled files remain primary

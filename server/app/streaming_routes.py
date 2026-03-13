@@ -11,31 +11,24 @@ subagent delegation instead of the legacy stream_chat() prompt-injection path.
 #   app.include_router(streaming_router)
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Header
+from fastapi import APIRouter, HTTPException, Header
 from fastapi.responses import StreamingResponse
 from datetime import datetime, timezone
 import asyncio
 import json
 import logging
-from contextlib import suppress
 from typing import Any, AsyncGenerator, Optional
 
-from .cognito_auth import extract_user_context, UserContext
-from .stream_protocol import StreamEvent, StreamEventType, MultiAgentStreamWriter
+from .cognito_auth import extract_user_context
+from .stream_protocol import MultiAgentStreamWriter
 from .models import ChatMessage
 from .subscription_service import SubscriptionService
-from .strands_agentic_service import sdk_query, sdk_query_streaming, MODEL, EAGLE_TOOLS
-from .session_store import add_message
+from .strands_agentic_service import sdk_query_streaming, MODEL, EAGLE_TOOLS
+from .stores.session_store import add_message
 from .package_context_service import resolve_context, set_active_package
 from .telemetry.log_context import set_log_context
-from .telemetry.cloudwatch_emitter import (
-    emit_trace_started,
-    emit_trace_completed,
-    emit_tool_started,
-    emit_tool_result,
-    emit_telemetry_event,
-)
-from .reasoning_store import ReasoningLog
+from .agentcore.observability import record_metric
+from .stores.reasoning_store import ReasoningLog
 from .health_checks import check_knowledge_base_health
 import time as _time
 
@@ -69,15 +62,11 @@ async def stream_generator(
     full_response_parts: list[str] = []
 
     # --- Telemetry + Reasoning init ---
+    # Strands SDK handles OTEL tracing automatically via its built-in Tracer.
+    # EAGLE-specific context is passed as trace_attributes on the Agent.
     _trace_start = _time.time()
     _tool_start_times: dict[str, float] = {}  # tool_name → start timestamp
     reasoning_log = ReasoningLog(session_id or "", tenant_id, user_id)
-    try:
-        await asyncio.to_thread(
-            emit_trace_started, tenant_id, user_id, session_id or "", message[:1000]
-        )
-    except Exception:
-        logger.debug("trace.started emission failed (non-fatal)")
 
     # Persist user message to DynamoDB so conversation history works on next turn
     if session_id:
@@ -125,7 +114,7 @@ async def stream_generator(
                     yield {"type": "_keepalive"}
             except StopAsyncIteration:
                 break
-            except Exception as e:
+            except Exception:
                 # Handle StopAsyncIteration from the task result
                 if pending_task and pending_task.done():
                     try:
@@ -164,14 +153,7 @@ async def stream_generator(
                 )
                 yield await sse_queue.get()
 
-                # CloudWatch: emit tool.started with input params
-                try:
-                    await asyncio.to_thread(
-                        emit_tool_started, tenant_id, user_id, session_id or "",
-                        tu_name, tool_input, tu_id,
-                    )
-                except Exception:
-                    pass
+                # Tool start tracing handled by Strands SDK built-in Tracer
 
             elif chunk_type == "metadata":
                 await writer.write_metadata(sse_queue, chunk.get("content", {}))
@@ -193,7 +175,7 @@ async def stream_generator(
                 await writer.write_tool_result(sse_queue, tr_name, result_data)
                 yield await sse_queue.get()
 
-                # CloudWatch: emit tool.result with full details
+                # Telemetry: tool.result
                 try:
                     _tool_dur = int((_time.time() - _tool_start_times.pop(tr_name, _time.time())) * 1000)
                     _result_preview = ""
@@ -203,11 +185,9 @@ async def stream_generator(
                         _result_preview = json.dumps(result_data, default=str)[:2000]
                     elif isinstance(result_data, str):
                         _result_preview = result_data[:2000]
-                    await asyncio.to_thread(
-                        emit_tool_result, tenant_id, user_id, session_id or "",
-                        tr_name, _result_preview, _tool_dur,
-                        0, 0, _has_reasoning, True,
-                    )
+
+                    # Tool result tracing handled by Strands SDK built-in Tracer
+                    record_metric("eagle.tool_duration_ms", float(_tool_dur), {"tool": tr_name})
                 except Exception:
                     pass
 
@@ -254,26 +234,16 @@ async def stream_generator(
                     except Exception:
                         logger.warning("Failed to persist assistant message for session=%s user=%s", session_id, user_id)
 
-                # CloudWatch: emit trace.completed with full details
+                # Telemetry: trace.completed
                 try:
                     _elapsed = int((_time.time() - _trace_start) * 1000)
                     _usage = chunk.get("usage", {})
-                    await asyncio.to_thread(
-                        emit_trace_completed,
-                        {
-                            "tenant_id": tenant_id,
-                            "user_id": user_id,
-                            "session_id": session_id or "",
-                            "trace_id": f"t-{int(_trace_start * 1000)}",
-                            "duration_ms": _elapsed,
-                            "total_input_tokens": _usage.get("inputTokens", 0),
-                            "total_output_tokens": _usage.get("outputTokens", 0),
-                            "tools_called": chunk.get("tools_called", []),
-                            "response_preview": "".join(full_response_parts)[:1000],
-                            "cycle_count": _usage.get("cycle_count", 0),
-                            "tool_metrics": _usage.get("tool_metrics", {}),
-                        },
-                    )
+
+                    # Span attributes handled by Strands SDK built-in Tracer.
+                    # Record EAGLE-specific metrics for dashboards.
+                    record_metric("eagle.total_duration_ms", float(_elapsed), {"tenant_id": tenant_id})
+                    record_metric("eagle.input_tokens", float(_usage.get("inputTokens", 0)), {"tenant_id": tenant_id})
+                    record_metric("eagle.output_tokens", float(_usage.get("outputTokens", 0)), {"tenant_id": tenant_id})
                 except Exception:
                     logger.debug("trace.completed emission failed (non-fatal)")
 
@@ -287,7 +257,7 @@ async def stream_generator(
                 # Force checklist refresh on every turn when in package mode
                 if package_context and getattr(package_context, "is_package_mode", False):
                     try:
-                        from .package_store import get_package_checklist
+                        from .stores.package_store import get_package_checklist
                         pkg_id = package_context.package_id
                         checklist = await asyncio.to_thread(get_package_checklist, tenant_id, pkg_id)
                         total = len(checklist.get("required", []))
@@ -312,15 +282,7 @@ async def stream_generator(
             elif chunk_type == "error":
                 await writer.write_error(sse_queue, chunk.get("error", "Unknown error"))
                 yield await sse_queue.get()
-                # CloudWatch: emit error.occurred
-                try:
-                    await asyncio.to_thread(
-                        emit_telemetry_event, "error.occurred", tenant_id,
-                        {"error": str(chunk.get("error", ""))[:500], "session_id": session_id},
-                        session_id, user_id,
-                    )
-                except Exception:
-                    pass
+                # Error tracing handled by Strands SDK built-in Tracer
                 return
 
         # Fallback COMPLETE if generator exhausts without a complete event
@@ -340,6 +302,8 @@ async def stream_generator(
         logger.error("Streaming chat error user=%s session=%s: %s", user_id, session_id, str(e), exc_info=True)
         await writer.write_error(sse_queue, str(e))
         yield await sse_queue.get()
+    finally:
+        pass  # Strands SDK handles span cleanup automatically
 
 
 def create_streaming_router(
@@ -399,7 +363,7 @@ def create_streaming_router(
         history = []
         if message.session_id:
             try:
-                from .session_store import get_messages_for_anthropic
+                from .stores.session_store import get_messages_for_anthropic
                 history = get_messages_for_anthropic(message.session_id, tenant_id, user_id)
             except Exception:
                 pass

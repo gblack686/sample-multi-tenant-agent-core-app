@@ -6,7 +6,7 @@ Provides detailed cost breakdown by tenant, user, and service for admin users on
 from decimal import Decimal
 from datetime import datetime, timedelta
 from typing import Dict, Any
-from app import session_store
+from app.stores import session_store
 
 class AdminCostService:
     """Admin-only granular cost attribution with service-wise breakdown"""

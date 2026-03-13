@@ -1,7 +1,7 @@
 from typing import Dict
 from datetime import datetime
 from app.models import SubscriptionTier, TierLimits, SubscriptionUsage
-from app import session_store
+from app.stores import session_store
 
 class SubscriptionService:
     def __init__(self):

@@ -348,7 +348,7 @@ class TestTemplateServiceIntegration:
     def real_generators(self):
         """Import actual generators from agentic_service."""
         try:
-            from app.agentic_service import (
+            from app.tool_dispatch import (
                 _generate_acquisition_plan,
                 _generate_cor_certification,
                 _generate_contract_type_justification,

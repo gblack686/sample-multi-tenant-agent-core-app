@@ -34,11 +34,11 @@ def _make_client_error(code="InternalServerError", msg="boom"):
 
 def _mock_create(mock_table, **kwargs):
     """Call create_feedback with mocked table, uuid, and datetime."""
-    from app.feedback_store import create_feedback
+    from app.stores.feedback_store import create_feedback
 
-    with mock.patch("app.feedback_store._get_table", return_value=mock_table), \
-         mock.patch("app.feedback_store.uuid.uuid4", return_value=FAKE_UUID), \
-         mock.patch("app.feedback_store.datetime", wraps=datetime,
+    with mock.patch("app.stores.feedback_store._get_table", return_value=mock_table), \
+         mock.patch("app.stores.feedback_store.uuid.uuid4", return_value=FAKE_UUID), \
+         mock.patch("app.stores.feedback_store.datetime", wraps=datetime,
                     **{"utcnow.return_value": FAKE_NOW}):
         return create_feedback(tenant_id=TENANT, user_id=USER, **kwargs)
 
@@ -113,13 +113,13 @@ class TestCreateFeedback:
 
     def test_raises_on_client_error(self):
         import pytest
-        from app.feedback_store import create_feedback
+        from app.stores.feedback_store import create_feedback
 
         mock_table = mock.MagicMock()
         mock_table.put_item.side_effect = _make_client_error()
-        with mock.patch("app.feedback_store._get_table", return_value=mock_table), \
-             mock.patch("app.feedback_store.uuid.uuid4", return_value=FAKE_UUID), \
-             mock.patch("app.feedback_store.datetime", wraps=datetime,
+        with mock.patch("app.stores.feedback_store._get_table", return_value=mock_table), \
+             mock.patch("app.stores.feedback_store.uuid.uuid4", return_value=FAKE_UUID), \
+             mock.patch("app.stores.feedback_store.datetime", wraps=datetime,
                         **{"utcnow.return_value": FAKE_NOW}):
             with pytest.raises(ClientError):
                 create_feedback(tenant_id=TENANT, user_id=USER)
@@ -133,11 +133,11 @@ class TestListFeedback:
     """Verify list_feedback queries and formats results."""
 
     def test_queries_with_correct_pk_and_sk_prefix(self):
-        from app.feedback_store import list_feedback
+        from app.stores.feedback_store import list_feedback
 
         mock_table = mock.MagicMock()
         mock_table.query.return_value = {"Items": []}
-        with mock.patch("app.feedback_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.feedback_store._get_table", return_value=mock_table):
             list_feedback(TENANT)
 
         mock_table.query.assert_called_once()
@@ -149,29 +149,29 @@ class TestListFeedback:
         assert kce is not None
 
     def test_returns_newest_first(self):
-        from app.feedback_store import list_feedback
+        from app.stores.feedback_store import list_feedback
 
         mock_table = mock.MagicMock()
         mock_table.query.return_value = {"Items": []}
-        with mock.patch("app.feedback_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.feedback_store._get_table", return_value=mock_table):
             list_feedback(TENANT)
 
         call_kwargs = mock_table.query.call_args[1]
         assert call_kwargs["ScanIndexForward"] is False
 
     def test_respects_limit_parameter(self):
-        from app.feedback_store import list_feedback
+        from app.stores.feedback_store import list_feedback
 
         mock_table = mock.MagicMock()
         mock_table.query.return_value = {"Items": []}
-        with mock.patch("app.feedback_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.feedback_store._get_table", return_value=mock_table):
             list_feedback(TENANT, limit=10)
 
         call_kwargs = mock_table.query.call_args[1]
         assert call_kwargs["Limit"] == 10
 
     def test_returns_items_as_dicts(self):
-        from app.feedback_store import list_feedback
+        from app.stores.feedback_store import list_feedback
 
         fake_items = [
             {"PK": f"FEEDBACK#{TENANT}", "SK": "FEEDBACK#2026-03-04#abc", "rating": 5},
@@ -179,7 +179,7 @@ class TestListFeedback:
         ]
         mock_table = mock.MagicMock()
         mock_table.query.return_value = {"Items": fake_items}
-        with mock.patch("app.feedback_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.feedback_store._get_table", return_value=mock_table):
             result = list_feedback(TENANT)
 
         assert len(result) == 2
@@ -187,21 +187,21 @@ class TestListFeedback:
         assert result[1]["rating"] == 3
 
     def test_returns_empty_list_on_error(self):
-        from app.feedback_store import list_feedback
+        from app.stores.feedback_store import list_feedback
 
         mock_table = mock.MagicMock()
         mock_table.query.side_effect = _make_client_error()
-        with mock.patch("app.feedback_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.feedback_store._get_table", return_value=mock_table):
             result = list_feedback(TENANT)
 
         assert result == []
 
     def test_returns_empty_list_when_no_items(self):
-        from app.feedback_store import list_feedback
+        from app.stores.feedback_store import list_feedback
 
         mock_table = mock.MagicMock()
         mock_table.query.return_value = {"Items": []}
-        with mock.patch("app.feedback_store._get_table", return_value=mock_table):
+        with mock.patch("app.stores.feedback_store._get_table", return_value=mock_table):
             result = list_feedback(TENANT)
 
         assert result == []
@@ -216,13 +216,13 @@ class TestModuleLevel:
 
     def test_get_dynamodb_singleton(self):
         """_get_dynamodb() returns the same resource on repeated calls."""
-        import app.feedback_store as fs
+        import app.stores.feedback_store as fs
 
         old = fs._dynamodb
         try:
             fs._dynamodb = None  # reset singleton
             mock_resource = mock.MagicMock()
-            with mock.patch("app.feedback_store.boto3.resource", return_value=mock_resource) as mock_boto:
+            with mock.patch("app.stores.feedback_store.boto3.resource", return_value=mock_resource) as mock_boto:
                 first = fs._get_dynamodb()
                 second = fs._get_dynamodb()
 
@@ -233,5 +233,5 @@ class TestModuleLevel:
             fs._dynamodb = old  # restore
 
     def test_table_name_defaults_to_eagle(self):
-        from app.feedback_store import TABLE_NAME
+        from app.stores.feedback_store import TABLE_NAME
         assert TABLE_NAME == "eagle"

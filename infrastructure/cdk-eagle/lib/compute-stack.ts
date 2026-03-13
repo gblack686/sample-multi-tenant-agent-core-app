@@ -80,6 +80,12 @@ export class EagleComputeStack extends cdk.Stack {
         DOCUMENT_BUCKET: props.documentBucketName,
         METADATA_TABLE: props.metadataTableName,
         AGENTCORE_MEMORY_ID: 'eagle_workspace_memory-Tch0BU74Ex',
+        // AgentCore services — set IDs to enable (empty = fallback mode)
+        AGENTCORE_GATEWAY_ID: '',
+        AGENTCORE_IDENTITY_ENABLED: 'false',
+        AGENTCORE_POLICY_ENGINE_ID: '',
+        AGENTCORE_RUNTIME_MODE: 'false',
+        // AGENT_OBSERVABILITY_ENABLED removed — OTEL is always on
         APP_HOST: '0.0.0.0',
         APP_PORT: '8000',
       },

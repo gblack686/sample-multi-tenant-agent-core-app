@@ -6,7 +6,7 @@ Calculates costs per tenant and user based on consumption metrics
 from decimal import Decimal
 from datetime import datetime, timedelta
 from typing import Dict, Optional, Any
-from app import session_store
+from app.stores import session_store
 from app.models import SubscriptionTier
 
 class CostAttributionService:

@@ -106,7 +106,7 @@ def pytest_sessionfinish(session, exitstatus):
     }
 
     try:
-        from app.test_result_store import save_test_run, save_test_result
+        from app.stores.test_result_store import save_test_run, save_test_result
 
         save_test_run(run_id, summary)
         for nodeid, result in _results.items():

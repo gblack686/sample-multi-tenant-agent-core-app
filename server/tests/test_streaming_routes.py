@@ -277,7 +277,7 @@ class TestChecklistMetadataPush:
 
         with patch("app.streaming_routes.sdk_query_streaming", fake_sdk), \
              patch("app.streaming_routes.add_message"), \
-             patch("app.package_store.get_package_checklist", return_value=fake_checklist):
+             patch("app.stores.package_store.get_package_checklist", return_value=fake_checklist):
             lines = await _collect_stream(stream_generator(
                 message="hi",
                 tenant_id="t",

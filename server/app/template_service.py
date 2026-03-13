@@ -9,7 +9,6 @@ from __future__ import annotations
 import io
 import logging
 import os
-import re
 import time
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -432,7 +431,7 @@ class TemplateService:
 
         Returns (template_bytes, s3_key) or (None, None) if not found.
         """
-        s3 = _get_s3()
+        _get_s3()  # ensure S3 client is initialized
         bucket = TEMPLATE_BUCKET
 
         # Try primary template

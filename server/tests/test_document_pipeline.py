@@ -132,7 +132,7 @@ def app_with_mocked_s3(mock_s3_client):
         yield result_msg
 
     with patch.dict(os.environ, ENV_PATCH, clear=False):
-        with patch("app.agentic_service._get_s3", return_value=mock_s3_client):
+        with patch("app.tool_dispatch._get_s3", return_value=mock_s3_client):
             with patch("app.strands_agentic_service.sdk_query", side_effect=_mock_sdk_query):
                 import importlib
                 import app.main as main_module
@@ -150,8 +150,8 @@ class TestCreateDocumentTool:
     def test_sow_returns_valid_shape(self, mock_s3_client):
         """SOW document returns a dict with all expected keys."""
         with patch.dict(os.environ, ENV_PATCH, clear=False):
-            with patch("app.agentic_service._get_s3", return_value=mock_s3_client):
-                from app.agentic_service import _exec_create_document
+            with patch("app.tool_dispatch._get_s3", return_value=mock_s3_client):
+                from app.tool_dispatch import _exec_create_document
                 result = _exec_create_document(
                     {"doc_type": "sow", "title": "IT Services SOW"},
                     tenant_id="test-tenant",
@@ -169,8 +169,8 @@ class TestCreateDocumentTool:
     def test_all_10_doc_types(self, doc_type, mock_s3_client):
         """Each of the 10 doc types returns content > 0."""
         with patch.dict(os.environ, ENV_PATCH, clear=False):
-            with patch("app.agentic_service._get_s3", return_value=mock_s3_client):
-                from app.agentic_service import _exec_create_document
+            with patch("app.tool_dispatch._get_s3", return_value=mock_s3_client):
+                from app.tool_dispatch import _exec_create_document
                 result = _exec_create_document(
                     {"doc_type": doc_type, "title": f"Test {doc_type}"},
                     tenant_id="test-tenant",
@@ -183,8 +183,8 @@ class TestCreateDocumentTool:
     def test_unknown_type_returns_error(self, mock_s3_client):
         """Unknown doc_type returns an error dict (not exception)."""
         with patch.dict(os.environ, ENV_PATCH, clear=False):
-            with patch("app.agentic_service._get_s3", return_value=mock_s3_client):
-                from app.agentic_service import _exec_create_document
+            with patch("app.tool_dispatch._get_s3", return_value=mock_s3_client):
+                from app.tool_dispatch import _exec_create_document
                 result = _exec_create_document(
                     {"doc_type": "bogus"},
                     tenant_id="test-tenant",
@@ -201,8 +201,8 @@ class TestCreateDocumentTool:
             "PutObject",
         )
         with patch.dict(os.environ, ENV_PATCH, clear=False):
-            with patch("app.agentic_service._get_s3", return_value=failing_s3):
-                from app.agentic_service import _exec_create_document
+            with patch("app.tool_dispatch._get_s3", return_value=failing_s3):
+                from app.tool_dispatch import _exec_create_document
                 result = _exec_create_document(
                     {"doc_type": "sow", "title": "Failure Test"},
                     tenant_id="test-tenant",
@@ -215,8 +215,8 @@ class TestCreateDocumentTool:
     def test_s3_key_naming_convention(self, mock_s3_client):
         """S3 key matches eagle/{tenant}/{user}/documents/{type}_{timestamp}.md."""
         with patch.dict(os.environ, ENV_PATCH, clear=False):
-            with patch("app.agentic_service._get_s3", return_value=mock_s3_client):
-                from app.agentic_service import _exec_create_document
+            with patch("app.tool_dispatch._get_s3", return_value=mock_s3_client):
+                from app.tool_dispatch import _exec_create_document
                 result = _exec_create_document(
                     {"doc_type": "igce", "title": "Cost Estimate"},
                     tenant_id="test-tenant",
@@ -240,8 +240,8 @@ class TestExecuteToolDispatch:
     def test_create_document_dispatch(self, mock_s3_client):
         """execute_tool('create_document', ...) returns valid JSON with document_type."""
         with patch.dict(os.environ, ENV_PATCH, clear=False):
-            with patch("app.agentic_service._get_s3", return_value=mock_s3_client):
-                from app.agentic_service import execute_tool
+            with patch("app.tool_dispatch._get_s3", return_value=mock_s3_client):
+                from app.tool_dispatch import execute_tool
                 raw = execute_tool(
                     "create_document",
                     {"doc_type": "sow", "title": "Dispatch Test"},
@@ -254,8 +254,8 @@ class TestExecuteToolDispatch:
     def test_session_id_passed_through(self, mock_s3_client):
         """session_id reaches _exec_create_document (verified via s3_key containing user scope)."""
         with patch.dict(os.environ, ENV_PATCH, clear=False):
-            with patch("app.agentic_service._get_s3", return_value=mock_s3_client):
-                from app.agentic_service import execute_tool
+            with patch("app.tool_dispatch._get_s3", return_value=mock_s3_client):
+                from app.tool_dispatch import execute_tool
                 raw = execute_tool(
                     "create_document",
                     {"doc_type": "sow", "title": "Session Test"},

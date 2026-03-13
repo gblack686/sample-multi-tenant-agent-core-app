@@ -154,10 +154,17 @@ export default function SimpleChatInterface() {
     /** Right panel state. */
     const [isPanelOpen, setIsPanelOpen] = useState(true);
 
+    /** Bedrock trace events collected during the session. */
+    const [bedrockTraces, setBedrockTraces] = useState<Record<string, unknown>[]>([]);
+
     // Agent stream
     const { sendQuery, isStreaming, error, logs, clearLogs, addUserInputLog } = useAgentStream({
         getToken,
         sessionId: currentSessionId ?? undefined,
+
+        onBedrockTrace: (trace) => {
+            setBedrockTraces((prev) => [...prev, trace]);
+        },
 
         onMessage: (msg) => {
             const newMessage: ChatMessage = {
@@ -420,6 +427,8 @@ export default function SimpleChatInterface() {
                 isStreaming={isStreaming}
                 isOpen={isPanelOpen}
                 onToggle={() => setIsPanelOpen(v => !v)}
+                sessionId={currentSessionId ?? undefined}
+                bedrockTraces={bedrockTraces}
             />
         </div>
     );

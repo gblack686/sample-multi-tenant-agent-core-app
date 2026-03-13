@@ -1,10 +1,12 @@
 'use client';
 
 import { useState, useMemo } from 'react';
-import { FileText, Bell, Terminal, PanelRightClose, PanelRightOpen } from 'lucide-react';
+import { FileText, Bell, Terminal, Cloud, Cpu, PanelRightClose, PanelRightOpen } from 'lucide-react';
 import { AuditLogEntry } from '@/types/stream';
 import { DocumentInfo } from '@/types/chat';
 import AgentLogs from './agent-logs';
+import CloudWatchLogs from './cloudwatch-logs';
+import BedrockLogs from './bedrock-logs';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -17,9 +19,11 @@ interface ActivityPanelProps {
   isStreaming: boolean;
   isOpen: boolean;
   onToggle: () => void;
+  sessionId?: string;
+  bedrockTraces?: Record<string, unknown>[];
 }
 
-type TabId = 'documents' | 'notifications' | 'logs';
+type TabId = 'documents' | 'notifications' | 'logs' | 'cloudwatch' | 'bedrock';
 
 interface TabDef {
   id: TabId;
@@ -28,9 +32,11 @@ interface TabDef {
 }
 
 const TABS: TabDef[] = [
-  { id: 'documents',     label: 'Documents',     icon: FileText },
+  { id: 'documents',     label: 'Docs',          icon: FileText },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'logs',          label: 'Agent Logs',    icon: Terminal },
+  { id: 'cloudwatch',    label: 'CloudWatch',    icon: Cloud },
+  { id: 'bedrock',       label: 'Bedrock',       icon: Cpu },
 ];
 
 // ---------------------------------------------------------------------------
@@ -215,6 +221,8 @@ export default function ActivityPanel({
   isStreaming,
   isOpen,
   onToggle,
+  sessionId,
+  bedrockTraces = [],
 }: ActivityPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('logs');
 
@@ -245,6 +253,7 @@ export default function ActivityPanel({
             tab.id === 'logs' && logs.length > 0 ? logs.length :
             tab.id === 'documents' && docCount > 0 ? docCount :
             tab.id === 'notifications' && notifCount > 0 ? notifCount :
+            tab.id === 'bedrock' && bedrockTraces.length > 0 ? bedrockTraces.length :
             0;
 
           return (
@@ -299,6 +308,8 @@ export default function ActivityPanel({
         {activeTab === 'documents' && <DocumentsTab documents={documents} />}
         {activeTab === 'notifications' && <NotificationsTab documents={documents} />}
         {activeTab === 'logs' && <AgentLogs logs={logs} />}
+        {activeTab === 'cloudwatch' && <CloudWatchLogs sessionId={sessionId} />}
+        {activeTab === 'bedrock' && <BedrockLogs bedrockTraces={bedrockTraces} logs={logs} />}
       </div>
     </div>
   );

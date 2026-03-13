@@ -229,15 +229,46 @@ export class EagleCoreStack extends cdk.Stack {
       ],
     }));
 
-    // Bedrock AgentCore control plane
+    // Bedrock AgentCore control plane (Memory, Browser, Code, Gateway, Identity, Policy, Runtime)
     this.appRole.addToPolicy(new iam.PolicyStatement({
       actions: [
         'bedrock-agentcore-control:GetMemory',
         'bedrock-agentcore-control:ListMemories',
         'bedrock-agentcore-control:GetBrowser',
         'bedrock-agentcore-control:GetCodeInterpreter',
+        // Gateway
+        'bedrock-agentcore-control:GetGateway',
+        'bedrock-agentcore-control:ListGateways',
+        // Identity
+        'bedrock-agentcore-control:GetIdentity',
+        // Policy
+        'bedrock-agentcore-control:GetPolicyEngine',
+        'bedrock-agentcore-control:ListPolicyEngines',
+        'bedrock-agentcore-control:EvaluatePolicy',
+        // Runtime
+        'bedrock-agentcore-control:GetAgentRuntime',
+        'bedrock-agentcore-control:ListAgentRuntimes',
       ],
       resources: ['*'],
+    }));
+
+    // Bedrock AgentCore data plane: Gateway, Identity, Policy, Runtime
+    this.appRole.addToPolicy(new iam.PolicyStatement({
+      actions: [
+        // Gateway data plane
+        'bedrock-agentcore:InvokeGateway',
+        // Identity data plane
+        'bedrock-agentcore:ValidateToken',
+        'bedrock-agentcore:GetSessionCredentials',
+        // Runtime data plane
+        'bedrock-agentcore:InvokeAgentRuntime',
+      ],
+      resources: [
+        `arn:aws:bedrock-agentcore:us-east-1:${this.account}:gateway/*`,
+        `arn:aws:bedrock-agentcore:us-east-1:${this.account}:identity/*`,
+        `arn:aws:bedrock-agentcore:us-east-1:${this.account}:policy-engine/*`,
+        `arn:aws:bedrock-agentcore:us-east-1:${this.account}:agent-runtime/*`,
+      ],
     }));
 
     // ── Outputs ──────────────────────────────────────────────

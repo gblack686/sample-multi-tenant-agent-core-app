@@ -50,15 +50,81 @@ jobs:
             - 'infrastructure/**'
           backend:
             - 'server/**'
+            - 'eagle-plugin/**'
             - 'deployment/docker/Dockerfile.backend'
             - 'deployment/docker-compose*.yml'
           frontend:
             - 'client/**'
             - 'deployment/docker/Dockerfile.frontend'
 
+  # ── CI: Lint + Test ────────────────────────────────────────
+  ci:
+    needs: changes
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11  # v4.1.1
+
+    # ── Backend CI (Python) ──────────────────────────────────
+    - name: Setup Python 3.11
+      if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+      uses: actions/setup-python@0a5c61591373683505ea898e09a3ea4f39ef2b9c  # v5.0.0
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+        cache-dependency-path: server/requirements.txt
+
+    - name: Install backend dependencies
+      if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+      run: pip install -r server/requirements.txt ruff pytest pytest-asyncio
+
+    - name: Lint backend (ruff)
+      if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+      run: cd server && ruff check app/
+
+    - name: Test backend (pytest)
+      if: needs.changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch'
+      env:
+        USE_BEDROCK: 'false'
+        AWS_DEFAULT_REGION: us-east-1
+      run: cd server && python -m pytest tests/test_agentcore_services.py -v --tb=short
+
+    # ── Frontend CI (TypeScript) ─────────────────────────────
+    - name: Setup Node.js
+      if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+      uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8  # v4.0.2
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: client/package-lock.json
+
+    - name: Install frontend dependencies
+      if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+      run: cd client && npm ci
+
+    - name: Type check frontend (tsc)
+      if: needs.changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch'
+      run: cd client && npx tsc --noEmit
+
+    # ── CDK CI (synth) ───────────────────────────────────────
+    - name: Setup Node.js for CDK
+      if: needs.changes.outputs.infra == 'true'
+      uses: actions/setup-node@60edb5dd545a775178f52524783378180af0d1f8  # v4.0.2
+      with:
+        node-version: '20'
+        cache: 'npm'
+        cache-dependency-path: infrastructure/cdk-eagle/package-lock.json
+
+    - name: CDK synth check
+      if: needs.changes.outputs.infra == 'true'
+      run: |
+        cd infrastructure/cdk-eagle && npm ci
+        npx cdk synth --quiet
+
   # ── Deploy CDK Infrastructure ───────────────────────────────
   deploy-infra:
-    needs: changes
+    needs: [changes, ci]
     runs-on: ubuntu-latest
     if: |
       (github.event_name == 'push' && needs.changes.outputs.infra == 'true') ||
@@ -96,10 +162,11 @@ jobs:
 
   # ── Build & Push Backend Container ──────────────────────────
   deploy-backend:
-    needs: [changes, deploy-infra]
+    needs: [changes, ci, deploy-infra]
     runs-on: ubuntu-latest
     if: |
       always() &&
+      needs.ci.result == 'success' &&
       needs.deploy-infra.result != 'failure' &&
       (
         (github.event_name == 'push' && needs.changes.outputs.backend == 'true') ||
@@ -196,10 +263,11 @@ jobs:
 
   # ── Build & Push Frontend Container ─────────────────────────
   deploy-frontend:
-    needs: [changes, deploy-infra]
+    needs: [changes, ci, deploy-infra]
     runs-on: ubuntu-latest
     if: |
       always() &&
+      needs.ci.result == 'success' &&
       needs.deploy-infra.result != 'failure' &&
       (
         (github.event_name == 'push' && needs.changes.outputs.frontend == 'true') ||
