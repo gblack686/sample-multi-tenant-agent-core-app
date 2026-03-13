@@ -166,7 +166,7 @@ class TestRequestSchema:
 
     def test_rest_session_id_properly_accepted(self, app_no_auth):
         """REST: session_id IS in EagleChatRequest schema — properly passed to sdk_query."""
-        from app.main import EagleChatRequest
+        from app.routes.chat import EagleChatRequest
         req = EagleChatRequest(message="Hi", session_id="ses-001")
         assert req.session_id == "ses-001", "REST request properly carries session_id"
 
@@ -179,13 +179,17 @@ class TestAuthEnforcement:
 
     def test_rest_auth_guard_in_source(self):
         """/api/chat uses get_user_from_header which enforces REQUIRE_AUTH."""
-        main_file = os.path.normpath(os.path.join(
-            os.path.dirname(__file__), "..", "app", "main.py"
+        # Auth guard lives in routes/chat.py after router refactor
+        chat_file = os.path.normpath(os.path.join(
+            os.path.dirname(__file__), "..", "app", "routes", "chat.py"
         ))
-        content = open(main_file, encoding="utf-8").read()
-        # The api_chat route must use get_user_from_header dependency
-        assert "get_user_from_header" in content, "Auth guard not found in main.py"
-        assert "REQUIRE_AUTH" in content, "REQUIRE_AUTH flag not read in main.py"
+        content = open(chat_file, encoding="utf-8").read()
+        assert "get_user_from_header" in content, "Auth guard not found in routes/chat.py"
+        deps_file = os.path.normpath(os.path.join(
+            os.path.dirname(__file__), "..", "app", "routes", "_deps.py"
+        ))
+        deps_content = open(deps_file, encoding="utf-8").read()
+        assert "REQUIRE_AUTH" in deps_content, "REQUIRE_AUTH flag not read in routes/_deps.py"
 
     def test_stream_auth_guard_in_source(self):
         """/api/chat/stream checks REQUIRE_AUTH and returns 401 for anonymous users."""
@@ -334,14 +338,11 @@ class TestSessionContinuity:
 
     def test_rest_sdk_call_has_session_id(self):
         """REST /api/chat correctly passes session_id to sdk_query."""
-        main_file = os.path.join(
-            os.path.dirname(__file__), "..", "app", "main.py"
-        )
-        main_file = os.path.normpath(main_file)
-        content = open(main_file, encoding="utf-8").read()
-
-        import re
-        # Find the sdk_query call inside api_chat function
+        # api_chat lives in routes/chat.py after router refactor
+        chat_file = os.path.normpath(os.path.join(
+            os.path.dirname(__file__), "..", "app", "routes", "chat.py"
+        ))
+        content = open(chat_file, encoding="utf-8").read()
         api_chat_section = content[content.find("async def api_chat"):]
         assert "session_id=session_id" in api_chat_section, (
             "REST /api/chat should pass session_id=session_id to sdk_query"

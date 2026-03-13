@@ -11,7 +11,7 @@ from app.document_service import DocumentResult
 
 def test_exec_create_document_routes_package_mode_to_canonical(monkeypatch):
     """When package_id is present, create_document should use canonical service."""
-    from app.agentic_service import _exec_create_document
+    from app.tool_dispatch import _exec_create_document
 
     class FakeTemplateResult:
         success = False
@@ -44,7 +44,7 @@ def test_exec_create_document_routes_package_mode_to_canonical(monkeypatch):
     )
 
     mock_s3 = mock.MagicMock()
-    monkeypatch.setattr("app.agentic_service._get_s3", lambda: mock_s3)
+    monkeypatch.setattr("app.tool_dispatch._get_s3", lambda: mock_s3)
 
     result = _exec_create_document(
         {
@@ -147,7 +147,7 @@ def test_force_document_creation_for_direct_request_without_tool(monkeypatch):
             "word_count": 1200,
         }
 
-    monkeypatch.setattr("app.agentic_service._exec_create_document", fake_exec_create_document)
+    monkeypatch.setattr("app.tool_dispatch._exec_create_document", fake_exec_create_document)
 
     forced = asyncio.run(
         _ensure_create_document_for_direct_request(
@@ -172,7 +172,7 @@ def test_force_document_creation_skips_when_tool_already_called(monkeypatch):
         called["count"] += 1
         return {"status": "saved"}
 
-    monkeypatch.setattr("app.agentic_service._exec_create_document", fake_exec_create_document)
+    monkeypatch.setattr("app.tool_dispatch._exec_create_document", fake_exec_create_document)
 
     forced = asyncio.run(
         _ensure_create_document_for_direct_request(
@@ -204,7 +204,7 @@ def test_forced_document_creation_carries_document_context(monkeypatch):
             "word_count": 200,
         }
 
-    monkeypatch.setattr("app.agentic_service._exec_create_document", fake_exec_create_document)
+    monkeypatch.setattr("app.tool_dispatch._exec_create_document", fake_exec_create_document)
 
     prompt = (
         "You are assisting with edits to an acquisition document in EAGLE.\n\n"
@@ -250,7 +250,7 @@ def test_sdk_query_streaming_fast_path_emits_document_events(monkeypatch):
             "word_count": 1200,
         }
 
-    monkeypatch.setattr("app.agentic_service._exec_create_document", fake_exec_create_document)
+    monkeypatch.setattr("app.tool_dispatch._exec_create_document", fake_exec_create_document)
 
     async def _collect():
         chunks = []
@@ -297,7 +297,7 @@ def test_extract_document_context_from_prompt():
 
 
 def test_make_service_tool_infers_doc_context_for_create_document(monkeypatch):
-    import app.agentic_service as agentic_service
+    import app.tool_dispatch as tool_dispatch
     from app.strands_agentic_service import _make_service_tool
 
     captured = {}
@@ -308,7 +308,7 @@ def test_make_service_tool_infers_doc_context_for_create_document(monkeypatch):
         captured["session_id"] = session_id
         return {"status": "saved", "document_type": "sow", "title": params.get("title", "")}
 
-    monkeypatch.setitem(agentic_service.TOOL_DISPATCH, "create_document", fake_create_document)
+    monkeypatch.setitem(tool_dispatch.TOOL_DISPATCH, "create_document", fake_create_document)
 
     prompt = (
         "[DOCUMENT CONTEXT]\n\n"
@@ -329,8 +329,6 @@ def test_make_service_tool_infers_doc_context_for_create_document(monkeypatch):
         user_id="test-user",
         session_id="sess-321",
         package_context=None,
-        result_queue=None,
-        loop=None,
         prompt_context=prompt,
     )
 
