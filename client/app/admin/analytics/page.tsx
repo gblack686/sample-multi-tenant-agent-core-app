@@ -1,410 +1,269 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { BarChart3, TrendingUp, Users, Zap, DollarSign, Loader2, AlertCircle, RefreshCw, Wrench } from 'lucide-react';
 import AuthGuard from '@/components/auth/auth-guard';
-import {
-  Send,
-  Database,
-  BarChart3,
-  Table,
-  Sparkles,
-  Clock,
-  CheckCircle2,
-  Loader2,
-  Copy,
-  Download,
-  ChevronDown,
-  TrendingUp,
-  Users,
-  FileText,
-  DollarSign,
-} from 'lucide-react';
 import TopNav from '@/components/layout/top-nav';
 import PageHeader from '@/components/layout/page-header';
-import {
-  MOCK_USERS,
-  PAST_WORKFLOWS,
-  CURRENT_WORKFLOW,
-  MOCK_DOCUMENTS,
-  MOCK_AUDIT_LOGS,
-  formatCurrency,
-  formatDate,
-} from '@/lib/mock-data';
+import { useAuth } from '@/contexts/auth-context';
 
-interface ChatMessage {
-  id: string;
-  role: 'user' | 'assistant';
-  content: string;
-  timestamp: Date;
-  queryType?: 'sql' | 'summary' | 'chart';
-  data?: any;
-  sqlQuery?: string;
+// ---------------------------------------------------------------------------
+// Types (matching /api/admin/dashboard and /api/admin/tools responses)
+// ---------------------------------------------------------------------------
+
+interface DashboardSummary {
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_tokens: number;
+  total_cost_usd: number;
+  total_requests: number;
+  active_sessions: number;
+  avg_tokens_per_request: number;
+  avg_cost_per_request: number;
 }
 
-// Sample queries that the analytics agent can handle
-const SAMPLE_QUERIES = [
-  'How many workflows are currently in progress?',
-  'What is the total value of all acquisitions?',
-  'Show me workflows by status',
-  'List all users and their roles',
-  'What documents need attention?',
-  'Show recent audit activity',
-  'What is the average workflow completion time?',
-];
-
-// Mock analytics responses
-function generateAnalyticsResponse(query: string): { content: string; data?: any; sqlQuery?: string; queryType?: 'sql' | 'summary' | 'chart' } {
-  const lowerQuery = query.toLowerCase();
-  const allWorkflows = [CURRENT_WORKFLOW, ...PAST_WORKFLOWS];
-
-  if (lowerQuery.includes('in progress') || lowerQuery.includes('active workflow')) {
-    const inProgress = allWorkflows.filter(w => w.status === 'in_progress');
-    return {
-      content: `There ${inProgress.length === 1 ? 'is' : 'are'} **${inProgress.length} workflow${inProgress.length === 1 ? '' : 's'}** currently in progress.`,
-      sqlQuery: `SELECT COUNT(*) FROM workflows WHERE status = 'in_progress';`,
-      queryType: 'summary',
-      data: {
-        type: 'count',
-        value: inProgress.length,
-        label: 'In Progress Workflows',
-      },
-    };
-  }
-
-  if (lowerQuery.includes('total value') || lowerQuery.includes('total cost')) {
-    const totalValue = allWorkflows.reduce((sum, w) => sum + (w.estimated_value || 0), 0);
-    return {
-      content: `The total estimated value of all acquisitions is **${formatCurrency(totalValue)}**.`,
-      sqlQuery: `SELECT SUM(estimated_value) as total_value FROM workflows WHERE archived = false;`,
-      queryType: 'summary',
-      data: {
-        type: 'currency',
-        value: totalValue,
-        label: 'Total Acquisition Value',
-      },
-    };
-  }
-
-  if (lowerQuery.includes('by status') || lowerQuery.includes('workflow status')) {
-    const statusCounts = allWorkflows.reduce((acc, w) => {
-      acc[w.status] = (acc[w.status] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
-    return {
-      content: `Here's the breakdown of workflows by status:\n\n${Object.entries(statusCounts).map(([status, count]) => `- **${status.replace('_', ' ')}**: ${count}`).join('\n')}`,
-      sqlQuery: `SELECT status, COUNT(*) as count FROM workflows GROUP BY status ORDER BY count DESC;`,
-      queryType: 'chart',
-      data: {
-        type: 'bar',
-        labels: Object.keys(statusCounts).map(s => s.replace('_', ' ')),
-        values: Object.values(statusCounts),
-      },
-    };
-  }
-
-  if (lowerQuery.includes('users') && (lowerQuery.includes('list') || lowerQuery.includes('show') || lowerQuery.includes('role'))) {
-    return {
-      content: `Found **${MOCK_USERS.length} users** in the system:\n\n| Name | Role | Division |\n|------|------|----------|\n${MOCK_USERS.map(u => `| ${u.display_name} | ${u.role} | ${u.division || 'N/A'} |`).join('\n')}`,
-      sqlQuery: `SELECT display_name, role, division FROM users WHERE archived = false ORDER BY display_name;`,
-      queryType: 'sql',
-      data: {
-        type: 'table',
-        columns: ['Name', 'Role', 'Division'],
-        rows: MOCK_USERS.map(u => [u.display_name, u.role, u.division || 'N/A']),
-      },
-    };
-  }
-
-  if (lowerQuery.includes('document') && (lowerQuery.includes('attention') || lowerQuery.includes('pending') || lowerQuery.includes('need'))) {
-    const pendingDocs = MOCK_DOCUMENTS.filter(d => d.status === 'not_started' || d.status === 'in_progress');
-    return {
-      content: `There are **${pendingDocs.length} documents** that need attention:\n\n${pendingDocs.map(d => `- **${d.title}** (${d.status.replace('_', ' ')})`).join('\n')}`,
-      sqlQuery: `SELECT title, status, document_type FROM documents WHERE status IN ('not_started', 'in_progress');`,
-      queryType: 'sql',
-      data: {
-        type: 'list',
-        items: pendingDocs.map(d => ({ title: d.title, status: d.status })),
-      },
-    };
-  }
-
-  if (lowerQuery.includes('audit') || lowerQuery.includes('activity') || lowerQuery.includes('recent')) {
-    const recentLogs = MOCK_AUDIT_LOGS.slice(0, 5);
-    return {
-      content: `Here are the **${recentLogs.length} most recent activities**:\n\n${recentLogs.map(l => `- **${l.action.replace('.', ': ').replace('_', ' ')}** at ${formatDate(l.timestamp)}`).join('\n')}`,
-      sqlQuery: `SELECT action, resource_type, timestamp FROM audit_logs ORDER BY timestamp DESC LIMIT 5;`,
-      queryType: 'sql',
-      data: {
-        type: 'timeline',
-        items: recentLogs,
-      },
-    };
-  }
-
-  if (lowerQuery.includes('average') && (lowerQuery.includes('completion') || lowerQuery.includes('time'))) {
-    return {
-      content: `The average workflow completion time is approximately **4.2 days**.\n\nThis is calculated from ${allWorkflows.filter(w => w.completed_at).length} completed workflows.`,
-      sqlQuery: `SELECT AVG(EXTRACT(EPOCH FROM (completed_at - created_at))/86400) as avg_days FROM workflows WHERE completed_at IS NOT NULL;`,
-      queryType: 'summary',
-      data: {
-        type: 'metric',
-        value: 4.2,
-        unit: 'days',
-        label: 'Avg Completion Time',
-      },
-    };
-  }
-
-  // Default response for unrecognized queries
-  return {
-    content: `I can help you analyze acquisition data. Here are some things I can answer:\n\n- Workflow counts and statuses\n- Total acquisition values\n- User and role information\n- Document status\n- Audit activity\n\nTry asking: "${SAMPLE_QUERIES[Math.floor(Math.random() * SAMPLE_QUERIES.length)]}"`,
-    queryType: 'summary',
-  };
+interface DailyDataPoint {
+  date: string;
+  input_tokens: number;
+  output_tokens: number;
+  cost: number;
+  requests: number;
 }
+
+interface DashboardResponse {
+  tenant_id: string;
+  period_days: number;
+  summary: DashboardSummary;
+  daily: DailyDataPoint[];
+  generated_at: string;
+}
+
+interface ToolEntry {
+  name: string;
+  count: number;
+}
+
+interface ToolsResponse {
+  tenant_id: string;
+  period_days: number;
+  tools: ToolEntry[];
+  total_tool_calls: number;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+const DATE_RANGES = [
+  { label: '7d', days: 7 },
+  { label: '30d', days: 30 },
+  { label: '90d', days: 90 },
+] as const;
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 4,
+  }).format(value);
+}
+
+function formatNumber(value: number): string {
+  return new Intl.NumberFormat('en-US').format(value);
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
 
 export default function AnalyticsPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: "Hello! I'm your **Analytics Assistant** with read-only access to the acquisition database. I can help you:\n\n- Query workflow statistics\n- Analyze document status\n- Review user activity\n- Generate reports\n\nWhat would you like to know?",
-      timestamp: new Date(),
-    },
-  ]);
-  const [input, setInput] = useState('');
-  const [isTyping, setIsTyping] = useState(false);
-  const [showSuggestions, setShowSuggestions] = useState(true);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { getToken } = useAuth();
+  const [selectedDays, setSelectedDays] = useState<number>(30);
+  const [dashboard, setDashboard] = useState<DashboardResponse | null>(null);
+  const [tools, setTools] = useState<ToolsResponse | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  const fetchData = useCallback(async (days: number) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const token = await getToken();
+      const headers = { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' };
+      const [dashRes, toolsRes] = await Promise.all([
+        fetch(`/api/admin/dashboard?days=${days}`, { headers }),
+        fetch(`/api/admin/tools?days=${days}`, { headers }),
+      ]);
+      if (!dashRes.ok) throw new Error(`Dashboard fetch failed (${dashRes.status})`);
+      const dashData: DashboardResponse = await dashRes.json();
+      setDashboard(dashData);
+      if (toolsRes.ok) {
+        const toolsData: ToolsResponse = await toolsRes.json();
+        setTools(toolsData);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'An unexpected error occurred');
+      setDashboard(null);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [getToken]);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    fetchData(selectedDays);
+  }, [selectedDays, fetchData]);
 
-  const handleSend = async (query?: string) => {
-    const messageText = query || input;
-    if (!messageText.trim()) return;
-
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: messageText,
-      timestamp: new Date(),
-    };
-
-    setMessages(prev => [...prev, userMessage]);
-    setInput('');
-    setIsTyping(true);
-    setShowSuggestions(false);
-
-    // Simulate API delay
-    setTimeout(() => {
-      const response = generateAnalyticsResponse(messageText);
-      const assistantMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: response.content,
-        timestamp: new Date(),
-        queryType: response.queryType,
-        data: response.data,
-        sqlQuery: response.sqlQuery,
-      };
-      setMessages(prev => [...prev, assistantMessage]);
-      setIsTyping(false);
-    }, 800 + Math.random() * 700);
-  };
-
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text);
-  };
+  const summary = dashboard?.summary;
+  const daily = dashboard?.daily || [];
+  const maxRequests = Math.max(...daily.map(d => d.requests), 1);
 
   return (
     <AuthGuard>
     <div className="flex flex-col h-screen bg-gray-50">
       <TopNav />
-
-      <main className="flex-1 flex flex-col overflow-hidden">
-        <div className="p-6 pb-0">
+      <main className="flex-1 overflow-y-auto">
+        <div className="p-8">
           <PageHeader
-            title="Analytics Chat"
-            description="Query acquisition data with natural language"
+            title="Analytics"
+            description="API usage, costs, and tool activity"
             breadcrumbs={[
               { label: 'Admin', href: '/admin' },
               { label: 'Analytics' },
             ]}
-          />
-        </div>
-
-        {/* Quick Stats Bar */}
-        <div className="px-6 py-4 flex gap-4 overflow-x-auto">
-          {[
-            { icon: <TrendingUp className="w-4 h-4" />, label: 'Active Workflows', value: '1', color: 'text-blue-600 bg-blue-50' },
-            { icon: <DollarSign className="w-4 h-4" />, label: 'Total Value', value: '$1M+', color: 'text-green-600 bg-green-50' },
-            { icon: <Users className="w-4 h-4" />, label: 'Users', value: '3', color: 'text-purple-600 bg-purple-50' },
-            { icon: <FileText className="w-4 h-4" />, label: 'Documents', value: '3', color: 'text-amber-600 bg-amber-50' },
-          ].map((stat, i) => (
-            <div key={i} className={`flex items-center gap-3 px-4 py-2 rounded-xl ${stat.color}`}>
-              {stat.icon}
-              <div>
-                <p className="text-xs opacity-75">{stat.label}</p>
-                <p className="font-bold">{stat.value}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-
-        {/* Chat Area */}
-        <div className="flex-1 overflow-y-auto px-6 space-y-4">
-          {messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div
-                className={`max-w-2xl rounded-2xl p-4 ${
-                  message.role === 'user'
-                    ? 'bg-blue-600 text-white'
-                    : 'bg-white border border-gray-200 shadow-sm'
-                }`}
+            actions={
+              <button
+                onClick={() => fetchData(selectedDays)}
+                disabled={isLoading}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 text-gray-700 rounded-xl font-medium hover:bg-gray-50 transition-colors disabled:opacity-50"
               >
-                {message.role === 'assistant' && (
-                  <div className="flex items-center gap-2 mb-2 pb-2 border-b border-gray-100">
-                    <div className="w-6 h-6 bg-gradient-to-br from-purple-500 to-blue-500 rounded-lg flex items-center justify-center">
-                      <Database className="w-3 h-3 text-white" />
-                    </div>
-                    <span className="text-xs font-semibold text-gray-500">Analytics Agent</span>
-                    {message.queryType && (
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${
-                        message.queryType === 'sql' ? 'bg-blue-100 text-blue-700' :
-                        message.queryType === 'chart' ? 'bg-purple-100 text-purple-700' :
-                        'bg-green-100 text-green-700'
-                      }`}>
-                        {message.queryType === 'sql' ? 'Table Query' : message.queryType === 'chart' ? 'Chart Data' : 'Summary'}
-                      </span>
-                    )}
-                  </div>
-                )}
+                <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            }
+          />
 
-                {/* Message content with markdown-like formatting */}
-                <div className={`text-sm whitespace-pre-wrap ${message.role === 'user' ? '' : 'text-gray-700'}`}>
-                  {message.content.split('\n').map((line, i) => {
-                    // Bold text
-                    const parts = line.split(/\*\*(.*?)\*\*/g);
-                    return (
-                      <p key={i} className={i > 0 ? 'mt-2' : ''}>
-                        {parts.map((part, j) =>
-                          j % 2 === 1 ? <strong key={j}>{part}</strong> : part
-                        )}
-                      </p>
-                    );
-                  })}
-                </div>
-
-                {/* SQL Query display */}
-                {message.sqlQuery && (
-                  <div className="mt-3 p-3 bg-gray-900 rounded-xl">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-[10px] text-gray-400 uppercase tracking-wide font-semibold">SQL Query</span>
-                      <button
-                        onClick={() => copyToClipboard(message.sqlQuery!)}
-                        className="text-gray-400 hover:text-white transition-colors"
-                      >
-                        <Copy className="w-3 h-3" />
-                      </button>
-                    </div>
-                    <code className="text-xs text-green-400 font-mono">{message.sqlQuery}</code>
-                  </div>
-                )}
-
-                {/* Data visualization */}
-                {message.data?.type === 'bar' && (
-                  <div className="mt-3 p-4 bg-gray-50 rounded-xl">
-                    <div className="space-y-2">
-                      {message.data.labels.map((label: string, i: number) => (
-                        <div key={i} className="flex items-center gap-3">
-                          <span className="text-xs text-gray-600 w-24 truncate capitalize">{label}</span>
-                          <div className="flex-1 h-6 bg-gray-200 rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-full"
-                              style={{ width: `${(message.data.values[i] / Math.max(...message.data.values)) * 100}%` }}
-                            />
-                          </div>
-                          <span className="text-xs font-bold text-gray-700 w-8">{message.data.values[i]}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Timestamp */}
-                <div className={`mt-2 text-[10px] ${message.role === 'user' ? 'text-blue-200' : 'text-gray-400'}`}>
-                  {message.timestamp.toLocaleTimeString()}
-                </div>
-              </div>
-            </div>
-          ))}
-
-          {isTyping && (
-            <div className="flex justify-start">
-              <div className="bg-white border border-gray-200 rounded-2xl p-4 shadow-sm">
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 text-blue-600 animate-spin" />
-                  <span className="text-sm text-gray-500">Querying database...</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div ref={messagesEndRef} />
-        </div>
-
-        {/* Suggestions */}
-        {showSuggestions && messages.length <= 1 && (
-          <div className="px-6 py-3">
-            <p className="text-xs text-gray-500 mb-2 font-medium">Try asking:</p>
-            <div className="flex flex-wrap gap-2">
-              {SAMPLE_QUERIES.slice(0, 4).map((query, i) => (
+          {/* Date Range Selector */}
+          <div className="mb-6">
+            <div className="inline-flex items-center bg-white border border-gray-200 rounded-xl p-1">
+              {DATE_RANGES.map((range) => (
                 <button
-                  key={i}
-                  onClick={() => handleSend(query)}
-                  className="text-xs px-3 py-1.5 bg-white border border-gray-200 rounded-full text-gray-600 hover:bg-blue-50 hover:border-blue-300 hover:text-blue-700 transition-colors"
+                  key={range.days}
+                  onClick={() => setSelectedDays(range.days)}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                    selectedDays === range.days
+                      ? 'bg-[#003149] text-white shadow-md'
+                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                  }`}
                 >
-                  {query}
+                  {range.label}
                 </button>
               ))}
             </div>
           </div>
-        )}
 
-        {/* Input Area */}
-        <div className="p-6 bg-white border-t border-gray-200">
-          <div className="flex gap-3 max-w-4xl mx-auto">
-            <div className="flex-1 relative">
-              <Database className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="Ask about workflows, documents, users, or metrics..."
-                className="w-full pl-11 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-sm"
-              />
+          {/* Error */}
+          {error && (
+            <div className="mb-6 flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700">
+              <AlertCircle className="w-5 h-5 flex-shrink-0" />
+              <p className="flex-1">{error}</p>
+              <button onClick={() => fetchData(selectedDays)} className="px-3 py-1.5 bg-red-100 text-red-700 rounded-lg text-sm font-medium hover:bg-red-200 transition-colors">Retry</button>
             </div>
-            <button
-              onClick={() => handleSend()}
-              disabled={!input.trim() || isTyping}
-              className="px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors shadow-md shadow-blue-200"
-            >
-              <Send className="w-4 h-4" />
-            </button>
-          </div>
-          <p className="text-[10px] text-gray-400 text-center mt-2">
-            Read-only database access • Queries are logged for audit purposes
-          </p>
+          )}
+
+          {/* Loading */}
+          {isLoading && !dashboard ? (
+            <div className="flex flex-col items-center justify-center py-20">
+              <Loader2 className="w-8 h-8 text-[#003149] animate-spin mb-4" />
+              <p className="text-gray-500 text-sm">Loading analytics...</p>
+            </div>
+          ) : (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                {[
+                  { label: 'Total Requests', value: summary ? formatNumber(summary.total_requests) : '--', icon: <TrendingUp className="w-5 h-5" />, color: 'bg-blue-500', desc: `Last ${selectedDays} days` },
+                  { label: 'Total Tokens', value: summary ? formatNumber(summary.total_tokens) : '--', icon: <Zap className="w-5 h-5" />, color: 'bg-purple-500', desc: 'Input + Output' },
+                  { label: 'Total Cost', value: summary ? formatCurrency(summary.total_cost_usd) : '--', icon: <DollarSign className="w-5 h-5" />, color: 'bg-green-500', desc: 'USD' },
+                  { label: 'Active Sessions', value: summary ? String(summary.active_sessions) : '--', icon: <Users className="w-5 h-5" />, color: 'bg-amber-500', desc: 'Open sessions' },
+                ].map((card, i) => (
+                  <div key={i} className="bg-white rounded-2xl border border-gray-200 p-5">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className={`p-3 rounded-xl ${card.color} text-white`}>{card.icon}</div>
+                      <span className="text-xs text-gray-400 font-medium">{card.desc}</span>
+                    </div>
+                    <p className="text-2xl font-bold text-gray-900">
+                      {isLoading ? <span className="inline-block w-24 h-7 bg-gray-100 rounded animate-pulse" /> : card.value}
+                    </p>
+                    <p className="text-sm text-gray-500">{card.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Daily Activity Chart */}
+              {daily.length > 0 && (
+                <div className="bg-white rounded-2xl border border-gray-200 p-6 mb-6">
+                  <div className="flex items-center gap-2 mb-6">
+                    <BarChart3 className="w-5 h-5 text-gray-600" />
+                    <h3 className="font-bold text-gray-900">Daily Requests</h3>
+                  </div>
+                  <div className="flex items-end gap-1 h-32">
+                    {daily.map((d, i) => (
+                      <div key={i} className="flex-1 flex flex-col items-center gap-1 group">
+                        <div
+                          className="w-full bg-[#003149]/20 hover:bg-[#003149]/40 rounded-t transition-colors cursor-default"
+                          style={{ height: `${Math.max((d.requests / maxRequests) * 100, 4)}%` }}
+                          title={`${d.date}: ${d.requests} requests`}
+                        />
+                        {i % Math.ceil(daily.length / 6) === 0 && (
+                          <span className="text-[9px] text-gray-400 rotate-[-45deg] origin-top-left ml-1">
+                            {d.date.slice(5)}
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-6 flex items-center gap-6 text-sm text-gray-600 border-t border-gray-50 pt-4">
+                    <span>Avg {summary ? formatNumber(summary.avg_tokens_per_request) : '--'} tokens/req</span>
+                    <span>Avg {summary ? formatCurrency(summary.avg_cost_per_request) : '--'}/req</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Tool Usage */}
+              {tools && tools.tools.length > 0 && (
+                <div className="bg-white rounded-2xl border border-gray-200 p-6">
+                  <div className="flex items-center gap-2 mb-6">
+                    <Wrench className="w-5 h-5 text-gray-600" />
+                    <h3 className="font-bold text-gray-900">Tool Usage</h3>
+                    <span className="text-xs text-gray-400 ml-auto">{formatNumber(tools.total_tool_calls)} total calls</span>
+                  </div>
+                  <div className="space-y-3">
+                    {tools.tools.slice(0, 10).map((t) => (
+                      <div key={t.name} className="flex items-center gap-3">
+                        <span className="text-sm text-gray-600 w-40 truncate font-mono">{t.name}</span>
+                        <div className="flex-1 h-5 bg-gray-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-gradient-to-r from-[#003149] to-[#7740A4] rounded-full"
+                            style={{ width: `${(t.count / tools.tools[0].count) * 100}%` }}
+                          />
+                        </div>
+                        <span className="text-xs font-bold text-gray-700 w-10 text-right tabular-nums">{formatNumber(t.count)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!dashboard && !error && (
+                <div className="flex flex-col items-center justify-center py-20">
+                  <BarChart3 className="w-10 h-10 text-gray-300 mb-3" />
+                  <p className="text-sm font-medium text-gray-500">No analytics data</p>
+                  <p className="text-xs text-gray-400 mt-1">Usage data will appear here once API calls are made</p>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </main>
     </div>
