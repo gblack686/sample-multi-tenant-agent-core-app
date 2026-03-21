@@ -2738,14 +2738,8 @@ def _exec_manage_templates(params: dict, tenant_id: str) -> dict:
 # ── AgentCore Tool Handlers ──────────────────────────────────────────
 
 def _exec_workspace_memory(params: dict, tenant_id: str, session_id: str = None) -> dict:
-    """Execute workspace memory operations via AgentCore Memory."""
-    from .agentcore.memory import workspace_memory
-
-    command = params.get("command", "view")
-    path = params.get("path", "_workspace.txt")
-    content = params.get("content", "")
-    user_id = _extract_user_id(session_id)
-    return workspace_memory(command, path, tenant_id, user_id, content, session_id)
+    """Workspace memory — not available (agentcore removed)."""
+    return {"error": "workspace_memory tool is not available in this deployment"}
 
 
 def _exec_web_search(params: dict, tenant_id: str) -> dict:
@@ -2761,28 +2755,13 @@ def _exec_web_search(params: dict, tenant_id: str) -> dict:
 
 
 def _exec_browse_url(params: dict, tenant_id: str) -> dict:
-    """Fetch and extract content from URLs via AgentCore Browser."""
-    from .agentcore.browser import browse_urls
-
-    urls = params.get("urls", [])
-    if isinstance(urls, str):
-        urls = [urls]
-    if not urls:
-        return {"error": "urls is required (list of URLs)"}
-    question = params.get("question")
-    return browse_urls(urls, question)
+    """Browse URL — not available (agentcore removed)."""
+    return {"error": "browse_url tool is not available in this deployment"}
 
 
 def _exec_code_execute(params: dict, tenant_id: str) -> dict:
-    """Execute code via AgentCore Code Interpreter."""
-    from .agentcore.code import execute_code
-
-    code = params.get("code", "")
-    if not code:
-        return {"error": "code is required"}
-    language = params.get("language", "python")
-    packages = params.get("packages")
-    return execute_code(code, language, packages)
+    """Execute code — not available (agentcore removed)."""
+    return {"error": "code_execute tool is not available in this deployment"}
 
 
 # ── Tool Dispatch ────────────────────────────────────────────────────

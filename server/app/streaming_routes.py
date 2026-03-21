@@ -27,7 +27,6 @@ from .strands_agentic_service import sdk_query_streaming, MODEL, EAGLE_TOOLS
 from .stores.session_store import add_message
 from .package_context_service import resolve_context, set_active_package
 from .telemetry.log_context import set_log_context
-from .agentcore.observability import record_metric
 from .stores.reasoning_store import ReasoningLog
 from .health_checks import check_knowledge_base_health
 import time as _time
@@ -251,7 +250,6 @@ async def stream_generator(
                         _result_preview = result_data[:2000]
 
                     # Tool result tracing handled by Strands SDK built-in Tracer
-                    record_metric("eagle.tool_duration_ms", float(_tool_dur), {"tool": tr_name})
                 except Exception:
                     pass
 
@@ -316,10 +314,6 @@ async def stream_generator(
                     _usage = chunk.get("usage", {})
 
                     # Span attributes handled by Strands SDK built-in Tracer.
-                    # Record EAGLE-specific metrics for dashboards.
-                    record_metric("eagle.total_duration_ms", float(_elapsed), {"tenant_id": tenant_id})
-                    record_metric("eagle.input_tokens", float(_usage.get("inputTokens", 0)), {"tenant_id": tenant_id})
-                    record_metric("eagle.output_tokens", float(_usage.get("outputTokens", 0)), {"tenant_id": tenant_id})
                 except Exception:
                     logger.debug("trace.completed emission failed (non-fatal)")
 

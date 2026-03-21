@@ -89,17 +89,6 @@ async def api_request_telemetry(request: Request, call_next):
         tenant_id = "unknown"
 
     try:
-        from .agentcore.observability import record_metric
-        record_metric("eagle.api_duration_ms", float(duration_ms), {
-            "method": request.method,
-            "path": path,
-            "status_code": str(response.status_code),
-            "tenant_id": tenant_id,
-        })
-    except Exception:
-        pass
-
-    try:
         from .routes._deps import log_api_request
         log_api_request(request.method, path, response.status_code, duration_ms, tenant_id)
     except Exception:
