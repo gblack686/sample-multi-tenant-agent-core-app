@@ -113,7 +113,7 @@ _parser.add_argument(
     "--auth-password", default=None,
     help="Login password for video recording (or set EAGLE_TEST_PASSWORD env var).",
 )
-_args = _parser.parse_args()
+_args, _ = _parser.parse_known_args()
 
 # Global model ID -- every test reads from here
 MODEL_ID: str = _args.model
