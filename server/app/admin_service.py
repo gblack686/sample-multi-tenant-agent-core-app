@@ -62,7 +62,7 @@ def record_request_cost(
     session_id: str,
     input_tokens: int,
     output_tokens: int,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = "claude-haiku-4-5-20251001",
     tools_used: Optional[List[str]] = None,
     response_time_ms: int = 0
 ):

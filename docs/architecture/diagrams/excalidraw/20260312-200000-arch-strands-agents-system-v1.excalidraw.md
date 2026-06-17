@@ -31,7 +31,7 @@ SUPERVISOR AGENT ^lbl-supervisor-title
 
 BedrockModel (boto3-native Bedrock, NOT Anthropic SDK) ^lbl-bedrock-model
 
-Model: us.anthropic.claude-sonnet-4-6 (NCI 695681773636)
+Model: us.anthropic.claude-sonnet-4-6 (NCI 274487662938)
   Other accounts: us.anthropic.claude-haiku-4-5-20251001-v1:0
   Override: EAGLE_BEDROCK_MODEL_ID env var ^lbl-model-id
 
@@ -1083,12 +1083,12 @@ Cyan = SSE Streaming ^lbl-legend6
       "updated": 1,
       "link": null,
       "locked": false,
-      "text": "BedrockModel (boto3-native Bedrock, NOT Anthropic SDK)\n\nModel: us.anthropic.claude-sonnet-4-6 (NCI 695681773636)\n  Other: us.anthropic.claude-haiku-4-5-20251001-v1:0\n  Override: EAGLE_BEDROCK_MODEL_ID env var\n\nSystem Prompt \u2014 4-Layer Resolution:\n  1. Workspace override (workspace_config_store)\n  2. DynamoDB PLUGIN# canonical\n  3. Bundled eagle-plugin/ files\n  4. Tenant custom SKILL# items\n\nState: eagle_state.normalize()\n  phase | package_id | turn_count\n  required_documents | completed_documents\n  compliance_alerts | validation_results\n  specialist_summaries\n\ntrace_attributes \u2192 Langfuse session.id\nhook_provider \u2192 EagleSSEHookProvider\nExtended Thinking: budget_tokens=8000\n  (EAGLE_EXTENDED_THINKING env var)\n\n3 Fast-paths (bypass supervisor):\n  \u2022 Trivial greeting (regex) \u2192 canned response\n  \u2022 Baseline intake JSON \u2192 ack\n  \u2022 Doc-gen shortcut \u2192 _exec_create_document()",
+      "text": "BedrockModel (boto3-native Bedrock, NOT Anthropic SDK)\n\nModel: us.anthropic.claude-sonnet-4-6 (NCI 274487662938)\n  Other: us.anthropic.claude-haiku-4-5-20251001-v1:0\n  Override: EAGLE_BEDROCK_MODEL_ID env var\n\nSystem Prompt \u2014 4-Layer Resolution:\n  1. Workspace override (workspace_config_store)\n  2. DynamoDB PLUGIN# canonical\n  3. Bundled eagle-plugin/ files\n  4. Tenant custom SKILL# items\n\nState: eagle_state.normalize()\n  phase | package_id | turn_count\n  required_documents | completed_documents\n  compliance_alerts | validation_results\n  specialist_summaries\n\ntrace_attributes \u2192 Langfuse session.id\nhook_provider \u2192 EagleSSEHookProvider\nExtended Thinking: budget_tokens=8000\n  (EAGLE_EXTENDED_THINKING env var)\n\n3 Fast-paths (bypass supervisor):\n  \u2022 Trivial greeting (regex) \u2192 canned response\n  \u2022 Baseline intake JSON \u2192 ack\n  \u2022 Doc-gen shortcut \u2192 _exec_create_document()",
       "fontSize": 13,
       "fontFamily": 3,
       "textAlign": "left",
       "verticalAlign": "top",
-      "rawText": "BedrockModel (boto3-native Bedrock, NOT Anthropic SDK)\n\nModel: us.anthropic.claude-sonnet-4-6 (NCI 695681773636)\n  Other: us.anthropic.claude-haiku-4-5-20251001-v1:0\n  Override: EAGLE_BEDROCK_MODEL_ID env var\n\nSystem Prompt \u2014 4-Layer Resolution:\n  1. Workspace override (workspace_config_store)\n  2. DynamoDB PLUGIN# canonical\n  3. Bundled eagle-plugin/ files\n  4. Tenant custom SKILL# items\n\nState: eagle_state.normalize()\n  phase | package_id | turn_count\n  required_documents | completed_documents\n  compliance_alerts | validation_results\n  specialist_summaries\n\ntrace_attributes \u2192 Langfuse session.id\nhook_provider \u2192 EagleSSEHookProvider\nExtended Thinking: budget_tokens=8000\n  (EAGLE_EXTENDED_THINKING env var)\n\n3 Fast-paths (bypass supervisor):\n  \u2022 Trivial greeting (regex) \u2192 canned response\n  \u2022 Baseline intake JSON \u2192 ack\n  \u2022 Doc-gen shortcut \u2192 _exec_create_document()"
+      "rawText": "BedrockModel (boto3-native Bedrock, NOT Anthropic SDK)\n\nModel: us.anthropic.claude-sonnet-4-6 (NCI 274487662938)\n  Other: us.anthropic.claude-haiku-4-5-20251001-v1:0\n  Override: EAGLE_BEDROCK_MODEL_ID env var\n\nSystem Prompt \u2014 4-Layer Resolution:\n  1. Workspace override (workspace_config_store)\n  2. DynamoDB PLUGIN# canonical\n  3. Bundled eagle-plugin/ files\n  4. Tenant custom SKILL# items\n\nState: eagle_state.normalize()\n  phase | package_id | turn_count\n  required_documents | completed_documents\n  compliance_alerts | validation_results\n  specialist_summaries\n\ntrace_attributes \u2192 Langfuse session.id\nhook_provider \u2192 EagleSSEHookProvider\nExtended Thinking: budget_tokens=8000\n  (EAGLE_EXTENDED_THINKING env var)\n\n3 Fast-paths (bypass supervisor):\n  \u2022 Trivial greeting (regex) \u2192 canned response\n  \u2022 Baseline intake JSON \u2192 ack\n  \u2022 Doc-gen shortcut \u2192 _exec_create_document()"
     },
     {
       "id": "subagents-box",

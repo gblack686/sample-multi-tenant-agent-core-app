@@ -304,7 +304,7 @@ After playwright finishes, sync the video dir to S3:
 # Run via SSM SendCommand after Phase 5:
 commands = [
   f"VIDEO_DIR=/tmp/eagle-qa-videos/{QA_RUN_ID}",
-  f"S3_PATH=s3://eagle-eval-artifacts-695681773636-dev/qa-videos/{QA_RUN_ID}/",
+  f"S3_PATH=s3://eagle-eval-artifacts-274487662938-dev/qa-videos/{QA_RUN_ID}/",
   "aws s3 sync $VIDEO_DIR $S3_PATH --region us-east-1 2>&1 | tail -10",
   "echo S3_UPLOAD_DONE",
 ]
@@ -324,7 +324,7 @@ After the skill completes, upload the local video dir to S3:
 
 ```bash
 AWS_PROFILE=eagle aws s3 sync "./client/screenshots/qa-videos/$QA_RUN_ID" \
-  "s3://eagle-eval-artifacts-695681773636-dev/qa-videos/$QA_RUN_ID/" \
+  "s3://eagle-eval-artifacts-274487662938-dev/qa-videos/$QA_RUN_ID/" \
   --region us-east-1
 ```
 
@@ -368,7 +368,7 @@ SNS is used instead of SES direct-send because NIH mail gateways reject
 AWS SES relay for @nih.gov/@nci.nih.gov addresses. SNS sends from Amazon's
 own infrastructure and bypasses this restriction.
 
-**Topic ARN:** `arn:aws:sns:us-east-1:695681773636:eagle-eval-alerts-dev`
+**Topic ARN:** `arn:aws:sns:us-east-1:274487662938:eagle-eval-alerts-dev`
 **Subscribers:** `gregory.black@nih.gov`, `blackga@nci.nih.gov`
 (both confirmed 2026-03-05)
 
@@ -378,7 +378,7 @@ own infrastructure and bypasses this restriction.
 if [ -n "$VIDEO_S3_PATH" ]; then
   VIDEO_KEY=$(AWS_PROFILE=eagle aws s3 ls "$VIDEO_S3_PATH" --region us-east-1 \
     | grep -E '\.(webm|mp4)' | head -1 | awk '{print $NF}')
-  BUCKET="eagle-eval-artifacts-695681773636-dev"
+  BUCKET="eagle-eval-artifacts-274487662938-dev"
   FULL_KEY="qa-videos/$QA_RUN_ID/$VIDEO_KEY"
 
   PRESIGNED_URL=$(AWS_PROFILE=eagle aws s3 presign \
@@ -422,7 +422,7 @@ Link expires in 7 days.
 ```bash
 AWS_PROFILE=eagle aws sns publish \
   --region us-east-1 \
-  --topic-arn "arn:aws:sns:us-east-1:695681773636:eagle-eval-alerts-dev" \
+  --topic-arn "arn:aws:sns:us-east-1:274487662938:eagle-eval-alerts-dev" \
   --subject "$SUBJECT" \
   --message "$MESSAGE"
 ```
@@ -444,8 +444,8 @@ On failure, print the full report to stdout so results are not lost.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| SNS_TOPIC_ARN | `arn:aws:sns:us-east-1:695681773636:eagle-eval-alerts-dev` | SNS topic for QA reports |
-| VIDEO_BUCKET | `eagle-eval-artifacts-695681773636-dev` | S3 bucket for video upload |
+| SNS_TOPIC_ARN | `arn:aws:sns:us-east-1:274487662938:eagle-eval-alerts-dev` | SNS topic for QA reports |
+| VIDEO_BUCKET | `eagle-eval-artifacts-274487662938-dev` | S3 bucket for video upload |
 | VIDEO_PREFIX | `qa-videos/` | S3 key prefix |
 | PRESIGN_EXPIRY | `604800` | Presigned URL TTL in seconds (7 days) |
 | QA_BRANCH_PREFIX | `qa/` | Git branch prefix for snapshots |

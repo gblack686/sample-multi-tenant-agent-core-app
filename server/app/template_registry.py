@@ -16,7 +16,7 @@ from typing import Dict, List, Optional
 logger = logging.getLogger("eagle.template_registry")
 
 # ── S3 Location ───────────────────────────────────────────────────────
-TEMPLATE_BUCKET = os.getenv("TEMPLATE_BUCKET", os.getenv("S3_BUCKET", "eagle-documents-695681773636-dev"))
+TEMPLATE_BUCKET = os.getenv("TEMPLATE_BUCKET", os.getenv("S3_BUCKET", "eagle-documents-274487662938-dev"))
 TEMPLATE_PREFIX = os.getenv(
     "TEMPLATE_PREFIX",
     "eagle-knowledge-base/approved/supervisor-core/essential-templates",

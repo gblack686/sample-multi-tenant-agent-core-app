@@ -19,7 +19,7 @@ from botocore.exceptions import ClientError
 
 # Configuration
 SOURCE_BUCKET = "rh-eagle-files"
-DEST_BUCKET = "eagle-documents-695681773636-dev"
+DEST_BUCKET = "eagle-documents-274487662938-dev"
 DEST_PREFIX = "eagle-knowledge-base/approved/"
 
 # Rate limiting to avoid Lambda throttling

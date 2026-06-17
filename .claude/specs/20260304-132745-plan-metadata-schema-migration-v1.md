@@ -19,7 +19,7 @@ Migrate the 195 knowledge base documents from `rh-eagle-files` S3 bucket to `eag
 | Component | Status | Location |
 |-----------|--------|----------|
 | Knowledge base documents | 195 files | `s3://rh-eagle-files/` |
-| Document bucket (CDK) | Empty | `s3://eagle-documents-695681773636-dev/` |
+| Document bucket (CDK) | Empty | `s3://eagle-documents-274487662938-dev/` |
 | Metadata table | Empty (0 items) | `eagle-document-metadata-dev` (DynamoDB) |
 | Lambda extractor | Partial schema | `infrastructure/cdk-eagle/lambda/metadata-extraction/` |
 | Full schema spec | Documented | `/Users/hoquemi/Downloads/metadata-schema.md` |
@@ -162,7 +162,7 @@ import boto3
 import time
 
 SOURCE_BUCKET = "rh-eagle-files"
-DEST_BUCKET = "eagle-documents-695681773636-dev"
+DEST_BUCKET = "eagle-documents-274487662938-dev"
 DEST_PREFIX = "eagle-knowledge-base/approved/"
 
 s3 = boto3.client("s3")
@@ -208,7 +208,7 @@ For documents already in S3 (pre-Lambda), create a backfill trigger:
 import boto3
 import json
 
-BUCKET = "eagle-documents-695681773636-dev"
+BUCKET = "eagle-documents-274487662938-dev"
 PREFIX = "eagle-knowledge-base/approved/"
 LAMBDA_NAME = "eagle-metadata-extractor-dev"
 
@@ -355,7 +355,7 @@ Add a tool to fetch full document content:
 def _exec_knowledge_fetch(params: dict, tenant_id: str, session_id: str = None) -> dict:
     """Fetch full document content from S3 given a document_id or s3_key."""
     s3 = boto3.client("s3")
-    bucket = os.environ.get("DOCUMENT_BUCKET", "eagle-documents-695681773636-dev")
+    bucket = os.environ.get("DOCUMENT_BUCKET", "eagle-documents-274487662938-dev")
     key = params.get("s3_key") or params.get("document_id")
 
     if not key:
@@ -473,7 +473,7 @@ cd infrastructure/cdk-eagle/lambda/metadata-extraction
 python -c "from models import DocumentMetadata; print(DocumentMetadata.__dataclass_fields__.keys())"
 
 # Phase 2: Migration
-aws s3 ls s3://eagle-documents-695681773636-dev/eagle-knowledge-base/approved/ --recursive | wc -l
+aws s3 ls s3://eagle-documents-274487662938-dev/eagle-knowledge-base/approved/ --recursive | wc -l
 # Expected: 195
 
 # Phase 3: DynamoDB

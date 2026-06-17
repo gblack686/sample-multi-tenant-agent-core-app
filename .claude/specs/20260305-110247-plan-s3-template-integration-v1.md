@@ -14,7 +14,7 @@
 The EAGLE `create_document` tool currently generates acquisition documents using **hardcoded markdown templates** embedded in Python functions (`_generate_sow()`, `_generate_igce()`, etc.). Meanwhile, **37 official NCI/HHS DOCX/XLSX templates** sit unused in S3 at:
 
 ```
-s3://eagle-documents-695681773636-dev/eagle-knowledge-base/approved/supervisor-core/essential-templates/
+s3://eagle-documents-274487662938-dev/eagle-knowledge-base/approved/supervisor-core/essential-templates/
 ```
 
 **Issues with current approach:**
@@ -252,7 +252,7 @@ from typing import Dict, List, Optional
 # ══════════════════════════════════════════════════════════════════════════════
 
 # S3 bucket containing templates (same as document storage bucket)
-TEMPLATE_BUCKET = os.getenv("S3_BUCKET", "eagle-documents-695681773636-dev")
+TEMPLATE_BUCKET = os.getenv("S3_BUCKET", "eagle-documents-274487662938-dev")
 
 # S3 prefix for essential templates within the knowledge base
 TEMPLATE_PREFIX = "eagle-knowledge-base/approved/supervisor-core/essential-templates/"
@@ -660,7 +660,7 @@ class TemplateService:
         """
         self.tenant_id = tenant_id
         self.user_id = user_id
-        self.bucket = os.getenv("S3_BUCKET", "eagle-documents-695681773636-dev")
+        self.bucket = os.getenv("S3_BUCKET", "eagle-documents-274487662938-dev")
 
     def generate_document(
         self,
@@ -1192,7 +1192,7 @@ def _exec_create_document(params: dict, tenant_id: str, session_id: str = None) 
 
     # Build S3 key for user's document workspace
     s3_key = f"eagle/{tenant_id}/{user_id}/documents/{doc_type}_{timestamp}.{ext}"
-    bucket = os.getenv("S3_BUCKET", "eagle-documents-695681773636-dev")
+    bucket = os.getenv("S3_BUCKET", "eagle-documents-274487662938-dev")
 
     # Save to S3
     try:
@@ -1425,11 +1425,11 @@ curl -X POST http://localhost:8000/api/chat \
   }'
 
 # 8. Verify DOCX saved to S3
-aws s3 ls s3://eagle-documents-695681773636-dev/eagle/test-tenant/test-user/documents/ \
+aws s3 ls s3://eagle-documents-274487662938-dev/eagle/test-tenant/test-user/documents/ \
   | grep -E "\.docx$"
 
 # 9. Download and inspect generated DOCX
-aws s3 cp s3://eagle-documents-695681773636-dev/eagle/test-tenant/test-user/documents/sow_*.docx ./test-output.docx
+aws s3 cp s3://eagle-documents-274487662938-dev/eagle/test-tenant/test-user/documents/sow_*.docx ./test-output.docx
 open test-output.docx  # macOS
 ```
 

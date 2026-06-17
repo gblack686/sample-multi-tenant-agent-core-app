@@ -409,7 +409,7 @@ just dev-down
 
 - [ ] **AWS CLI** with SSO profile `eagle` configured
 - [ ] SSM Session Manager plugin installed: `aws ssm install-plugin`
-- [ ] EC2 runner `i-0390c06d166d18926` in account `695681773636`
+- [ ] EC2 runner `i-0390c06d166d18926` in account `274487662938`
 
 ### B1 — Open SSM Session
 
@@ -436,10 +436,10 @@ git pull origin dev/greg   # or main for production
 > ```bash
 > # On Windows: create and upload bundle
 > git bundle create /tmp/bundle.bundle dev/greg
-> aws s3 cp /tmp/bundle.bundle s3://eagle-eval-artifacts-695681773636-dev/deploy/
+> aws s3 cp /tmp/bundle.bundle s3://eagle-eval-artifacts-274487662938-dev/deploy/
 >
 > # On EC2: download and apply
-> aws s3 cp s3://eagle-eval-artifacts-695681773636-dev/deploy/bundle.bundle /tmp/
+> aws s3 cp s3://eagle-eval-artifacts-274487662938-dev/deploy/bundle.bundle /tmp/
 > git -C /home/eagle/eagle pull /tmp/bundle.bundle dev/greg
 > ```
 
@@ -650,7 +650,7 @@ The GitHub Actions workflow (`.github/workflows/deploy.yml`) runs on push to `ma
 Authentication uses **GitHub OIDC federation** — no static IAM keys stored in secrets.
 
 Required secrets:
-- `DEPLOY_ROLE_ARN` — IAM role ARN from `EagleCiCdStack` (e.g. `arn:aws:iam::695681773636:role/eagle-github-actions-dev`)
+- `DEPLOY_ROLE_ARN` — IAM role ARN from `EagleCiCdStack` (e.g. `arn:aws:iam::274487662938:role/eagle-github-actions-dev`)
 
 ```bash
 # Enable the workflow (if disabled)

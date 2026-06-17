@@ -349,7 +349,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--bucket",
-        default=os.getenv("S3_BUCKET", "eagle-documents-695681773636-dev"),
+        default=os.getenv("S3_BUCKET", "eagle-documents-274487662938-dev"),
         help="S3 bucket containing legacy and canonical docs",
     )
     parser.add_argument(

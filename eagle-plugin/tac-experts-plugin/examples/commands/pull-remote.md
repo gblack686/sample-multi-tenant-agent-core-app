@@ -92,7 +92,7 @@ git rm --cached -r client/playwright-report/ client/test-results/ 2>/dev/null ||
 
 ```bash
 # Account number
-git diff --cached | grep -n "695681773636"
+git diff --cached | grep -n "274487662938"
 
 # VPC / subnet IDs
 git diff --cached | grep -En "vpc-09def43fcabfa4df6|subnet-0[a-f0-9]+"
@@ -170,7 +170,7 @@ Upstream-owned files (\`server/app/*_store.py\`, \`main.py\`, frontend features)
 
 ## Review checklist
 
-- [ ] AWS account \`695681773636\` unchanged in infra
+- [ ] AWS account \`274487662938\` unchanged in infra
 - [ ] CDK \`environments.ts\` / \`eagle.ts\` unchanged
 - [ ] \`power-user-\` IAM prefix unchanged
 - [ ] Cognito pool/client IDs unchanged
@@ -190,7 +190,7 @@ Return the PR URL.
 
 | Key | NCI Value | Risk if overwritten |
 |-----|-----------|---------------------|
-| AWS Account | `695681773636` | All resource ARNs break |
+| AWS Account | `274487662938` | All resource ARNs break |
 | VPC | `vpc-09def43fcabfa4df6` | ECS, ALB lose network |
 | PrivateSubnet-01 | `subnet-0acfc5795a31620c4` | Fargate tasks unplaceable |
 | PrivateSubnet-02 | `subnet-06c0f502dc9c178ae` | Fargate tasks unplaceable |
@@ -199,7 +199,7 @@ Return the PR URL.
 | IAM prefix | `power-user-` | CDK deploy role not found |
 | Cognito pool | `us-east-1_GqZzjtSu9` | Auth completely breaks |
 | Cognito client | `4cv12gt73qi3nct25vl6mno72a` | Frontend login fails |
-| S3 bucket | `eagle-documents-695681773636-dev` | Document upload/download fails |
+| S3 bucket | `eagle-documents-274487662938-dev` | Document upload/download fails |
 
 ---
 

@@ -353,8 +353,6 @@ async def export_document_content(
 
     content = body.get("content", "")
     title = body.get("title", "Document")
-    doc_type = body.get("doc_type", "document")
-
     if not content:
         raise HTTPException(status_code=422, detail="content is required")
 

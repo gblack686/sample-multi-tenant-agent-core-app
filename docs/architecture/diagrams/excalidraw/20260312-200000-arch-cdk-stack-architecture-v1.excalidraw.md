@@ -11,7 +11,7 @@ tags: [excalidraw]
 
 EAGLE Platform — CDK Stack Architecture ^title-main
 
-6 Stacks  |  NCI Account 695681773636  |  us-east-1 ^title-sub
+6 Stacks  |  NCI Account 274487662938  |  us-east-1 ^title-sub
 
 All stacks: CREATE_COMPLETE  |  Generated: 2026-03-15 ^title-footer
 
@@ -43,7 +43,7 @@ EagleCoreStack ^core-title
 
 EagleStorageStack ^storage-title
 
-• S3: eagle-documents-695681773636-dev
+• S3: eagle-documents-274487662938-dev
   (versioned, CORS, SSE-S3, RETAIN)
 • DynamoDB: eagle-document-metadata-dev
   (3 GSIs: topic, agent, type, PITR, RETAIN)
@@ -68,7 +68,7 @@ EagleComputeStack ^compute-title
 
 EagleEvalStack ^eval-title
 
-• S3: eagle-eval-artifacts-695681773636-dev
+• S3: eagle-eval-artifacts-274487662938-dev
   (365d lifecycle)
 • CloudWatch Log Group: /eagle/test-runs
   (imported, auto-created by eval suite)
@@ -231,15 +231,15 @@ NCI IAM Constraints ^iam-title
       "updated": 1,
       "link": null,
       "locked": false,
-      "text": "6 Stacks  |  NCI Account 695681773636  |  us-east-1",
-      "rawText": "6 Stacks  |  NCI Account 695681773636  |  us-east-1",
+      "text": "6 Stacks  |  NCI Account 274487662938  |  us-east-1",
+      "rawText": "6 Stacks  |  NCI Account 274487662938  |  us-east-1",
       "fontSize": 22,
       "fontFamily": 1,
       "textAlign": "left",
       "verticalAlign": "top",
       "baseline": 20,
       "containerId": null,
-      "originalText": "6 Stacks  |  NCI Account 695681773636  |  us-east-1"
+      "originalText": "6 Stacks  |  NCI Account 274487662938  |  us-east-1"
     },
     {
       "id": "title-footer-text",
@@ -690,15 +690,15 @@ NCI IAM Constraints ^iam-title
       "updated": 1,
       "link": null,
       "locked": false,
-      "text": "• S3: eagle-documents-695681773636-dev\n  versioned, CORS, SSE-S3, RETAIN\n• DynamoDB: eagle-document-metadata-dev\n  3 GSIs: topic, agent, type\n  PITR enabled, RETAIN\n• Lambda: eagle-metadata-extractor-dev\n  S3 trigger → Bedrock → metadata DDB\n\n\n• Status: CREATE_COMPLETE",
-      "rawText": "• S3: eagle-documents-695681773636-dev\n  versioned, CORS, SSE-S3, RETAIN\n• DynamoDB: eagle-document-metadata-dev\n  3 GSIs: topic, agent, type\n  PITR enabled, RETAIN\n• Lambda: eagle-metadata-extractor-dev\n  S3 trigger → Bedrock → metadata DDB\n\n\n• Status: CREATE_COMPLETE",
+      "text": "• S3: eagle-documents-274487662938-dev\n  versioned, CORS, SSE-S3, RETAIN\n• DynamoDB: eagle-document-metadata-dev\n  3 GSIs: topic, agent, type\n  PITR enabled, RETAIN\n• Lambda: eagle-metadata-extractor-dev\n  S3 trigger → Bedrock → metadata DDB\n\n\n• Status: CREATE_COMPLETE",
+      "rawText": "• S3: eagle-documents-274487662938-dev\n  versioned, CORS, SSE-S3, RETAIN\n• DynamoDB: eagle-document-metadata-dev\n  3 GSIs: topic, agent, type\n  PITR enabled, RETAIN\n• Lambda: eagle-metadata-extractor-dev\n  S3 trigger → Bedrock → metadata DDB\n\n\n• Status: CREATE_COMPLETE",
       "fontSize": 16,
       "fontFamily": 1,
       "textAlign": "left",
       "verticalAlign": "top",
       "baseline": 14,
       "containerId": null,
-      "originalText": "• S3: eagle-documents-695681773636-dev\n  versioned, CORS, SSE-S3, RETAIN\n• DynamoDB: eagle-document-metadata-dev\n  3 GSIs: topic, agent, type\n  PITR enabled, RETAIN\n• Lambda: eagle-metadata-extractor-dev\n  S3 trigger → Bedrock → metadata DDB\n\n\n• Status: CREATE_COMPLETE"
+      "originalText": "• S3: eagle-documents-274487662938-dev\n  versioned, CORS, SSE-S3, RETAIN\n• DynamoDB: eagle-document-metadata-dev\n  3 GSIs: topic, agent, type\n  PITR enabled, RETAIN\n• Lambda: eagle-metadata-extractor-dev\n  S3 trigger → Bedrock → metadata DDB\n\n\n• Status: CREATE_COMPLETE"
     },
     {
       "id": "compute-box",
@@ -993,15 +993,15 @@ NCI IAM Constraints ^iam-title
       "updated": 1,
       "link": null,
       "locked": false,
-      "text": "• S3: eagle-eval-artifacts-695681773636-dev\n  365-day lifecycle\n• CloudWatch Log Group: /eagle/test-runs\n  imported, auto-created by eval suite\n• CloudWatch Dashboard:\n  EAGLE eval metrics\n• SNS Topic: eagle-eval-alerts-dev\n  custom metrics per test\n\n\n• Status: CREATE_COMPLETE",
-      "rawText": "• S3: eagle-eval-artifacts-695681773636-dev\n  365-day lifecycle\n• CloudWatch Log Group: /eagle/test-runs\n  imported, auto-created by eval suite\n• CloudWatch Dashboard:\n  EAGLE eval metrics\n• SNS Topic: eagle-eval-alerts-dev\n  custom metrics per test\n\n\n• Status: CREATE_COMPLETE",
+      "text": "• S3: eagle-eval-artifacts-274487662938-dev\n  365-day lifecycle\n• CloudWatch Log Group: /eagle/test-runs\n  imported, auto-created by eval suite\n• CloudWatch Dashboard:\n  EAGLE eval metrics\n• SNS Topic: eagle-eval-alerts-dev\n  custom metrics per test\n\n\n• Status: CREATE_COMPLETE",
+      "rawText": "• S3: eagle-eval-artifacts-274487662938-dev\n  365-day lifecycle\n• CloudWatch Log Group: /eagle/test-runs\n  imported, auto-created by eval suite\n• CloudWatch Dashboard:\n  EAGLE eval metrics\n• SNS Topic: eagle-eval-alerts-dev\n  custom metrics per test\n\n\n• Status: CREATE_COMPLETE",
       "fontSize": 16,
       "fontFamily": 1,
       "textAlign": "left",
       "verticalAlign": "top",
       "baseline": 14,
       "containerId": null,
-      "originalText": "• S3: eagle-eval-artifacts-695681773636-dev\n  365-day lifecycle\n• CloudWatch Log Group: /eagle/test-runs\n  imported, auto-created by eval suite\n• CloudWatch Dashboard:\n  EAGLE eval metrics\n• SNS Topic: eagle-eval-alerts-dev\n  custom metrics per test\n\n\n• Status: CREATE_COMPLETE"
+      "originalText": "• S3: eagle-eval-artifacts-274487662938-dev\n  365-day lifecycle\n• CloudWatch Log Group: /eagle/test-runs\n  imported, auto-created by eval suite\n• CloudWatch Dashboard:\n  EAGLE eval metrics\n• SNS Topic: eagle-eval-alerts-dev\n  custom metrics per test\n\n\n• Status: CREATE_COMPLETE"
     },
     {
       "id": "backup-box",
@@ -1957,15 +1957,15 @@ NCI IAM Constraints ^iam-title
       "updated": 1,
       "link": null,
       "locked": false,
-      "text": "• No iam:CreateOpenIDConnectProvider — SCP blocked, imported existing OIDC provider instead\n• No ec2:CreateVpc — NCI provisions VPCs via Service Catalog; must import\n• All IAM roles require PermissionBoundary_PowerUser attached\n• CDK bootstrap roles prefixed: power-user-cdk-*\n  - power-user-cdk-deploy-695681773636   (deploy role)\n  - power-user-cdk-cfn-exec-695681773636 (CFN exec, AdministratorAccess)\n  - power-user-cdk-file-pub-695681773636 (S3 staging)\n  - power-user-cdk-img-pub-695681773636  (ECR publishing)\n  - power-user-cdk-lookup-695681773636   (ReadOnlyAccess)\n• DefaultStackSynthesizer configured with all custom role ARNs",
-      "rawText": "• No iam:CreateOpenIDConnectProvider — SCP blocked, imported existing OIDC provider instead\n• No ec2:CreateVpc — NCI provisions VPCs via Service Catalog; must import\n• All IAM roles require PermissionBoundary_PowerUser attached\n• CDK bootstrap roles prefixed: power-user-cdk-*\n  - power-user-cdk-deploy-695681773636   (deploy role)\n  - power-user-cdk-cfn-exec-695681773636 (CFN exec, AdministratorAccess)\n  - power-user-cdk-file-pub-695681773636 (S3 staging)\n  - power-user-cdk-img-pub-695681773636  (ECR publishing)\n  - power-user-cdk-lookup-695681773636   (ReadOnlyAccess)\n• DefaultStackSynthesizer configured with all custom role ARNs",
+      "text": "• No iam:CreateOpenIDConnectProvider — SCP blocked, imported existing OIDC provider instead\n• No ec2:CreateVpc — NCI provisions VPCs via Service Catalog; must import\n• All IAM roles require PermissionBoundary_PowerUser attached\n• CDK bootstrap roles prefixed: power-user-cdk-*\n  - power-user-cdk-deploy-274487662938   (deploy role)\n  - power-user-cdk-cfn-exec-274487662938 (CFN exec, AdministratorAccess)\n  - power-user-cdk-file-pub-274487662938 (S3 staging)\n  - power-user-cdk-img-pub-274487662938  (ECR publishing)\n  - power-user-cdk-lookup-274487662938   (ReadOnlyAccess)\n• DefaultStackSynthesizer configured with all custom role ARNs",
+      "rawText": "• No iam:CreateOpenIDConnectProvider — SCP blocked, imported existing OIDC provider instead\n• No ec2:CreateVpc — NCI provisions VPCs via Service Catalog; must import\n• All IAM roles require PermissionBoundary_PowerUser attached\n• CDK bootstrap roles prefixed: power-user-cdk-*\n  - power-user-cdk-deploy-274487662938   (deploy role)\n  - power-user-cdk-cfn-exec-274487662938 (CFN exec, AdministratorAccess)\n  - power-user-cdk-file-pub-274487662938 (S3 staging)\n  - power-user-cdk-img-pub-274487662938  (ECR publishing)\n  - power-user-cdk-lookup-274487662938   (ReadOnlyAccess)\n• DefaultStackSynthesizer configured with all custom role ARNs",
       "fontSize": 16,
       "fontFamily": 1,
       "textAlign": "left",
       "verticalAlign": "top",
       "baseline": 14,
       "containerId": null,
-      "originalText": "• No iam:CreateOpenIDConnectProvider — SCP blocked, imported existing OIDC provider instead\n• No ec2:CreateVpc — NCI provisions VPCs via Service Catalog; must import\n• All IAM roles require PermissionBoundary_PowerUser attached\n• CDK bootstrap roles prefixed: power-user-cdk-*\n  - power-user-cdk-deploy-695681773636   (deploy role)\n  - power-user-cdk-cfn-exec-695681773636 (CFN exec, AdministratorAccess)\n  - power-user-cdk-file-pub-695681773636 (S3 staging)\n  - power-user-cdk-img-pub-695681773636  (ECR publishing)\n  - power-user-cdk-lookup-695681773636   (ReadOnlyAccess)\n• DefaultStackSynthesizer configured with all custom role ARNs"
+      "originalText": "• No iam:CreateOpenIDConnectProvider — SCP blocked, imported existing OIDC provider instead\n• No ec2:CreateVpc — NCI provisions VPCs via Service Catalog; must import\n• All IAM roles require PermissionBoundary_PowerUser attached\n• CDK bootstrap roles prefixed: power-user-cdk-*\n  - power-user-cdk-deploy-274487662938   (deploy role)\n  - power-user-cdk-cfn-exec-274487662938 (CFN exec, AdministratorAccess)\n  - power-user-cdk-file-pub-274487662938 (S3 staging)\n  - power-user-cdk-img-pub-274487662938  (ECR publishing)\n  - power-user-cdk-lookup-274487662938   (ReadOnlyAccess)\n• DefaultStackSynthesizer configured with all custom role ARNs"
     },
     {
       "id": "legend-box",

@@ -473,10 +473,10 @@ class ResultMessage:
 
 # -- Model Selection -------------------------------------------------
 # If EAGLE_BEDROCK_MODEL_ID is explicitly set, use it.
-# Otherwise, default to Sonnet 4.6 on the NCI account (695681773636)
-# and Haiku 4.5 on any other account (personal dev, CI, etc.).
+# Personal account 274487662938: USE_BEDROCK=false so Bedrock path is inactive.
+# Haiku is the default for any Bedrock calls (cost-optimised for personal dev).
 
-_NCI_ACCOUNT = "695681773636"
+_NCI_ACCOUNT = "unused-695681773636"  # NCI account — not active in personal setup
 _SONNET = "us.anthropic.claude-sonnet-4-6"
 _HAIKU = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 
@@ -2596,7 +2596,7 @@ def _make_generate_document_tool(
         else:
             # Non-package mode: save to user-scoped S3 path
             try:
-                bucket = os.getenv("S3_BUCKET", "eagle-documents-695681773636-dev")
+                bucket = os.getenv("S3_BUCKET", "eagle-documents-274487662938-dev")
                 timestamp = time.strftime("%Y%m%d_%H%M%S")
                 s3_key = f"eagle/{tenant_id}/{user_id}/documents/{doc_type}_{timestamp}.md"
                 s3 = boto3.client("s3")

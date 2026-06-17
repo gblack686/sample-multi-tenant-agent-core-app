@@ -30,7 +30,7 @@ Browser (/admin/matrix)
 
 ## S3 Document Layout
 
-Upload once to `eagle-documents-695681773636-dev`:
+Upload once to `eagle-documents-274487662938-dev`:
 
 ```
 reference/
@@ -53,35 +53,35 @@ reference/
 Upload command (run once):
 ```bash
 AWS_PROFILE=eagle aws s3 cp "docs/architecture/reference-documents/AP - Exhibit 01.A.pdf" \
-  s3://eagle-documents-695681773636-dev/reference/ap-exhibits/AP-Exhibit-01A.pdf
+  s3://eagle-documents-274487662938-dev/reference/ap-exhibits/AP-Exhibit-01A.pdf
 
 AWS_PROFILE=eagle aws s3 cp "docs/architecture/reference-documents/" \
-  s3://eagle-documents-695681773636-dev/reference/ap-exhibits/ \
+  s3://eagle-documents-274487662938-dev/reference/ap-exhibits/ \
   --recursive --exclude "*" --include "*.pdf"
 
 AWS_PROFILE=eagle aws s3 cp "data/kb/contract type selection.docx" \
-  s3://eagle-documents-695681773636-dev/reference/kb/contract-type-selection.docx
+  s3://eagle-documents-274487662938-dev/reference/kb/contract-type-selection.docx
 
 AWS_PROFILE=eagle aws s3 cp "data/kb/Threshhold decision tree.docx" \
-  s3://eagle-documents-695681773636-dev/reference/kb/threshold-decision-tree.docx
+  s3://eagle-documents-274487662938-dev/reference/kb/threshold-decision-tree.docx
 
 AWS_PROFILE=eagle aws s3 cp eagle-plugin/data/templates/ \
-  s3://eagle-documents-695681773636-dev/reference/templates/ --recursive
+  s3://eagle-documents-274487662938-dev/reference/templates/ --recursive
 ```
 
 ---
 
 ## IAM
 
-`eagle-app-role-dev` already has S3 access to `eagle-documents-695681773636-dev` (granted in EagleStorageStack). No CDK changes needed.
+`eagle-app-role-dev` already has S3 access to `eagle-documents-274487662938-dev` (granted in EagleStorageStack). No CDK changes needed.
 
 Verify:
 ```bash
 AWS_PROFILE=eagle aws iam simulate-principal-policy \
-  --policy-source-arn arn:aws:iam::695681773636:role/eagle-app-role-dev \
+  --policy-source-arn arn:aws:iam::274487662938:role/eagle-app-role-dev \
   --action-names s3:ListBucket s3:GetObject \
-  --resource-arns arn:aws:s3:::eagle-documents-695681773636-dev \
-    arn:aws:s3:::eagle-documents-695681773636-dev/reference/*
+  --resource-arns arn:aws:s3:::eagle-documents-274487662938-dev \
+    arn:aws:s3:::eagle-documents-274487662938-dev/reference/*
 ```
 
 ---
@@ -89,7 +89,7 @@ AWS_PROFILE=eagle aws iam simulate-principal-policy \
 ## Implementation Steps
 
 ### Step 1 — Upload reference docs to S3 (30 min)
-Run the upload commands above. Verify with `aws s3 ls s3://eagle-documents-695681773636-dev/reference/ --recursive`.
+Run the upload commands above. Verify with `aws s3 ls s3://eagle-documents-274487662938-dev/reference/ --recursive`.
 
 ### Step 2 — Backend: two new endpoints (1 hr)
 
@@ -218,7 +218,7 @@ function getDocLink(docName) {
 
 ```bash
 # 1. S3 upload
-AWS_PROFILE=eagle aws s3 ls s3://eagle-documents-695681773636-dev/reference/ --recursive
+AWS_PROFILE=eagle aws s3 ls s3://eagle-documents-274487662938-dev/reference/ --recursive
 
 # 2. Backend endpoint (local)
 curl -H "Authorization: Bearer $TOKEN" http://localhost:8000/api/admin/matrix/documents

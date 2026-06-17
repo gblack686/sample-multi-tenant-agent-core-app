@@ -41,7 +41,7 @@ EagleStorageStack ^label-storage
 Storage Layer ^label-storage-sub
 
 • S3 Bucket ^storage-r1
-  eagle-documents-695681773636-dev ^storage-r2
+  eagle-documents-274487662938-dev ^storage-r2
 • DynamoDB Table ^storage-r3
   eagle-document-metadata-dev ^storage-r4
 • Lambda Function ^storage-r5
@@ -62,7 +62,7 @@ Compute Layer ^label-compute-sub
 depends on ^dep-arrow-1-label
 depends on ^dep-arrow-2-label
 
-NCI Account: 695681773636  |  Region: us-east-1  |  All 5 stacks: CREATE_COMPLETE ^footer-note
+NCI Account: 274487662938  |  Region: us-east-1  |  All 5 stacks: CREATE_COMPLETE ^footer-note
 
 Stack Dependencies ^legend-title
 Independent stacks ^legend-ind
@@ -590,14 +590,14 @@ Depends on EagleStorageStack ^legend-dep2
       "updated": 1,
       "link": null,
       "locked": false,
-      "text": "• CloudWatch Dashboard\n• SNS Topic (alerts)\n• S3 Eval Artifacts Bucket\n  eagle-eval-artifacts-\n  695681773636-dev\n\n✓ UPDATE_COMPLETE",
+      "text": "• CloudWatch Dashboard\n• SNS Topic (alerts)\n• S3 Eval Artifacts Bucket\n  eagle-eval-artifacts-\n  274487662938-dev\n\n✓ UPDATE_COMPLETE",
       "fontSize": 17,
       "fontFamily": 1,
       "textAlign": "left",
       "verticalAlign": "top",
       "containerId": null,
-      "originalText": "• CloudWatch Dashboard\n• SNS Topic (alerts)\n• S3 Eval Artifacts Bucket\n  eagle-eval-artifacts-\n  695681773636-dev\n\n✓ UPDATE_COMPLETE",
-      "rawText": "• CloudWatch Dashboard\n• SNS Topic (alerts)\n• S3 Eval Artifacts Bucket\n  eagle-eval-artifacts-\n  695681773636-dev\n\n✓ UPDATE_COMPLETE",
+      "originalText": "• CloudWatch Dashboard\n• SNS Topic (alerts)\n• S3 Eval Artifacts Bucket\n  eagle-eval-artifacts-\n  274487662938-dev\n\n✓ UPDATE_COMPLETE",
+      "rawText": "• CloudWatch Dashboard\n• SNS Topic (alerts)\n• S3 Eval Artifacts Bucket\n  eagle-eval-artifacts-\n  274487662938-dev\n\n✓ UPDATE_COMPLETE",
       "lineHeight": 1.4
     },
     {
@@ -747,14 +747,14 @@ Depends on EagleStorageStack ^legend-dep2
       "updated": 1,
       "link": null,
       "locked": false,
-      "text": "• S3 Bucket\n  eagle-documents-695681773636-dev\n• DynamoDB Table\n  eagle-document-metadata-dev\n• Lambda Function\n  eagle-metadata-extractor-dev\n  (Bedrock metadata extraction)\n\n✓ CREATE_COMPLETE",
+      "text": "• S3 Bucket\n  eagle-documents-274487662938-dev\n• DynamoDB Table\n  eagle-document-metadata-dev\n• Lambda Function\n  eagle-metadata-extractor-dev\n  (Bedrock metadata extraction)\n\n✓ CREATE_COMPLETE",
       "fontSize": 17,
       "fontFamily": 1,
       "textAlign": "left",
       "verticalAlign": "top",
       "containerId": null,
-      "originalText": "• S3 Bucket\n  eagle-documents-695681773636-dev\n• DynamoDB Table\n  eagle-document-metadata-dev\n• Lambda Function\n  eagle-metadata-extractor-dev\n  (Bedrock metadata extraction)\n\n✓ CREATE_COMPLETE",
-      "rawText": "• S3 Bucket\n  eagle-documents-695681773636-dev\n• DynamoDB Table\n  eagle-document-metadata-dev\n• Lambda Function\n  eagle-metadata-extractor-dev\n  (Bedrock metadata extraction)\n\n✓ CREATE_COMPLETE",
+      "originalText": "• S3 Bucket\n  eagle-documents-274487662938-dev\n• DynamoDB Table\n  eagle-document-metadata-dev\n• Lambda Function\n  eagle-metadata-extractor-dev\n  (Bedrock metadata extraction)\n\n✓ CREATE_COMPLETE",
+      "rawText": "• S3 Bucket\n  eagle-documents-274487662938-dev\n• DynamoDB Table\n  eagle-document-metadata-dev\n• Lambda Function\n  eagle-metadata-extractor-dev\n  (Bedrock metadata extraction)\n\n✓ CREATE_COMPLETE",
       "lineHeight": 1.4
     },
     {
@@ -1592,14 +1592,14 @@ Depends on EagleStorageStack ^legend-dep2
       "updated": 1,
       "link": null,
       "locked": false,
-      "text": "NCI Account: 695681773636  |  Region: us-east-1  |  All 5 stacks: CREATE_COMPLETE  |  Generated: 2026-02-26",
+      "text": "NCI Account: 274487662938  |  Region: us-east-1  |  All 5 stacks: CREATE_COMPLETE  |  Generated: 2026-02-26",
       "fontSize": 16,
       "fontFamily": 1,
       "textAlign": "center",
       "verticalAlign": "top",
       "containerId": null,
-      "originalText": "NCI Account: 695681773636  |  Region: us-east-1  |  All 5 stacks: CREATE_COMPLETE  |  Generated: 2026-02-26",
-      "rawText": "NCI Account: 695681773636  |  Region: us-east-1  |  All 5 stacks: CREATE_COMPLETE  |  Generated: 2026-02-26",
+      "originalText": "NCI Account: 274487662938  |  Region: us-east-1  |  All 5 stacks: CREATE_COMPLETE  |  Generated: 2026-02-26",
+      "rawText": "NCI Account: 274487662938  |  Region: us-east-1  |  All 5 stacks: CREATE_COMPLETE  |  Generated: 2026-02-26",
       "lineHeight": 1.25
     }
   ],

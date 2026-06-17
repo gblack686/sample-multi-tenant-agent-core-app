@@ -24,15 +24,15 @@ Core AWS resources (S3, DynamoDB, Bedrock) are **manually provisioned**. Platfor
 | Account | ID | Role | Deploy from local? |
 |---------|----|------|--------------------|
 | **Personal (dev)** | `274487662938` | Greg's personal AWS account — EAGLE infrastructure actually deployed here (ECS, Cognito, VPC, ECR) | **Yes** — local CDK/boto3 credentials point here |
-| **Client (NCI replica)** | `695681773636` | Client environment being replicated — `DEV_CONFIG` in `environments.ts`, ECR URLs reference this ID | **No** — deploy only via GitHub Actions OIDC from CI/CD |
+| **Client (NCI replica)** | `274487662938` | Client environment being replicated — `DEV_CONFIG` in `environments.ts`, ECR URLs reference this ID | **No** — deploy only via GitHub Actions OIDC from CI/CD |
 
-> **Rule**: Never run `cdk deploy` or AWS CLI destructive operations targeting `695681773636` from a local machine. Local credentials are scoped to `274487662938`. The client account is accessed exclusively through the GitHub Actions pipeline.
+> **Rule**: Never run `cdk deploy` or AWS CLI destructive operations targeting `274487662938` from a local machine. Local credentials are scoped to `274487662938`. The client account is accessed exclusively through the GitHub Actions pipeline.
 
 ```
 Provisioning: Hybrid (NCI-provisioned VPC + CDK for compute/platform)
 Region: us-east-1
 Account (personal/dev): 274487662938  ← local CDK + boto3 target
-Account (client replica): 695681773636  ← environments.ts DEV_CONFIG, CI/CD only
+Account (client replica): 274487662938  ← environments.ts DEV_CONFIG, CI/CD only
 IAM: NCIAWSPowerUserAccess (restricted -- iam:CreateRole limited to power-user* prefix)
 CDK: infrastructure/cdk-eagle/ (TypeScript, 5 stacks: EagleCoreStack, EagleComputeStack, EagleCiCdStack, EagleStorageStack, EagleEvalStack)
 CDK: infrastructure/eval/ (TypeScript, standalone EvalObservabilityStack)
@@ -42,9 +42,9 @@ Docker: deployment/docker/Dockerfile.backend (python:3.11-slim, single-stage)
 Docker: deployment/docker/Dockerfile.frontend (node:20-alpine, 3-stage: deps->builder->runner)
 CDK lib: aws-cdk-lib ^2.196.0
 Synthesizer: DefaultStackSynthesizer with NCI-compliant power-user-cdk-* role names
-  power-user-cdk-deploy-695681773636, power-user-cdk-file-pub-695681773636,
-  power-user-cdk-img-pub-695681773636, power-user-cdk-cfn-exec-695681773636,
-  power-user-cdk-lookup-695681773636
+  power-user-cdk-deploy-274487662938, power-user-cdk-file-pub-274487662938,
+  power-user-cdk-img-pub-274487662938, power-user-cdk-cfn-exec-274487662938,
+  power-user-cdk-lookup-274487662938
   generateBootstrapVersionRule: false
 ```
 
@@ -107,8 +107,8 @@ Synthesizer: DefaultStackSynthesizer with NCI-compliant power-user-cdk-* role na
 | ECS Cluster | `eagle-dev` |
 | Frontend ALB | `EagleC-Front-XYyWWR29wzVZ-745394335.us-east-1.elb.amazonaws.com` |
 | Backend ALB (internal) | `internal-EagleC-Backe-6OVxEGWRMzba-362151769.us-east-1.elb.amazonaws.com` |
-| Backend ECR | `695681773636.dkr.ecr.us-east-1.amazonaws.com/eagle-backend-dev` |
-| Frontend ECR | `695681773636.dkr.ecr.us-east-1.amazonaws.com/eagle-frontend-dev` |
+| Backend ECR | `274487662938.dkr.ecr.us-east-1.amazonaws.com/eagle-backend-dev` |
+| Frontend ECR | `274487662938.dkr.ecr.us-east-1.amazonaws.com/eagle-frontend-dev` |
 
 ---
 
@@ -136,7 +136,7 @@ Key Structure:
 ### S3 Bucket: `eagle-documents-dev` (CDK-managed, EagleStorageStack)
 
 ```
-Bucket: eagle-documents-695681773636-dev
+Bucket: eagle-documents-274487662938-dev
 Region: us-east-1
 Encryption: SSE-S3
 Versioning: Yes
@@ -185,7 +185,7 @@ Item Schema (from models.py — stdlib dataclasses, no pydantic):
 ### S3 Bucket: `eagle-eval-artifacts` (CDK-managed)
 
 ```
-Bucket: eagle-eval-artifacts-695681773636-dev
+Bucket: eagle-eval-artifacts-274487662938-dev
 Region: us-east-1
 Encryption: SSE-S3
 Public Access: Blocked
@@ -292,7 +292,7 @@ EagleCoreStack:
   - Cognito App Client: eagle-app-client-dev (userPassword + SRP + adminUserPassword flows)
   - Token validity: access/id 1hr, refresh 30d
   - IAM Role: eagle-app-role-dev (assumed by ecs-tasks.amazonaws.com)
-    - S3: GetObject, ListBucket on eagle-documents-695681773636-dev and nci-documents (legacy)
+    - S3: GetObject, ListBucket on eagle-documents-274487662938-dev and nci-documents (legacy)
     - DynamoDB: GetItem, PutItem, UpdateItem, DeleteItem, Query, Scan, BatchWriteItem on eagle + /index/*
     - Bedrock: InvokeModel, InvokeModelWithResponseStream, InvokeAgent (anthropic.* + agents)
     - CW: CreateLogStream, PutLogEvents, GetLogEvents, DescribeLogStreams, FilterLogEvents
@@ -342,7 +342,7 @@ Synth:  cd infrastructure/cdk-eagle && npx cdk synth
 
 ```
 Resources:
-  - S3 Bucket: eagle-documents-695681773636-dev (versioned, SSE-S3, BLOCK_ALL, RETAIN)
+  - S3 Bucket: eagle-documents-274487662938-dev (versioned, SSE-S3, BLOCK_ALL, RETAIN)
     - Lifecycle: noncurrent versions → IA after 90d, expire after 365d
     - CORS: GET + PUT allowed from * (for presigned URL uploads)
     - S3 event notifications → Lambda on .txt, .md, .pdf, .doc, .docx uploads
@@ -375,7 +375,7 @@ infrastructure/eval/
   |-- package.json                   # aws-cdk-lib 2.196.0, aws-cdk 2.1016.1
 
 Resources:
-  - S3 Bucket: eagle-eval-artifacts-695681773636-dev (365-day lifecycle, SSE-S3, BLOCK_ALL, RETAIN)
+  - S3 Bucket: eagle-eval-artifacts-274487662938-dev (365-day lifecycle, SSE-S3, BLOCK_ALL, RETAIN)
   - CW Log Group: /eagle/test-runs (90-day retention, RETAIN)
   - SNS Topic: eagle-eval-alerts (display: "EAGLE Eval Alerts")
   - CW Alarm: EvalPassRate (< 80% -> SNS, TREAT_MISSING_DATA: NOT_BREACHING)
@@ -619,8 +619,8 @@ All store modules (server/app/*_store.py) share the  table:
       "Sid": "S3DocumentReadAccess",
       "Effect": "Allow",
       "Action": ["s3:GetObject", "s3:ListBucket"],
-      "Resource": ["arn:aws:s3:::eagle-documents-695681773636-dev",
-                   "arn:aws:s3:::eagle-documents-695681773636-dev/*"]
+      "Resource": ["arn:aws:s3:::eagle-documents-274487662938-dev",
+                   "arn:aws:s3:::eagle-documents-274487662938-dev/*"]
     },
     {
       "Sid": "DynamoDBAccess",

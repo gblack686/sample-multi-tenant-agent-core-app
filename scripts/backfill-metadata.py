@@ -19,7 +19,7 @@ import boto3
 from botocore.exceptions import ClientError
 
 # Configuration
-BUCKET = "eagle-documents-695681773636-dev"
+BUCKET = "eagle-documents-274487662938-dev"
 PREFIX = "eagle-knowledge-base/approved/"
 LAMBDA_NAME = "eagle-metadata-extractor-dev"
 

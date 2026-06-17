@@ -30,7 +30,7 @@ env:
   CLUSTER_NAME: eagle-dev
   BACKEND_SERVICE: eagle-backend-dev
   FRONTEND_SERVICE: eagle-frontend-dev
-  EAGLE_BEDROCK_MODEL_ID: us.anthropic.claude-sonnet-4-6
+  EAGLE_BEDROCK_MODEL_ID: us.anthropic.claude-haiku-4-5-20251001:0
 
 jobs:
   # ── Detect changed paths ────────────────────────────────────
@@ -335,7 +335,7 @@ jobs:
 
     - name: Sync EAGLE-DEV-ALB target group to new task IP
       run: |
-        TG_ARN="arn:aws:elasticloadbalancing:us-east-1:695681773636:targetgroup/EAGLE-DEV-FRONTEND-IP/0e76ba2b0ab49d0c"
+        TG_ARN="arn:aws:elasticloadbalancing:us-east-1:274487662938:targetgroup/EAGLE-DEV-FRONTEND-IP/0e76ba2b0ab49d0c"
 
         TASK_ARN=$(aws ecs list-tasks \
           --cluster ${{ env.CLUSTER_NAME }} \

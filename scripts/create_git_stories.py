@@ -72,7 +72,7 @@ new_stories = [
             "- Run ruff check on staged Python files (backend)\n"
             "- Run tsc --noEmit on staged TypeScript files (frontend)\n"
             "- Block commits that add secrets patterns (grep for AWS key prefixes, tokens)\n"
-            "- Warn if NCI account ID (695681773636) is staged in non-infra files\n\n"
+            "- Warn if NCI account ID (274487662938) is staged in non-infra files\n\n"
             "*Commit-msg hooks:*\n"
             "- Enforce conventional commit format: type(scope): description\n"
             "- Valid types: feat, fix, docs, chore, refactor, test, ci\n\n"

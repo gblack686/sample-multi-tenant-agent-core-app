@@ -30,7 +30,7 @@ from .stores.package_store import get_package, update_package
 logger = logging.getLogger("eagle.document_service")
 
 # Configuration
-S3_BUCKET = os.getenv("S3_BUCKET", "eagle-documents-695681773636-dev")
+S3_BUCKET = os.getenv("S3_BUCKET", "eagle-documents-274487662938-dev")
 AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
 TABLE_NAME = os.getenv("EAGLE_SESSIONS_TABLE", "eagle")
 

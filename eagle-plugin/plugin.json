@@ -39,7 +39,7 @@
     "multi-turn": true
   },
   "requirements": {
-    "model": "claude-sonnet-4-20250514",
+    "model": "claude-haiku-4-5-20251001",
     "aws_services": ["s3", "dynamodb"]
   }
 }

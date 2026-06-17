@@ -20,11 +20,11 @@ Developer Machine ^dev-title
 
 git bundle create /tmp/bundle.bundle dev/greg ^dev-line1
 
-aws s3 cp /tmp/bundle.bundle s3://eagle-eval-artifacts-695681773636-dev/deploy/ ^dev-line2
+aws s3 cp /tmp/bundle.bundle s3://eagle-eval-artifacts-274487662938-dev/deploy/ ^dev-line2
 
 just devbox-start i-0390c06d166d18926  (optional) ^dev-line3
 
-S3: eagle-eval-artifacts-695681773636-dev ^s3-title
+S3: eagle-eval-artifacts-274487662938-dev ^s3-title
 
 /deploy/bundle.bundle ^s3-line1
 
@@ -453,11 +453,11 @@ Phase 3: Results ^phase3-label
       "locked": false,
       "fontSize": 13,
       "fontFamily": 3,
-      "text": "aws s3 cp /tmp/bundle.bundle\n  s3://eagle-eval-artifacts-695681773636-dev/deploy/",
+      "text": "aws s3 cp /tmp/bundle.bundle\n  s3://eagle-eval-artifacts-274487662938-dev/deploy/",
       "textAlign": "left",
       "verticalAlign": "top",
       "containerId": null,
-      "rawText": "aws s3 cp /tmp/bundle.bundle\n  s3://eagle-eval-artifacts-695681773636-dev/deploy/"
+      "rawText": "aws s3 cp /tmp/bundle.bundle\n  s3://eagle-eval-artifacts-274487662938-dev/deploy/"
     },
     {
       "id": "dev-line3-el",
@@ -605,11 +605,11 @@ Phase 3: Results ^phase3-label
       "locked": false,
       "fontSize": 20,
       "fontFamily": 3,
-      "text": "S3: eagle-eval-artifacts-695681773636-dev",
+      "text": "S3: eagle-eval-artifacts-274487662938-dev",
       "textAlign": "center",
       "verticalAlign": "top",
       "containerId": null,
-      "rawText": "S3: eagle-eval-artifacts-695681773636-dev"
+      "rawText": "S3: eagle-eval-artifacts-274487662938-dev"
     },
     {
       "id": "s3-line1-el",

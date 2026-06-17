@@ -75,10 +75,10 @@ Discovery was run on 2026-02-25. All values confirmed:
 
 | Field | Value |
 |-------|-------|
-| ALB ARN | `arn:aws:elasticloadbalancing:us-east-1:695681773636:loadbalancer/app/EAGLE-DEV-ALB/07cf21fc12866daa` |
+| ALB ARN | `arn:aws:elasticloadbalancing:us-east-1:274487662938:loadbalancer/app/EAGLE-DEV-ALB/07cf21fc12866daa` |
 | DNS Name | `internal-EAGLE-DEV-ALB-1571243620.us-east-1.elb.amazonaws.com` |
 | Security Group | `sg-0f426290543115077` |
-| HTTPS:443 Listener ARN | `arn:aws:elasticloadbalancing:us-east-1:695681773636:listener/app/EAGLE-DEV-ALB/07cf21fc12866daa/96eadc16864e583a` |
+| HTTPS:443 Listener ARN | `arn:aws:elasticloadbalancing:us-east-1:274487662938:listener/app/EAGLE-DEV-ALB/07cf21fc12866daa/96eadc16864e583a` |
 | HTTP:80 Listener | Redirects → HTTPS 301 (already configured correctly) |
 | Existing TG | `EAGLE-DEV-TG` — `instance`-type, port 443, empty — **cannot be used for Fargate** |
 | Existing HTTPS rules | Only a default rule → `EAGLE-DEV-TG`. No custom priority rules — clean slate. |
@@ -104,8 +104,8 @@ albSecurityGroupId: string;
 albDnsName: string;
 
 // Add to DEV_CONFIG (values from Step 1 discovery):
-albArn: 'arn:aws:elasticloadbalancing:us-east-1:695681773636:loadbalancer/app/EAGLE-DEV-ALB/07cf21fc12866daa',
-albHttpsListenerArn: 'arn:aws:elasticloadbalancing:us-east-1:695681773636:listener/app/EAGLE-DEV-ALB/07cf21fc12866daa/96eadc16864e583a',
+albArn: 'arn:aws:elasticloadbalancing:us-east-1:274487662938:loadbalancer/app/EAGLE-DEV-ALB/07cf21fc12866daa',
+albHttpsListenerArn: 'arn:aws:elasticloadbalancing:us-east-1:274487662938:listener/app/EAGLE-DEV-ALB/07cf21fc12866daa/96eadc16864e583a',
 albSecurityGroupId: 'sg-0f426290543115077',
 albDnsName: 'internal-EAGLE-DEV-ALB-1571243620.us-east-1.elb.amazonaws.com',
 ```

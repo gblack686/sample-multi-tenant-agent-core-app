@@ -24,7 +24,7 @@ COGNITO_USER_POOL_ID=us-east-1_GqZzjtSu9
 COGNITO_CLIENT_ID=50r0sfnqbqq9t96v50knal0esa
 EAGLE_SESSIONS_TABLE=eagle
 USE_BEDROCK=true
-S3_BUCKET=eagle-documents-695681773636-dev
+S3_BUCKET=eagle-documents-274487662938-dev
 S3_PREFIX=eagle/
 JWT_SECRET=dev-local-secret
 DEV_MODE=true
@@ -39,15 +39,15 @@ echo "AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}" >> /root/eagle/.env
 echo "AWS_SESSION_TOKEN=${AWS_SESSION_TOKEN}" >> /root/eagle/.env
 
 echo "=== Pulling latest config from S3 ==="
-aws s3 cp s3://eagle-documents-695681773636-dev/scripts/global-setup.ts \
+aws s3 cp s3://eagle-documents-274487662938-dev/scripts/global-setup.ts \
   /root/eagle/client/tests/global-setup.ts --region us-east-1
-aws s3 cp s3://eagle-documents-695681773636-dev/scripts/playwright.config.ts \
+aws s3 cp s3://eagle-documents-274487662938-dev/scripts/playwright.config.ts \
   /root/eagle/client/playwright.config.ts --region us-east-1
-aws s3 cp s3://eagle-documents-695681773636-dev/scripts/chat.spec.ts \
+aws s3 cp s3://eagle-documents-274487662938-dev/scripts/chat.spec.ts \
   /root/eagle/client/tests/chat.spec.ts --region us-east-1
-aws s3 cp s3://eagle-documents-695681773636-dev/scripts/Dockerfile.backend \
+aws s3 cp s3://eagle-documents-274487662938-dev/scripts/Dockerfile.backend \
   /root/eagle/deployment/docker/Dockerfile.backend --region us-east-1
-aws s3 cp s3://eagle-documents-695681773636-dev/scripts/sdk_agentic_service.py \
+aws s3 cp s3://eagle-documents-274487662938-dev/scripts/sdk_agentic_service.py \
   /root/eagle/server/app/sdk_agentic_service.py --region us-east-1
 
 # Patch docker-compose to remove lines that break credential resolution in headless EC2 context.
@@ -77,7 +77,7 @@ python3 scripts/wait_for_backend.py
 
 # ── Run ID and paths ────────────────────────────────────────────────────────
 RUN_ID=$(date -u +%Y-%m-%dT%H-%M-%SZ)
-S3_BUCKET=eagle-documents-695681773636-dev
+S3_BUCKET=eagle-documents-274487662938-dev
 S3_RESULTS_PREFIX="smoke-results/${RUN_ID}"
 DYNAMO_TABLE=eagle
 PW_OUTPUT="/tmp/pw-${RUN_ID}.txt"

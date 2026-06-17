@@ -55,7 +55,7 @@ and refuses to create the PR. Cherry-pick `--no-merges` skips those back-merges 
 
 | Pattern | Risk |
 |---------|------|
-| `695681773636` | AWS account number — breaks all ARNs |
+| `274487662938` | AWS account number — breaks all ARNs |
 | `vpc-09def43fcabfa4df6` | NCI VPC ID — ECS/ALB lose network |
 | `subnet-0[a-f0-9]+` | Subnet IDs — Fargate placement fails |
 | `power-user-` | IAM role prefix — CDK deploy role not found |

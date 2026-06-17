@@ -16,7 +16,7 @@ Developer Workstation ^dev-box-title
 
 git bundle create /tmp/bundle.bundle main ^dev-step1
 
-aws s3 cp /tmp/bundle.bundle s3://eagle-eval-artifacts-695681773636-dev/deploy/ ^dev-step2
+aws s3 cp /tmp/bundle.bundle s3://eagle-eval-artifacts-274487662938-dev/deploy/ ^dev-step2
 
 just devbox-start <instance-id>   → start EC2 (~$0.04/hr saved when stopped) ^dev-step3
 
@@ -70,7 +70,7 @@ python -m pytest tests/ -v --ignore=tests/test_strands_eval.py ^s7-cmd
 
 Step 8 ^s8-label
 
-aws s3 cp eval_output.txt s3://eagle-eval-artifacts-695681773636-dev/deploy/ ^s8-cmd
+aws s3 cp eval_output.txt s3://eagle-eval-artifacts-274487662938-dev/deploy/ ^s8-cmd
 
 Step 9 ^s9-label
 
@@ -78,7 +78,7 @@ CloudWatch metrics auto-emitted (test_result + run_summary → /eagle/test-runs)
 
 S3 Artifacts ^s3-box-title
 
-eagle-eval-artifacts-695681773636-dev ^s3-bucket
+eagle-eval-artifacts-274487662938-dev ^s3-bucket
 
 /deploy/bundle.bundle ^s3-art1
 
@@ -355,12 +355,12 @@ Red = Critical Warning ^leg-red
       "updated": 1,
       "link": null,
       "locked": false,
-      "text": "aws s3 cp /tmp/bundle.bundle s3://eagle-eval-artifacts-695681773636-dev/deploy/",
+      "text": "aws s3 cp /tmp/bundle.bundle s3://eagle-eval-artifacts-274487662938-dev/deploy/",
       "fontSize": 14,
       "fontFamily": 3,
       "textAlign": "left",
       "verticalAlign": "top",
-      "rawText": "aws s3 cp /tmp/bundle.bundle s3://eagle-eval-artifacts-695681773636-dev/deploy/"
+      "rawText": "aws s3 cp /tmp/bundle.bundle s3://eagle-eval-artifacts-274487662938-dev/deploy/"
     },
     {
       "id": "dev-step3-el",
@@ -655,12 +655,12 @@ Red = Critical Warning ^leg-red
       "updated": 1,
       "link": null,
       "locked": false,
-      "text": "eagle-eval-artifacts-695681773636-dev",
+      "text": "eagle-eval-artifacts-274487662938-dev",
       "fontSize": 15,
       "fontFamily": 3,
       "textAlign": "left",
       "verticalAlign": "top",
-      "rawText": "eagle-eval-artifacts-695681773636-dev"
+      "rawText": "eagle-eval-artifacts-274487662938-dev"
     },
     {
       "id": "s3-art1-el",
@@ -1378,12 +1378,12 @@ Red = Critical Warning ^leg-red
       "updated": 1,
       "link": null,
       "locked": false,
-      "text": "8.  aws s3 cp eval_output.txt s3://eagle-eval-artifacts-695681773636-dev/deploy/",
+      "text": "8.  aws s3 cp eval_output.txt s3://eagle-eval-artifacts-274487662938-dev/deploy/",
       "fontSize": 13,
       "fontFamily": 3,
       "textAlign": "left",
       "verticalAlign": "top",
-      "rawText": "8.  aws s3 cp eval_output.txt s3://eagle-eval-artifacts-695681773636-dev/deploy/"
+      "rawText": "8.  aws s3 cp eval_output.txt s3://eagle-eval-artifacts-274487662938-dev/deploy/"
     },
     {
       "id": "step9-row",

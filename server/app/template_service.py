@@ -31,7 +31,7 @@ logger = logging.getLogger("eagle.template_service")
 # ── Configuration ─────────────────────────────────────────────────────
 CACHE_TTL_SECONDS = 60
 S3_TIMEOUT_SECONDS = 10
-DOCUMENTS_BUCKET = os.getenv("S3_BUCKET", "eagle-documents-695681773636-dev")
+DOCUMENTS_BUCKET = os.getenv("S3_BUCKET", "eagle-documents-274487662938-dev")
 
 # ── S3 Singleton ──────────────────────────────────────────────────────
 _s3_client = None

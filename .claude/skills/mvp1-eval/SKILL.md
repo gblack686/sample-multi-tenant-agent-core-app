@@ -262,4 +262,4 @@ Output the final report in this format:
 - If a tool had an error but the agent recovered (used fallback tools), note it as **recovered** not **failed**
 - Group traces by test name when possible (match session_id to test output)
 - If no Langfuse credentials are configured, skip Phase 4 with: "Langfuse not configured — set LANGFUSE_PUBLIC_KEY and LANGFUSE_SECRET_KEY in server/.env for trace reporting"
-- S3 console URLs use region `us-east-1` and bucket from `S3_BUCKET` env var or default `eagle-documents-695681773636-dev`
+- S3 console URLs use region `us-east-1` and bucket from `S3_BUCKET` env var or default `eagle-documents-274487662938-dev`

@@ -86,7 +86,7 @@ AWS_PROFILE=eagle aws bedrock put-model-invocation-logging-configuration \
   --logging-config '{
     "cloudWatchConfig": {
       "logGroupName": "/aws/bedrock/model-invocations",
-      "roleArn": "arn:aws:iam::695681773636:role/..."
+      "roleArn": "arn:aws:iam::274487662938:role/..."
     },
     "textDataDeliveryEnabled": true
   }'

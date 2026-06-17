@@ -43,7 +43,7 @@ If no argument given, run `status` first and ask which operation to perform.
 
 - GitHub: `https://github.com/CBIIT/sm_eagle`
 - CBIIT-managed production repo — may have stricter IAM/review requirements
-- Their account: **`695681773636`** — same AWS account as hub (NCI account)
+- Their account: **`274487662938`** — same AWS account as hub (NCI account)
 - VPC/subnets: identical to hub (`vpc-09def43fcabfa4df6`, same subnet IDs)
 - Only material differences: `githubOwner: 'CBIIT'`, `githubRepo: 'sm_eagle'` in `environments.ts`
 - **Pull ownership**: sm_eagle leads on compliance/policy features and CBIIT-specific integrations; hub owns NCI infra, `.claude/`, `eagle-plugin/`
@@ -139,7 +139,7 @@ Hub pushes its commits to upstream. They get app logic; their infra config is un
 6. Cherry-pick the filtered hub commits with `--no-commit`
 7. Run protected-pattern scan IN REVERSE — look for NCI values that shouldn't go to gblack686:
    ```bash
-   git diff --cached | grep -En "695681773636|vpc-09def43fcabfa4df6|subnet-0acfc5795a31620c4|\
+   git diff --cached | grep -En "274487662938|vpc-09def43fcabfa4df6|subnet-0acfc5795a31620c4|\
    subnet-06c0f502dc9c178ae|subnet-0b13e7a760e1606f3|subnet-0a1bbbd502dc187e0|\
    us-east-1_GqZzjtSu9|4cv12gt73qi3nct25vl6mno72a|power-user-cdk-"
    ```
@@ -204,7 +204,7 @@ Run after every cherry-pick, before every commit.
 ```bash
 # NCI values that must NOT be replaced by upstream values
 git diff --cached | grep -En \
-  "695681773636|vpc-09def43fcabfa4df6|subnet-0acfc5795a31620c4|subnet-06c0f502dc9c178ae|\
+  "274487662938|vpc-09def43fcabfa4df6|subnet-0acfc5795a31620c4|subnet-06c0f502dc9c178ae|\
 subnet-0b13e7a760e1606f3|subnet-0a1bbbd502dc187e0|us-east-1_GqZzjtSu9|4cv12gt73qi3nct25vl6mno72a|\
 power-user-"
 
@@ -218,7 +218,7 @@ git diff --cached --name-only | grep -E \
 
 ```bash
 git diff --cached | grep -En \
-  "695681773636|vpc-09def43fcabfa4df6|subnet-0acfc5795a31620c4|subnet-06c0f502dc9c178ae|\
+  "274487662938|vpc-09def43fcabfa4df6|subnet-0acfc5795a31620c4|subnet-06c0f502dc9c178ae|\
 power-user-cdk-|us-east-1_GqZzjtSu9|4cv12gt73qi3nct25vl6mno72a"
 ```
 
@@ -246,7 +246,7 @@ power-user-cdk-|us-east-1_GqZzjtSu9|4cv12gt73qi3nct25vl6mno72a"
 
 | Key | NCI Value |
 |-----|-----------|
-| AWS Account | `695681773636` |
+| AWS Account | `274487662938` |
 | VPC | `vpc-09def43fcabfa4df6` |
 | PrivateSubnet-01 | `subnet-0acfc5795a31620c4` |
 | PrivateSubnet-02 | `subnet-06c0f502dc9c178ae` |
@@ -255,7 +255,7 @@ power-user-cdk-|us-east-1_GqZzjtSu9|4cv12gt73qi3nct25vl6mno72a"
 | IAM prefix | `power-user-` |
 | Cognito pool | `us-east-1_GqZzjtSu9` |
 | Cognito client | `4cv12gt73qi3nct25vl6mno72a` |
-| S3 bucket | `eagle-documents-695681773636-dev` |
+| S3 bucket | `eagle-documents-274487662938-dev` |
 
 ## gblack686 Spoke Values (for reverse scan)
 
@@ -268,12 +268,12 @@ power-user-cdk-|us-east-1_GqZzjtSu9|4cv12gt73qi3nct25vl6mno72a"
 
 ## sm_eagle Spoke Values
 
-sm_eagle uses the **same NCI account** (`695681773636`) as hub. Outbound scan uses identical
+sm_eagle uses the **same NCI account** (`274487662938`) as hub. Outbound scan uses identical
 protected-pattern list as the inbound scan — no separate values to track.
 
 | Key | sm_eagle Value |
 |-----|----------------|
-| AWS Account | `695681773636` (same as hub) |
+| AWS Account | `274487662938` (same as hub) |
 | VPC | `vpc-09def43fcabfa4df6` (same as hub) |
 | Subnets | Identical to hub NCI subnets |
 | GitHub owner | `CBIIT` |

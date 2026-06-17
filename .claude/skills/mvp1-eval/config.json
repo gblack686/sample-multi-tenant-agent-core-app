@@ -26,9 +26,9 @@
 
   "eagle-multi-agent-orchestrator": {
     "aws_profile": "eagle",
-    "aws_account": "695681773636",
+    "aws_account": "274487662938",
     "aws_region": "us-east-1",
-    "s3_bucket": "eagle-documents-695681773636-dev",
+    "s3_bucket": "eagle-documents-274487662938-dev",
     "server_dir": "server",
     "env_file": "server/.env",
     "langfuse_host": "https://us.cloud.langfuse.com",
@@ -44,7 +44,7 @@
       "tests/test_strands_service_integration.py"
     ],
     "tier3_test": "tests/test_strands_eval.py",
-    "notes": "Upstream gblack686/blackga-nih instance — account 695681773636"
+    "notes": "Upstream gblack686/blackga-nih instance — account 274487662938"
   },
 
   "_template": {

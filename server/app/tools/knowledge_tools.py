@@ -21,7 +21,7 @@ logger = logging.getLogger("eagle.knowledge_tools")
 
 # Configuration
 METADATA_TABLE = os.environ.get("METADATA_TABLE", "eagle-document-metadata-dev")
-DOCUMENT_BUCKET = os.environ.get("DOCUMENT_BUCKET", "eagle-documents-695681773636-dev")
+DOCUMENT_BUCKET = os.environ.get("DOCUMENT_BUCKET", "eagle-documents-274487662938-dev")
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 
 # Lazy-loaded clients

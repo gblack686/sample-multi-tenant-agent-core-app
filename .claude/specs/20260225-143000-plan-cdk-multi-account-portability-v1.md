@@ -7,7 +7,7 @@
 
 ## Problem Statement
 
-The current CDK is deployed exclusively against the NCI account (`695681773636`) with
+The current CDK is deployed exclusively against the NCI account (`274487662938`) with
 four hard dependencies baked in:
 
 1. VPC ID `vpc-09def43fcabfa4df6` hard-coded in `core-stack.ts`
@@ -27,7 +27,7 @@ account by changing a single config block — with zero code changes to stack fi
 
 ```
 environments.ts
-  └─ NCI_DEV_CONFIG      (existing — 695681773636, NCI SCP rules, VPC imported)
+  └─ NCI_DEV_CONFIG      (existing — 274487662938, NCI SCP rules, VPC imported)
   └─ STANDARD_DEV_CONFIG (new account — standard bootstrap, VPC created by CDK)
   └─ STAGING_CONFIG      (inherits pattern)
   └─ PROD_CONFIG         (inherits pattern)
@@ -97,9 +97,9 @@ export const DEV_CONFIG: EagleConfig = {
   // ... existing fields unchanged ...
   vpcId: 'vpc-09def43fcabfa4df6',           // NCI: import existing
   cdkBootstrapQualifier: 'power-user-cdk',
-  cdkBootstrapRoleSuffix: '695681773636',
+  cdkBootstrapRoleSuffix: '274487662938',
   existingOidcProviderArn:
-    'arn:aws:iam::695681773636:oidc-provider/token.actions.githubusercontent.com',
+    'arn:aws:iam::274487662938:oidc-provider/token.actions.githubusercontent.com',
   albInternetFacing: false,
 };
 ```

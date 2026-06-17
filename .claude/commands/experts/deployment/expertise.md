@@ -24,15 +24,15 @@ Infrastructure is managed by **5 CDK stacks** in `infrastructure/cdk-eagle/` (Ty
 | Account | ID | Role | Deploy from local? |
 |---------|----|------|--------------------|
 | **Personal (dev)** | `274487662938` | Greg's personal AWS account — EAGLE infrastructure lives here (ECS, VPC, Cognito, ECR) | **Yes** — local CDK/AWS CLI credentials point here |
-| **Client (NCI replica)** | `695681773636` | Client environment being replicated — `DEV_CONFIG` in `environments.ts`, ECR image URIs reference this ID | **No** — deploy only via GitHub Actions OIDC from CI/CD pipeline |
+| **Client (NCI replica)** | `274487662938` | Client environment being replicated — `DEV_CONFIG` in `environments.ts`, ECR image URIs reference this ID | **No** — deploy only via GitHub Actions OIDC from CI/CD pipeline |
 
-> **Rule**: `cdk deploy`, `cdk destroy`, or any destructive AWS CLI command must NEVER target `695681773636` from a local machine. Local credentials are scoped to `274487662938`. All operations against the client account go through the GitHub Actions pipeline only.
+> **Rule**: `cdk deploy`, `cdk destroy`, or any destructive AWS CLI command must NEVER target `274487662938` from a local machine. Local credentials are scoped to `274487662938`. All operations against the client account go through the GitHub Actions pipeline only.
 
 ```
 Provisioning: CDK-managed (5 stacks) + manually-created imported resources
 Region: us-east-1
 Account (personal/dev): 274487662938  ← local CDK + boto3 target
-Account (client replica): 695681773636  ← environments.ts DEV_CONFIG, CI/CD only
+Account (client replica): 274487662938  ← environments.ts DEV_CONFIG, CI/CD only
 CDK: infrastructure/cdk-eagle/ (TypeScript)
   - EagleCiCdStack:    GitHub Actions OIDC + deploy role
   - EagleCoreStack:    VPC, Cognito, IAM app role, imports S3/DDB

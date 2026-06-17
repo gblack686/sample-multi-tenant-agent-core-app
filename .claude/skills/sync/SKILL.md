@@ -18,7 +18,7 @@ Cherry-picks app logic in both directions. Account-specific config never crosses
 ```
 gblack686/sample-multi-tenant-agent-core-app   (dev sandbox, account 274487662938)
               ↕  cherry-pick app logic only
-blackga-nih/eagle-multi-agent-orchestrator      ← HUB (account 695681773636)
+blackga-nih/eagle-multi-agent-orchestrator      ← HUB (account 274487662938)
               ↕  cherry-pick app logic only
 CBIIT/sm_eagle                                  (CBIIT production, account TBD)
 ```
@@ -71,18 +71,18 @@ Infra/config hits → HARD BLOCK.
 
 | Value | Detail |
 |-------|--------|
-| AWS Account | `695681773636` (NIH.NCI.CBIIT.EAGLE.NONPROD) |
+| AWS Account | `274487662938` (NIH.NCI.CBIIT.EAGLE.NONPROD) |
 | Region | `us-east-1` |
 | VPC | `vpc-09def43fcabfa4df6` (`10.209.140.192/26`) — NIH Network Automation managed |
 | Cognito User Pool | `us-east-1_ChGLHtmmp` |
 | Cognito Client | `4c2k2efviegphkr8bea99382jr` |
 | DynamoDB Table | `eagle` |
-| S3 Bucket | `eagle-documents-695681773636-dev` |
-| ECR Backend | `695681773636.dkr.ecr.us-east-1.amazonaws.com/eagle-backend-dev` |
-| ECR Frontend | `695681773636.dkr.ecr.us-east-1.amazonaws.com/eagle-frontend-dev` |
+| S3 Bucket | `eagle-documents-274487662938-dev` |
+| ECR Backend | `274487662938.dkr.ecr.us-east-1.amazonaws.com/eagle-backend-dev` |
+| ECR Frontend | `274487662938.dkr.ecr.us-east-1.amazonaws.com/eagle-frontend-dev` |
 | ECS Cluster | `eagle-dev` |
 
-**Protected patterns for sm_eagle:** `695681773636`, `vpc-09def43fcabfa4df6`, `us-east-1_ChGLHtmmp`, `4c2k2efviegphkr8bea99382jr`, `10.209.140`, `CBIIT`, `NCI-RITM`
+**Protected patterns for sm_eagle:** `274487662938`, `vpc-09def43fcabfa4df6`, `us-east-1_ChGLHtmmp`, `4c2k2efviegphkr8bea99382jr`, `10.209.140`, `CBIIT`, `NCI-RITM`
 
 **CBIIT's `claude-code-assistant.yml` workflow has been manually disabled** (no ANTHROPIC_API_KEY secret). Disable via API before pushing:
 ```bash
@@ -149,4 +149,4 @@ Move untracked large files (docx, images) to `/tmp` before switching branches to
 
 ### Protected scan: account-specific S3 bucket names
 
-Always grep outbound commits for the pattern `eagle-documents-{account_id}-dev` (e.g. `eagle-documents-695681773636-dev`). Sanitize to `eagle-documents-dev` before pushing to any spoke. This is a HARD BLOCK pattern.
+Always grep outbound commits for the pattern `eagle-documents-{account_id}-dev` (e.g. `eagle-documents-274487662938-dev`). Sanitize to `eagle-documents-dev` before pushing to any spoke. This is a HARD BLOCK pattern.

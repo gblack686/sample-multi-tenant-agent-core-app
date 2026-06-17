@@ -421,7 +421,7 @@ def _get_user_prefix(session_id: str | None = None) -> str:
 def _exec_s3_document_ops(params: dict, tenant_id: str, session_id: str = None) -> dict:
     """Real S3 operations scoped per-user."""
     operation = params.get("operation", "list")
-    bucket = params.get("bucket") or os.getenv("S3_BUCKET", "eagle-documents-695681773636-dev")
+    bucket = params.get("bucket") or os.getenv("S3_BUCKET", "eagle-documents-274487662938-dev")
     key = params.get("key", "")
     content = params.get("content", "")
     # Per-user prefix: eagle/{tenant}/{user}/
@@ -1134,7 +1134,7 @@ def _update_document_content(
         return {"error": "content is required for update"}
 
     user_id = _extract_user_id(session_id)
-    bucket = os.getenv("S3_BUCKET", "eagle-documents-695681773636-dev")
+    bucket = os.getenv("S3_BUCKET", "eagle-documents-274487662938-dev")
 
     # Security check
     if not doc_key.startswith(f"eagle/{tenant_id}/{user_id}/"):
@@ -1327,7 +1327,7 @@ def _exec_create_document(params: dict, tenant_id: str, session_id: str = None) 
 
     # Determine file extension and content to save
     ext = file_type if file_type in ("docx", "xlsx") else "md"
-    bucket = os.getenv("S3_BUCKET", "eagle-documents-695681773636-dev")
+    bucket = os.getenv("S3_BUCKET", "eagle-documents-274487662938-dev")
     content_to_store = (
         result.content if result and result.success and file_type in ("docx", "xlsx")
         else content
@@ -2210,7 +2210,7 @@ def _exec_get_intake_status(params: dict, tenant_id: str, session_id: str = None
     try:
         s3 = _get_s3()
         resp = s3.list_objects_v2(
-            Bucket=os.getenv("S3_BUCKET", "eagle-documents-695681773636-dev"),
+            Bucket=os.getenv("S3_BUCKET", "eagle-documents-274487662938-dev"),
             Prefix=f"eagle/{tenant_id}/{user_id}/documents/",
             MaxKeys=50,
         )

@@ -9,7 +9,7 @@
 
 ## Executive Summary
 
-EAGLE is an internal NCI AI acquisition assistant running on AWS ECS Fargate in the NCI AWS account (`695681773636`). Authentication currently routes through an AWS Cognito User Pool. This document describes the steps required from NIH IT and from the EAGLE team to federate that Cognito pool with NIH Login via SAML 2.0, so that NCI staff can sign in using their existing NIH credentials — no separate account required.
+EAGLE is an internal NCI AI acquisition assistant running on AWS ECS Fargate in the NCI AWS account (`274487662938`). Authentication currently routes through an AWS Cognito User Pool. This document describes the steps required from NIH IT and from the EAGLE team to federate that Cognito pool with NIH Login via SAML 2.0, so that NCI staff can sign in using their existing NIH credentials — no separate account required.
 
 ---
 
@@ -18,7 +18,7 @@ EAGLE is an internal NCI AI acquisition assistant running on AWS ECS Fargate in 
 | Item | Value |
 |------|-------|
 | Application | EAGLE — NCI AI Acquisition Assistant |
-| AWS Account | `695681773636` (NCI) |
+| AWS Account | `274487662938` (NCI) |
 | Runtime | AWS ECS Fargate, us-east-1 |
 | Current Auth | AWS Cognito User Pool `us-east-1_ChGLHtmmp` |
 | Target Auth | NIH Login federated into Cognito via SAML 2.0 |
@@ -72,7 +72,7 @@ Once NIH IT delivers the SAML metadata, our work is approximately 1–2 days of 
 
 3. Configure the Cognito App Client to accept the SAML IdP flow and set the correct callback URLs
 4. Add the Cognito-hosted UI callback URL to the ALB listener rules if required
-5. Deploy changes via GitHub Actions to the NCI account (`695681773636`)
+5. Deploy changes via GitHub Actions to the NCI account (`274487662938`)
 6. Revert `DEV_MODE` from `true` to `false` on the ECS task (see Section 6)
 
 ---
@@ -162,7 +162,7 @@ The application is currently accessible only from the NIH network due to the int
 |----------|-------|
 | Cognito User Pool ID | `us-east-1_ChGLHtmmp` |
 | AWS Region | `us-east-1` |
-| NCI AWS Account | `695681773636` |
+| NCI AWS Account | `274487662938` |
 | NCI VPC | `vpc-09def43fcabfa4df6` |
 | ECS Cluster | `eagle-dev` |
 | SP Entity ID | `urn:amazon:cognito:sp:us-east-1_ChGLHtmmp` |
