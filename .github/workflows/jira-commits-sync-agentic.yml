@@ -4,7 +4,7 @@
 # Triggers:
 #   - Nightly cron (6 AM UTC)
 #   - Manual workflow_dispatch
-#   - @claude mention in any issue/PR comment
+#   - @claude mention in any issue/PR comment from a trusted repo actor
 #
 # Required secrets: JIRA_BASE_URL, JIRA_API_TOKEN, ANTHROPIC_API_KEY
 # Optional: JIRA_COMMIT_AUTHOR, JIRA_WEEKLY_SUMMARY
@@ -23,16 +23,53 @@ on:
 
 permissions:
   contents: read
-  issues: write
-  pull-requests: write
 
 jobs:
+  authorize-comment:
+    name: Authorize @claude issue comment
+    runs-on: ubuntu-latest
+    if: github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')
+    permissions: {}
+    outputs:
+      authorized: ${{ steps.gate.outputs.authorized }}
+    steps:
+      - name: Gate comment actor before privileged sync
+        id: gate
+        env:
+          ACTOR: ${{ github.actor }}
+          AUTHOR_ASSOCIATION: ${{ github.event.comment.author_association }}
+          COMMENT_ID: ${{ github.event.comment.id }}
+        run: |
+          set -euo pipefail
+          case "$AUTHOR_ASSOCIATION" in
+            OWNER|MEMBER|COLLABORATOR)
+              echo "authorized=true" >> "$GITHUB_OUTPUT"
+              echo "Authorized @claude request from trusted actor association: ${AUTHOR_ASSOCIATION}"
+              ;;
+            *)
+              echo "authorized=false" >> "$GITHUB_OUTPUT"
+              echo "Denied @claude request from actor '${ACTOR}' with association '${AUTHOR_ASSOCIATION}' on comment ${COMMENT_ID}"
+              ;;
+          esac
+
   sync-agentic:
     runs-on: ubuntu-latest
+    needs: [authorize-comment]
     if: |
-      github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude'))
+      always() &&
+      (
+        github.event_name == 'schedule' ||
+        github.event_name == 'workflow_dispatch' ||
+        (
+          github.event_name == 'issue_comment' &&
+          contains(github.event.comment.body, '@claude') &&
+          needs.authorize-comment.outputs.authorized == 'true'
+        )
+      )
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: write
     steps:
       - name: Checkout
         uses: actions/checkout@b4ffde65f46336ab88eb53be808477a3936bae11
@@ -50,10 +87,10 @@ jobs:
         id: since
         run: |
           if [ "${{ steps.last.outputs.cache-hit }}" == "true" ] && [ -f .cache/jira-sync/last_sha.txt ]; then
-            echo "since=$(cat .cache/jira-sync/last_sha.txt)" >> $GITHUB_OUTPUT
+            echo "since=$(cat .cache/jira-sync/last_sha.txt)" >> "$GITHUB_OUTPUT"
             echo "Syncing commits since cached SHA"
           else
-            echo "since=7 days ago" >> $GITHUB_OUTPUT
+            echo "since=7 days ago" >> "$GITHUB_OUTPUT"
             echo "Syncing commits in last 7 days (no previous run)"
           fi
 
